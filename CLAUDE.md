@@ -76,7 +76,7 @@ ICFR/
 
 ## 5. 금지 사항
 
-- ❌ Git에 직접 push 시도 (사용자가 직접 push)
+- ❌ 사용자 확인 없이 git commit·push 실행 (커밋 메시지를 먼저 제시하고 OK 받은 후 진행)
 - ❌ 자격증명·토큰·비밀번호를 파일에 저장
 - ❌ `ClaudeICFR.md`를 우회하고 독자적으로 진행
 - ❌ 전체 코드 베이스 일괄 재읽기
@@ -90,3 +90,23 @@ ICFR/
 - 결론을 먼저 말하고 근거는 뒤에 둔다.
 - 코드보다 의사결정·구조가 우선이면 표나 다이어그램을 활용한다.
 - 매 작업 종료 시 "다음에 할 일"을 한 줄로 정리한다.
+
+---
+
+## 7. Git 자동화 운영 방침
+
+### 7.1 역할 분리
+- **claude.ai 채팅**: 기획·설계·토론 전용. 파일 직접 수정 불가.
+- **Claude Code (로컬)**: 파일 생성·수정 + `ClaudeICFR.md` 갱신 + git commit & push 일괄 수행.
+
+### 7.2 ClaudeICFR.md 갱신 주체
+- 모든 `ClaudeICFR.md` 업데이트는 **Claude Code가 직접** 수행한다.
+- claude.ai에서 설계 토론 후 결론이 나면, Claude Code에 "ClaudeICFR.md에 반영해줘"라고 지시한다.
+
+### 7.3 작업 완료 후 Git 자동화 절차
+1. `git status` — 변경 파일 확인
+2. 커밋 메시지(안)을 사용자에게 제시
+3. **사용자 OK 확인 후** `git add . → git commit -m "..." → git push` 순서로 실행
+
+> 사용자 OK 없이 commit·push 절대 금지.  
+> 커밋 메시지는 Conventional Commits 형식 준수 (섹션 2.2 참조).

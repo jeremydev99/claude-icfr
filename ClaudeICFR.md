@@ -843,7 +843,7 @@ erDiagram
 - **레포명**: `claude-icfr`
 - **가시성**: **Public** (학습·기록 공유 목적)
 - **로컬 경로**: `C:\claudeprojects\ICFR` (Windows)
-- **운영 방식**: Claude가 파일을 생성/수정하면 사용자가 직접 로컬에 받아 GitHub에 push. Claude는 GitHub에 직접 접근하지 않음.
+- **운영 방식**: Claude Code가 파일을 생성/수정하고 `ClaudeICFR.md`를 갱신한 뒤, 커밋 메시지를 사용자에게 제시하여 **OK를 받은 후** git add → commit → push까지 직접 수행. claude.ai 채팅은 기획·설계 토론 전용.
 - **민감정보 주의**: Public 레포이므로 `.env`, 토큰, 비밀번호, 실 계정 정보는 절대 커밋 금지. (이는 `.gitignore`에 반영됨)
 
 ### 7.2 디렉토리 구조 (제안)
@@ -960,6 +960,12 @@ cd claude-icfr
 - **대안**: Private — 협업자 추가가 번거롭고, 외부 참조용 URL 공유가 불편.
 - **결과**: 채택. 단, **민감정보(자격증명, 실 계정, 회사 고유 데이터) 절대 커밋 금지**. `.gitignore`에 `.env`, 토큰류 사전 차단. 실제 회사 데이터를 다루게 되는 시점에 가시성 재검토 필요.
 
+### ADR-0004 (2026-05-11) — Claude Code가 git commit·push 자동 수행 채택
+- **배경**: claude.ai 채팅에서 설계 토론 후 파일 반영을 사용자가 직접 하는 방식은 번거롭고 누락 위험이 있음.
+- **결정**: Claude Code가 파일 수정 + `ClaudeICFR.md` 갱신 후 커밋 메시지를 제시 → **사용자 OK 확인** → git add·commit·push를 직접 실행.
+- **대안**: 사용자가 직접 push — ADR-0002 원안. 반영 누락·지연 위험.
+- **결과**: 채택. `CLAUDE.md` 섹션 5·7 반영. claude.ai는 기획·토론 전용, Claude Code는 실행 전용으로 역할 분리.
+
 ### (다음 ADR은 여기에 추가)
 
 ---
@@ -996,7 +1002,7 @@ cd claude-icfr
 | 5 | 기술 스택 확정 (ADR) | ⏳ 대기 | — |
 | 6 | Git 레포 생성 및 초기 커밋 | ✅ 완료 | 2026-05-11 |
 | 7 | 로컬 환경 셋업 (Windows + Git Bash) | ✅ 완료 | 2026-05-11 |
-| 8 | Claude Code 동작 확인 | ⏳ 사용자 진행 예정 | — |
+| 8 | Claude Code 동작 확인 | ✅ 완료 | 2026-05-11 |
 | 9 | 백엔드 스켈레톤 | ⏳ 대기 | — |
 | 10 | 프론트엔드 스켈레톤 | ⏳ 대기 | — |
 | 11 | 모듈별 구현 (반복) | ⏳ 대기 | — |
@@ -1022,13 +1028,9 @@ cd claude-icfr
 ## 13. 다음 작업 (Next Up)
 
 ### 13.1 즉시 진행 가능
-1. **Claude Code 동작 확인** (사용자 진행, 5분)
-   - `C:\claudeprojects\ICFR` 에서 Claude Code 실행
-   - 첫 명령: "ClaudeICFR.md 읽고 현재 진행 상황을 섹션 12 기준으로 표로 보여줘"
-   - 기대 결과: 진행 상태 보드 12.1·12.2가 그대로 출력됨
-   - CLAUDE.md 자동 로드 작동 확인
+1. ~~**Claude Code 동작 확인**~~ ✅ 완료 (2026-05-11)
 
-### 13.2 본 설계 작업 (claude.ai 또는 Claude Code 어디서든 가능)
+### 13.2 본 설계 작업
 2. **3단계: 전체 모듈 관계도 (아키텍처)** — 섹션 2 채우기
    - 시스템 컨텍스트 다이어그램 (외부 행위자: 사용자 역할군, ERP/HR/메일 게이트웨이/외부감사인 포털)
    - 컴포넌트 도식 (9개 모듈 간 호출/의존)
@@ -1059,6 +1061,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-05-11 / 사용자(전용남) + Claude Code** — 운영 방침 변경: Claude Code가 `ClaudeICFR.md` 직접 갱신 + git commit·push 자동화(사용자 OK 후) 채택. `CLAUDE.md` 섹션 5·7 수정, ADR-0004 등록. 섹션 7.1·12(단계8 ✅)·13 갱신.
 - **2026-05-11 / 사용자(전용남) + Claude** — 환경 셋업 완료: GitHub Public 레포 `jeremydev99/claude-icfr` 생성, 로컬 `C:\claudeprojects\ICFR` 초기화, 4개 핵심 문서(`ClaudeICFR.md`, `CLAUDE.md`, `README.md`, `.gitignore`) 배치, 디렉토리 구조 생성, 첫 커밋(`c010c9d`) push 완료. ADR-0003 추가(Public 가시성). 섹션 7.1·8 갱신.
 - **2026-05-11 / Claude** — 2단계 완료: 섹션 5 데이터 모델/ERD 작성(5개 Mermaid 다이어그램 + 22개 엔티티 + 공통컬럼·인덱스 가이드·미결사항). ADR-0002 추가(GitHub + 사용자 직접 push). 섹션 7.1 갱신.
 - **2026-05-11 / Claude** — 초기 문서 생성. 섹션 0~14 골격 작성. 1단계(모듈별 기능명세) 반영. ADR-0001 등록.
