@@ -1,0 +1,172 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1100" width="1600" height="1100" font-family="'Noto Sans KR', 'Malgun Gothic', sans-serif">
+  <defs>
+    <!-- Arrow markers -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ea580c"/>
+    </marker>
+    
+    <!-- Gradients -->
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#dbeafe;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#bfdbfe;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#d1fae5;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#a7f3d0;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad3" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#fef3c7;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#fde68a;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad4" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#fed7aa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#fdba74;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad5" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#fecaca;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#fca5a5;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad6" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#e9d5ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#d8b4fe;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Drop shadow -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+      <feOffset dx="2" dy="3"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.2"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Title -->
+  <text x="800" y="50" text-anchor="middle" font-size="32" font-weight="bold" fill="#1e293b">ICFR 연간 평가 사이클</text>
+  <text x="800" y="80" text-anchor="middle" font-size="16" fill="#64748b">한 회계연도 동안 6단계가 시계 방향으로 순환</text>
+
+  <!-- Outer ring guide (subtle) -->
+  <circle cx="800" cy="580" r="380" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-dasharray="6 6"/>
+
+  <!-- Center label -->
+  <circle cx="800" cy="580" r="100" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="2"/>
+  <text x="800" y="565" text-anchor="middle" font-size="18" font-weight="bold" fill="#334155">연간 평가</text>
+  <text x="800" y="595" text-anchor="middle" font-size="18" font-weight="bold" fill="#334155">사이클</text>
+  <text x="800" y="620" text-anchor="middle" font-size="12" fill="#64748b">1년 1회전</text>
+
+  <!-- ============================================================== -->
+  <!-- STAGE 1: 연간 일정 수립 (top, 12 o'clock) -->
+  <!-- ============================================================== -->
+  <g filter="url(#shadow)">
+    <rect x="640" y="130" width="320" height="150" rx="14" fill="url(#grad1)" stroke="#3b82f6" stroke-width="2"/>
+  </g>
+  <circle cx="670" cy="160" r="20" fill="#1e40af"/>
+  <text x="670" y="167" text-anchor="middle" font-size="20" font-weight="bold" fill="white">1</text>
+  <text x="800" y="170" text-anchor="middle" font-size="20" font-weight="bold" fill="#1e3a8a">연간 일정 수립</text>
+  <text x="800" y="195" text-anchor="middle" font-size="13" fill="#1e40af">1월 ~ 2월 · 전년도 일정 복제</text>
+  <line x1="700" y1="210" x2="900" y2="210" stroke="#93c5fd" stroke-width="1"/>
+  <text x="800" y="232" text-anchor="middle" font-size="13" fill="#1e3a8a">📌 모듈: 1.일정 + 8.권한</text>
+  <text x="800" y="255" text-anchor="middle" font-size="12" fill="#475569">WBS · 마일스톤 · 담당자 배정</text>
+
+  <!-- ============================================================== -->
+  <!-- STAGE 2: Scoping 확정 (2 o'clock) -->
+  <!-- ============================================================== -->
+  <g filter="url(#shadow)">
+    <rect x="1130" y="320" width="320" height="150" rx="14" fill="url(#grad2)" stroke="#10b981" stroke-width="2"/>
+  </g>
+  <circle cx="1160" cy="350" r="20" fill="#065f46"/>
+  <text x="1160" y="357" text-anchor="middle" font-size="20" font-weight="bold" fill="white">2</text>
+  <text x="1290" y="360" text-anchor="middle" font-size="20" font-weight="bold" fill="#064e3b">Scoping 확정</text>
+  <text x="1290" y="385" text-anchor="middle" font-size="13" fill="#047857">3월 ~ 5월 · 정량 + 정성 평가</text>
+  <line x1="1190" y1="400" x2="1390" y2="400" stroke="#6ee7b7" stroke-width="1"/>
+  <text x="1290" y="422" text-anchor="middle" font-size="13" fill="#064e3b">📌 3.Scoping → 2.RCM 연결</text>
+  <text x="1290" y="445" text-anchor="middle" font-size="12" fill="#475569">유의계정 식별 · 평가대상 통제 산출</text>
+
+  <!-- ============================================================== -->
+  <!-- STAGE 3: 설계평가 (4 o'clock) -->
+  <!-- ============================================================== -->
+  <g filter="url(#shadow)">
+    <rect x="1130" y="690" width="320" height="150" rx="14" fill="url(#grad3)" stroke="#f59e0b" stroke-width="2"/>
+  </g>
+  <circle cx="1160" cy="720" r="20" fill="#92400e"/>
+  <text x="1160" y="727" text-anchor="middle" font-size="20" font-weight="bold" fill="white">3</text>
+  <text x="1290" y="730" text-anchor="middle" font-size="20" font-weight="bold" fill="#78350f">설계평가</text>
+  <text x="1290" y="755" text-anchor="middle" font-size="13" fill="#b45309">6월 ~ 10월 · 통제 설계 적정성</text>
+  <line x1="1190" y1="770" x2="1390" y2="770" stroke="#fcd34d" stroke-width="1"/>
+  <text x="1290" y="792" text-anchor="middle" font-size="13" fill="#78350f">📌 11.Test → 6.미비점 → 9.알림</text>
+  <text x="1290" y="815" text-anchor="middle" font-size="12" fill="#475569">설계 미흡 시 미비점 자동 등록</text>
+
+  <!-- ============================================================== -->
+  <!-- STAGE 4: 운영평가 (6 o'clock) -->
+  <!-- ============================================================== -->
+  <g filter="url(#shadow)">
+    <rect x="640" y="880" width="320" height="150" rx="14" fill="url(#grad4)" stroke="#ea580c" stroke-width="2"/>
+  </g>
+  <circle cx="670" cy="910" r="20" fill="#9a3412"/>
+  <text x="670" y="917" text-anchor="middle" font-size="20" font-weight="bold" fill="white">4</text>
+  <text x="800" y="920" text-anchor="middle" font-size="20" font-weight="bold" fill="#7c2d12">운영평가</text>
+  <text x="800" y="945" text-anchor="middle" font-size="13" fill="#c2410c">9월 ~ 12월 · 통제 실제 작동 검증</text>
+  <line x1="700" y1="960" x2="900" y2="960" stroke="#fdba74" stroke-width="1"/>
+  <text x="800" y="982" text-anchor="middle" font-size="13" fill="#7c2d12">📌 11.Test → 6.미비점</text>
+  <text x="800" y="1005" text-anchor="middle" font-size="12" fill="#475569">샘플링 · 테스트 · 결과 등록</text>
+
+  <!-- ============================================================== -->
+  <!-- STAGE 5: 미비점 종결 (8 o'clock) -->
+  <!-- ============================================================== -->
+  <g filter="url(#shadow)">
+    <rect x="150" y="690" width="320" height="150" rx="14" fill="url(#grad5)" stroke="#dc2626" stroke-width="2"/>
+  </g>
+  <circle cx="180" cy="720" r="20" fill="#7f1d1d"/>
+  <text x="180" y="727" text-anchor="middle" font-size="20" font-weight="bold" fill="white">5</text>
+  <text x="310" y="730" text-anchor="middle" font-size="20" font-weight="bold" fill="#7f1d1d">미비점 종결</text>
+  <text x="310" y="755" text-anchor="middle" font-size="13" fill="#b91c1c">12월 ~ 2월 · 개선 + 재테스트</text>
+  <line x1="210" y1="770" x2="410" y2="770" stroke="#fca5a5" stroke-width="1"/>
+  <text x="310" y="792" text-anchor="middle" font-size="13" fill="#7f1d1d">📌 6.개선 + 11.Test → 7.증빙</text>
+  <text x="310" y="815" text-anchor="middle" font-size="12" fill="#475569">개선계획 · 재테스트 · 종결 승인</text>
+
+  <!-- ============================================================== -->
+  <!-- STAGE 6: 이사회 보고 (10 o'clock) -->
+  <!-- ============================================================== -->
+  <g filter="url(#shadow)">
+    <rect x="150" y="320" width="320" height="150" rx="14" fill="url(#grad6)" stroke="#9333ea" stroke-width="2"/>
+  </g>
+  <circle cx="180" cy="350" r="20" fill="#581c87"/>
+  <text x="180" y="357" text-anchor="middle" font-size="20" font-weight="bold" fill="white">6</text>
+  <text x="310" y="360" text-anchor="middle" font-size="20" font-weight="bold" fill="#581c87">이사회 보고</text>
+  <text x="310" y="385" text-anchor="middle" font-size="13" fill="#7e22ce">11월 ~ 12월 · 반기 정례 + 수시</text>
+  <line x1="210" y1="400" x2="410" y2="400" stroke="#d8b4fe" stroke-width="1"/>
+  <text x="310" y="422" text-anchor="middle" font-size="13" fill="#581c87">📌 10.Report → 9.알림</text>
+  <text x="310" y="445" text-anchor="middle" font-size="12" fill="#475569">자동 초안 · 결재 · 배포</text>
+
+  <!-- ============================================================== -->
+  <!-- ARROWS (clockwise) -->
+  <!-- ============================================================== -->
+  <!-- 1 → 2 -->
+  <path d="M 960 245 Q 1100 280 1140 340" stroke="#475569" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <!-- 2 → 3 -->
+  <path d="M 1290 470 L 1290 690" stroke="#475569" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <!-- 3 → 4 -->
+  <path d="M 1140 825 Q 1050 900 960 920" stroke="#475569" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <!-- 4 → 5 -->
+  <path d="M 640 920 Q 540 900 460 825" stroke="#475569" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <!-- 5 → 6 -->
+  <path d="M 310 690 L 310 470" stroke="#475569" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <!-- 6 → 1 -->
+  <path d="M 460 345 Q 540 280 640 245" stroke="#475569" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- ============================================================== -->
+  <!-- 연중 상시 모듈 (bottom legend) -->
+  <!-- ============================================================== -->
+  <g>
+    <rect x="500" y="1055" width="600" height="32" rx="16" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="800" y="1077" text-anchor="middle" font-size="14" fill="#334155">
+      <tspan font-weight="bold">⟳ 연중 상시 호출:</tspan>
+      <tspan dx="6" fill="#1e40af">4.EUC</tspan>
+      <tspan dx="6" fill="#065f46">5.IUC</tspan>
+      <tspan dx="6" fill="#78350f">7.증빙</tspan>
+      <tspan dx="6" fill="#7e22ce">9.알림</tspan>
+    </text>
+  </g>
+</svg>

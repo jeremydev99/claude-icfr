@@ -1,0 +1,42 @@
+sequenceDiagram
+    autonumber
+    participant Sch as 1.일정
+    participant R as 10.Report
+    participant RCM as 2.RCM
+    participant Sco as 3.Scoping
+    participant Tst as 11.Test
+    participant Def as 6.미비점
+    participant Q as 작업 큐
+    participant Adm as 사무국
+    participant Notif as 9.알림
+    participant Exec as 경영진
+    participant Evd as 7.증빙
+
+    Sch->>R: 반기 보고서 생성 이벤트 (자동)
+    R->>Q: 보고서 생성 작업 큐에 등록
+    Q->>RCM: 현재 활성 통제 목록 조회
+    Q->>Sco: 당기 Scope 결과 조회
+    Q->>Tst: 평가 결과 종합 조회 (효과/비효과)
+    Q->>Def: 미비점 통계 (단순/유의/중요한취약점)
+    Q->>Q: 템플릿에 데이터 채워 PDF 초안 생성
+    Q->>R: 초안 PDF + 데이터 스냅샷 저장 (Status=Draft)
+    R->>Notif: "보고서 초안 준비됨" 이벤트
+    Notif->>Adm: 사무국에게 편집 알림
+
+    Adm->>R: 편집기 진입, 결론·서술 부분 작성
+    Adm->>R: 편집 완료 → 결재 요청 (Editing→Review)
+    R->>Notif: "결재 요청" 이벤트
+    Notif->>Exec: 경영진에게 결재 알림
+
+    Exec->>R: 시스템 내 결재 (전자서명)
+    R->>R: SystemSignatures 기록 (Status=Approved)
+
+    opt 오프라인 결재본 첨부 (선택)
+        Adm->>R: 종이/외부서명 PDF 업로드
+        R->>Evd: 증빙으로 보관 + OfflineSignedFileID 연결
+    end
+
+    Adm->>R: 최종 잠금 (Signed→Archived, FinalLockedAt 기록)
+    R->>R: 이후 수정 불가 (새 버전으로만 발행)
+    R->>Notif: "보고서 확정" 이벤트
+    Notif->>Exec: 이사회·감사위원회에 배포 알림

@@ -1,0 +1,37 @@
+sequenceDiagram
+    autonumber
+    participant U as Tester<br/>(평가자)
+    participant Sch as 1.일정
+    participant Tst as 11.Test
+    participant RCM as 2.RCM
+    participant IUC as 5.IUC
+    participant Evd as 7.증빙
+    participant Def as 6.미비점
+    participant Notif as 9.알림
+    participant R as Reviewer<br/>(검토자)
+
+    Sch->>Notif: 평가 마감 D-7 이벤트 발생
+    Notif->>U: 이메일 + 잔디 알림 발송
+    U->>Tst: 평가 화면 진입
+    Tst->>RCM: 통제 정보 조회 (테스트 절차, 빈도)
+    RCM-->>Tst: 통제 상세 + 권장 샘플 사이즈
+    Tst->>Tst: 모집단 기반 샘플 자동 추출
+    U->>IUC: 평가에 사용할 리포트 추출
+    IUC-->>U: 리포트 + IUC ID 자동 연결
+    U->>Tst: 샘플별 테스트 결과 입력
+    U->>Evd: 증빙 파일 업로드 (스크린샷·근거자료)
+    Evd-->>Tst: 증빙 ID 자동 연결
+    U->>Tst: 평가 결과 제출 (Pass/Fail + 결론)
+    Tst->>Notif: "검토 요청" 이벤트 발생
+    Notif->>R: 검토 요청 알림
+    R->>Tst: 평가 결과 검토
+
+    alt 결과가 Effective (적정)
+        R->>Tst: 승인
+        Tst->>Sch: 일정 상태 "완료" 갱신
+    else 결과가 Deficient (미비)
+        R->>Tst: 승인
+        Tst->>Def: 미비점 자동 등록 (DeficiencyID 발급)
+        Def->>Notif: "미비점 배정" 이벤트 발생
+        Notif->>U: Control Owner에게 알림
+    end

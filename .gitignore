@@ -10,6 +10,9 @@ desktop.ini
 *.swp
 *.swo
 
+# ===== Claude Code (local only) =====
+.claude/settings.local.json
+
 # ===== Logs =====
 *.log
 logs/

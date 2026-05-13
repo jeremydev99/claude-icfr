@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    participant Owner as EUC<br/>작성자
+    participant EUC as 4.EUC
+    participant Evd as 7.증빙
+    participant Def as 6.미비점
+    participant Notif as 9.알림
+    participant CO as Control<br/>Owner
+
+    Note over Owner,EUC: 정상 업로드 (최초 등록 시점)
+    Owner->>EUC: 신규 EUC 등록 (Excel 파일)
+    EUC->>Evd: 파일 저장 + SHA-256 해시 계산
+    Evd-->>EUC: FileHash 저장 (CurrentFileHash)
+
+    Note over Owner,EUC: 한 달 후 — 정기 점검 시점
+    EUC->>EUC: 정기 점검 자동 트리거
+    EUC->>Evd: 현재 파일 해시 재계산
+    Evd-->>EUC: 새 해시값
+
+    alt 해시가 동일 (변경 없음)
+        EUC->>EUC: 점검 통과 기록
+    else 해시가 다름 (무단 변경 감지!)
+        EUC->>EUC: 변경 감지 플래그
+        EUC->>Def: 미비점 자동 등록<br/>(Source=EUC, 변경통제 위반)
+        Def->>Notif: "EUC 무단 변경 감지" 이벤트
+        Notif->>CO: Control Owner에게 긴급 알림<br/>(이메일+잔디)
+        Notif->>Owner: EUC 작성자에게 확인 요청
+    end
