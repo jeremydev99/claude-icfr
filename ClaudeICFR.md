@@ -1098,7 +1098,11 @@ erDiagram
 ### 5.6 인덱스 / 제약 가이드
 
 - **FiscalYear + ControlID** — 평가 결과·미비점 조회의 최빈 패턴. 복합 인덱스 필수.
-- **Control.ControlID** — 자연키(예: `O2C-AR-C001`)로 가독성 우선. 내부 PK는 별도 surrogate(uuid) 권장 — 추후 결정.
+- **모든 비즈니스 테이블 PK** — Surrogate UUID 채택 (ADR-0015 참조).
+  - 자연키(예: `O2C-AR-C001`, 사용자 사번 등)는 별도 UNIQUE 컬럼으로 보관
+  - 화면·보고서·외부감사 노출은 자연키, 내부 외래키는 UUID 사용
+  - 예: `Control` 테이블 → `control_id UUID PRIMARY KEY` + `control_code VARCHAR UNIQUE`
+  - ORM: SQLAlchemy 2.x `Mapped[uuid.UUID]` 타입
 - **Evidence.FileHash** — 중복 업로드 검출용 인덱스.
 - **EUC.CurrentFileHash** — 무단 변경 탐지 쿼리용.
 - **NotificationLog.SentAt** — 파티셔닝 후보(월 단위).
@@ -1106,12 +1110,12 @@ erDiagram
 
 ### 5.7 데이터 모델 관련 미결 사항 (Open Questions)
 
-1. PK를 자연키(`O2C-AR-C001`)로 둘지, surrogate uuid + 자연키를 별도 컬럼으로 둘지 — **권장: surrogate + 자연키 unique**.
-2. 다국어(영문 통제명) 지원 여부 — 외부감사인 영문 보고 필요 시 i18n 테이블 추가.
-3. 첨부 파일 저장소 — S3 호환(MinIO) vs 사내 NAS. 보안 정책 확인 필요.
-4. 회계기간 변경(예: 분기 평가 추가) 시 FiscalYear → FiscalPeriod 확장 필요 여부.
+1. ~~PK 전략 (자연키 vs surrogate)~~ → **✅ 결정 완료 (ADR-0015): Surrogate UUID + 자연키 별도**
+2. 다국어(영문 통제명) 지원 여부 — Phase 2 이후 재검토
+3. ~~첨부 파일 저장소 (S3 호환 vs NAS)~~ → **✅ 결정 완료 (ADR-0012): MinIO 시작, Phase 2+ 옵션 확장**
+4. 회계기간 변경(예: 분기 평가 추가) 시 FiscalYear → FiscalPeriod 확장 필요 여부 — Phase 3 이후 재검토
 
-> 위 항목은 3~4단계에서 결정하고 ADR에 기록.
+미해결 항목은 해당 Phase에서 다시 토론하여 ADR로 등록한다.
 
 ---
 
@@ -1313,6 +1317,20 @@ cd claude-icfr
 - **대안**: 처음부터 Kubernetes, 베어메탈.
 - **결과**: Compose 채택. 컨테이너 표준이라 추후 K8s 이전 자유. GitHub Actions로 CI/CD.
 
+### ADR-0015 (2026-05-15) — PK 전략으로 Surrogate UUID + 자연키 별도 채택
+- **배경**: ICFR ERD에 22개 엔티티가 외래키로 강하게 연결됨. 통제 코드 변경 가능성 있고, 자연키 충돌·중복 위험 존재. 섹션 5.6에서 잠정 권장됨.
+- **결정**: 모든 비즈니스 테이블의 PK는 Surrogate UUID. 자연키(예: `O2C-AR-C001`, 사번)는 별도 UNIQUE 컬럼.
+- **대안**: 자연키 PK (가독성 우선) / Hybrid (일부 자연키, 일부 UUID).
+- **결과**: UUID 채택. 외래키 변경 자유 + 100% 유일성 보장 + UI는 자연키 노출로 사용자 경험 동일.
+- **영향**: SQLAlchemy 2.x `Mapped[uuid.UUID]` 표준. 모든 테이블의 `id` 컬럼 UUID. 자연키 컬럼은 각 테이블 도메인에 맞게 명명 (control_code, employee_no 등).
+
+### ADR-0016 (2026-05-15) — 시드 데이터로 Acme Corp 가상 회사 + 옵션 Y 규모 채택
+- **배경**: Public 레포라 실 회사 데이터 절대 금지. 동시에 개발·시연·테스트를 위한 충분한 샘플 필요.
+- **결정**: 가상 회사 **Acme Corp** 1개 + 옵션 Y 규모(부서 5·사용자 20·통제 50·평가 50·미비점 5).
+- **대안**: 옵션 X (최소), 옵션 Z (풍부 3-5개 회사), 회사명 대안(샘플 주식회사 등).
+- **결과**: 옵션 Y + Acme Corp 채택. IT 업계 표준 가공명이라 외부 개발자가 즉시 "샘플"임을 인식 가능.
+- **영향**: Phase 0 마지막 단계에서 Alembic seed 스크립트로 자동 생성. 섹션 16에 명세 누적.
+
 ### (다음 ADR은 여기에 추가)
 
 ---
@@ -1350,7 +1368,7 @@ cd claude-icfr
 | 6 | Git 레포 생성 및 초기 커밋 | ✅ 완료 | 2026-05-11 |
 | 7 | 로컬 환경 셋업 | ✅ 완료 | 2026-05-11 |
 | 8 | Claude Code 동작 확인 | ✅ 완료 | 2026-05-11 |
-| 9 | Phase 0 — Walking Skeleton 실행 | 🔄 다음 작업 | — |
+| 9 | Phase 0 — Walking Skeleton 실행 | 🔄 다음 작업 (시작 전 결정사항 모두 완료) | — |
 | 10 | Phase 1 — A-1안 구현 | ⏳ 대기 | — |
 | 11 | Phase 1.5 — A안 완성 | ⏳ 대기 | — |
 | 12 | Phase 2 — B안 완성 | ⏳ 대기 | — |
@@ -1390,9 +1408,13 @@ cd claude-icfr
    - 백엔드 골조: FastAPI 프로젝트 셋업, 11개 모듈 폴더·기본 API 엔드포인트, PostgreSQL 연결, Alembic 초기화, JWT 인증 골조, MinIO 연결, 감사로그·이벤트 버스 기반
    - 프론트엔드 골조: Vite + React + TS 셋업, 11개 모듈 메뉴·라우트, shadcn/ui 베이스, axios + TanStack Query 클라이언트
    - 인프라: docker-compose.yml (FastAPI + PostgreSQL + MinIO), `.env.example`, GitHub Actions CI 골조
-   - 시작 전 결정 필요:
-     - PK 전략 (자연키 vs surrogate uuid) — claude.ai에서 토론 후 ADR
-     - 가짜 데이터 시드 방침 (회사 데이터 가공·랜덤 생성)
+
+   ✅ **시작 전 결정사항 모두 완료**:
+   - PK 전략: ADR-0015 (Surrogate UUID + 자연키 별도)
+   - 시드 데이터 방침: ADR-0016 (Acme Corp + 옵션 Y)
+   - 다국어·회계기간 단위 등 미결사항은 해당 Phase에서 재검토
+
+   진행 방식: 별도 프롬프트 파일(예: `ICFR_infra_1_YYYYMMDD.md`)로 작업 단위 분할 예정
 
 ### 13.3 후속 작업
 
@@ -1408,6 +1430,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-05-15 / Admin + Claude** — PK 전략 + 시드 데이터 방침 결정. ADR-0015 (Surrogate UUID + 자연키 별도), ADR-0016 (Acme Corp 가상 회사 + 옵션 Y 시드) 등록. 섹션 5.6·5.7 갱신, 섹션 16 (시드 데이터 명세) 신설. Phase 0 시작 전 미결사항 모두 해결 → Phase 0 진입 준비 완료.
 - **2026-05-15 / 사용자(전용남) + Claude** — 4단계(개발 로드맵) + 5단계(기술 스택) 완료. Walking Skeleton + A-1안 MVP 전략 확정. 기술 스택 7개 영역 결정(FastAPI + PostgreSQL 16 + React/TS/shadcn/ui + JWT + MinIO + BG Tasks + Docker Compose). ADR-0007~0014 등록. 프롬프트 파일 운영 규칙 도입(CLAUDE.md 섹션 7 신설). 섹션 3 본문 작성, 섹션 15(개발 로드맵) 신설, 섹션 7.2·12·13 갱신.
 - **2026-05-13 / 사용자(전용남) + Claude Code** — 3단계 완료: 시스템 컨텍스트·컴포넌트 도식(6계층)·도메인 이벤트 흐름(5개 시나리오) 작성. 다이어그램 8종 `docs/diagrams/` 보관. 모듈 9 → 11개 확장(Report, Test 신설). ADR-0005·0006 등록. 섹션 1.2·2·4(4.2·4.10·4.11)·5.2·12·13 갱신.
 - **2026-05-11 / 사용자(전용남) + Claude Code** — 운영 방침 변경: Claude Code가 `ClaudeICFR.md` 직접 갱신 + git commit·push 자동화(사용자 OK 후) 채택. `CLAUDE.md` 섹션 5·7 수정, ADR-0004 등록. 섹션 7.1·12(단계8 ✅)·13 갱신.
@@ -1495,6 +1518,66 @@ cd claude-icfr
 ```
 
 A → B 는 "A를 만들려면 B가 먼저 있어야 한다"는 뜻.
+
+---
+
+## 16. 시드 데이터 명세
+
+### 16.1 시드 데이터 원칙
+
+- 본 레포는 **Public** 이므로 실제 회사·임직원·통제 데이터 **절대 커밋 금지**
+- 모든 시드 데이터는 가공된 샘플임을 명확히 표기
+- 실 운영 환경에서는 시드 데이터 위에 실 데이터를 입력하거나, 실 운영 DB와 분리
+- ADR-0003(Public 가시성), ADR-0016(시드 방침) 함께 참조
+
+### 16.2 가상 회사 — Acme Corp
+
+ICFR 시스템 전반에 사용되는 단일 가상 회사.
+
+| 속성 | 값 |
+|---|---|
+| 회사명 (영문) | Acme Corp |
+| 회사명 (한글 표기) | 에이크미코퍼레이션 |
+| 사업 영역 | 일반 제조·유통 (Generic Manufacturing & Distribution) |
+| 회계연도 | 1월 1일 ~ 12월 31일 |
+| 사용 통화 | KRW (시연용) |
+| 본사 위치 | 서울 (가상) |
+
+### 16.3 시드 데이터 규모 (옵션 Y)
+
+| 카테고리 | 수량 | 비고 |
+|---|---|---|
+| Entity (회사) | 1 | Acme Corp |
+| Department (부서) | 5 | 재무팀, 회계팀, 영업팀, 구매팀, IT팀 |
+| User (사용자) | 20 | 역할 분포: Admin 2, Process Owner 5, Control Owner 8, Tester 3, Reviewer 2 |
+| Process (프로세스) | 5 | O2C, P2P, R2R, HR, IT (ITGC) |
+| SubProcess (하위프로세스) | 10 | 프로세스당 2개 |
+| Risk (리스크) | 30 | 프로세스당 6개 |
+| Control (통제) | 50 | 프로세스당 10개 |
+| Assertion (어써션) | 6 | 발생·완전성·정확성·평가·권리와의무·표시와공시 (표준) |
+| TestPlan (평가 계획) | 50 | 통제마다 1건 |
+| OperatingTest (운영평가 결과) | 50 | 평가 계획과 1:1 |
+| Deficiency (미비점) | 5 | 일부 평가에서 발생 (운영미비 3 + 설계미비 2) |
+| Evidence (증빙) | 20 | 더미 PDF·이미지 |
+
+### 16.4 자연키 명명 규칙 (시드용)
+
+| 엔티티 | 자연키 형식 | 예시 |
+|---|---|---|
+| Process | 3자 약어 | `O2C`, `P2P`, `R2R`, `HR`, `ITG` |
+| SubProcess | `{Process}-{2자 약어}` | `O2C-AR`, `P2P-AP` |
+| Control | `{SubProcess}-C{3자리 일련번호}` | `O2C-AR-C001` |
+| Risk | `{SubProcess}-R{3자리}` | `O2C-AR-R001` |
+| User | `EMP{4자리}` | `EMP0001` |
+| Department | `DEPT-{영문}` | `DEPT-FIN`, `DEPT-ACC` |
+
+### 16.5 시드 데이터 생성 방법
+
+- 생성 위치: `backend/app/seeds/` (Phase 0에서 디렉토리 생성)
+- 진입점: `python -m app.seeds.run` 또는 Alembic migration 후속 단계
+- 데이터는 결정적 생성(Deterministic) — 매번 동일한 시드 데이터가 나오도록 random seed 고정
+- 시드 스크립트는 멱등성(Idempotent) 보장 — 여러 번 실행해도 동일 결과
+- Phase 0 마지막 작업으로 시드 스크립트 작성 예정 (별도 프롬프트 파일)
 
 ---
 
