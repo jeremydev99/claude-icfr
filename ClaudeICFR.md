@@ -1412,7 +1412,7 @@ cd claude-icfr
 | 6 | Git 레포 생성 및 초기 커밋 | ✅ 완료 | 2026-05-11 |
 | 7 | 로컬 환경 셋업 | ✅ 완료 | 2026-05-11 |
 | 8 | Claude Code 동작 확인 | ✅ 완료 | 2026-05-11 |
-| 9 | Phase 0 — Walking Skeleton 실행 | 🔄 진행 예정 (분담 확정, 즉시 시작 가능) | — |
+| 9 | Phase 0 — Walking Skeleton 실행 | 🔄 진행중 (작업1 완료, 작업2 다음) | — |
 | 10 | Phase 1 — A-1안 구현 | ⏳ 대기 | — |
 | 11 | Phase 1.5 — A안 완성 | ⏳ 대기 | — |
 | 12 | Phase 2 — B안 완성 | ⏳ 대기 | — |
@@ -1453,8 +1453,7 @@ cd claude-icfr
 1. **Phase 0 — Walking Skeleton 실행** (다음 큰 작업)
 
    **TrustBuilder 영역 (1·2·3·6)**:
-   - 작업 단위 1: 인프라 셋업 (`ICFR_infra_1_YYYYMMDD.md` 예정)
-     - Docker Compose (FastAPI + PostgreSQL + MinIO), `.env.example`, GitHub Actions CI 골조
+   - ~~작업 단위 1: 인프라 셋업~~ ✅ 완료 (2026-05-19) — `docker-compose.yml`, `.env.example`, CI, `dev.ps1`
    - 작업 단위 2: 백엔드 골조 (`ICFR_backend_1_YYYYMMDD.md` 예정)
      - FastAPI 프로젝트, DB 연결, Alembic, JWT 인증 골조
    - 작업 단위 3: 백엔드 모듈 골조 (`ICFR_backend_2_YYYYMMDD.md` 예정)
@@ -1488,6 +1487,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-05-19 / TrustBuilder + Claude** — Phase 0 작업1 완료: Docker Compose (postgres·minio), `.env.example`, `.env`, `.github/workflows/ci.yml`, `dev.ps1`, `infra/README.md` 생성. `.gitignore` 보강. 섹션 12·13 갱신.
 - **2026-05-19 / TrustBuilder + Claude** — 협업자(Regina) 합류 + 협업 원칙 정식 등록. ADR-0017 (Backend/Frontend 분담), ADR-0018 (표기 규칙) 등록. CLAUDE.md 섹션 9 (명세 동기화 체크) 신설. ClaudeICFR.md 섹션 18 (일일 진행 로그), 섹션 19 (API 명세 표준) 신설. 섹션 7 (브랜치 명명 규칙), 섹션 15.4 (협업 전략) 갱신. Phase 0 분담 확정 — 즉시 시작 가능.
 - **2026-05-15 / Admin + Claude** — PK 전략 + 시드 데이터 방침 결정. ADR-0015 (Surrogate UUID + 자연키 별도), ADR-0016 (Acme Corp 가상 회사 + 옵션 Y 시드) 등록. 섹션 5.6·5.7 갱신, 섹션 16 (시드 데이터 명세) 신설. Phase 0 시작 전 미결사항 모두 해결 → Phase 0 진입 준비 완료.
 - **2026-05-15 / 사용자(전용남) + Claude** — 4단계(개발 로드맵) + 5단계(기술 스택) 완료. Walking Skeleton + A-1안 MVP 전략 확정. 기술 스택 7개 영역 결정(FastAPI + PostgreSQL 16 + React/TS/shadcn/ui + JWT + MinIO + BG Tasks + Docker Compose). ADR-0007~0014 등록. 프롬프트 파일 운영 규칙 도입(CLAUDE.md 섹션 7 신설). 섹션 3 본문 작성, 섹션 15(개발 로드맵) 신설, 섹션 7.2·12·13 갱신.
@@ -1665,6 +1665,7 @@ Claude Code가 작업 세션 종료 시 자동으로 한 줄을 추가하고 자
 
 #### 2026-05-19
 - **TrustBuilder**: 협업자(Regina) 합류 셋업 + 협업 원칙 정식 등록 (ADR-0017·0018). Phase 0 진입 준비 완료. 다음: ICFR_infra_1 프롬프트 파일 작성 → 인프라 셋업 시작.
+- **TrustBuilder**: Phase 0 작업1 완료 — Docker Compose + 환경변수 + CI 골조 셋업. 다음: 백엔드 골조 (작업2).
 
 ---
 

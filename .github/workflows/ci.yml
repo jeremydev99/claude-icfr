@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Backend 의존성 설치 (작업 단위 2 이후 활성화)
+      # - name: Install backend dependencies
+      #   working-directory: ./backend
+      #   run: |
+      #     python -m pip install --upgrade pip
+      #     pip install -r requirements.txt
+
+      # Ruff 린트 (작업 단위 2 이후 활성화)
+      # - name: Lint with ruff
+      #   working-directory: ./backend
+      #   run: ruff check .
+
+      # pytest (작업 단위 2 이후 활성화)
+      # - name: Run pytest
+      #   working-directory: ./backend
+      #   run: pytest
+
+      - name: CI placeholder
+        run: echo "CI pipeline ready. Backend tests will be enabled in Phase 0 작업2."
