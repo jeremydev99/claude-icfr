@@ -10,6 +10,21 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,22 +34,26 @@ jobs:
         with:
           python-version: '3.12'
 
-      # Backend 의존성 설치 (작업 단위 2 이후 활성화)
-      # - name: Install backend dependencies
-      #   working-directory: ./backend
-      #   run: |
-      #     python -m pip install --upgrade pip
-      #     pip install -r requirements.txt
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      # Ruff 린트 (작업 단위 2 이후 활성화)
-      # - name: Lint with ruff
-      #   working-directory: ./backend
-      #   run: ruff check .
+      - name: Lint with ruff
+        working-directory: ./backend
+        run: ruff check .
 
-      # pytest (작업 단위 2 이후 활성화)
-      # - name: Run pytest
-      #   working-directory: ./backend
-      #   run: pytest
-
-      - name: CI placeholder
-        run: echo "CI pipeline ready. Backend tests will be enabled in Phase 0 작업2."
+      - name: Run pytest
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+          JWT_SECRET_KEY: test_secret_key_for_ci_only
+          MINIO_ENDPOINT: localhost:9000
+          MINIO_ROOT_USER: test
+          MINIO_ROOT_PASSWORD: test
+          MINIO_BUCKET: test-bucket
+          ADMIN_EMAIL: admin@test.example
+          ADMIN_PASSWORD: testpass
+          ADMIN_DISPLAY_NAME: Test Admin
+        run: pytest

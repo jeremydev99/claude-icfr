@@ -1,0 +1,91 @@
+# ICFR Backend
+
+FastAPI 기반 ICFR 시스템 백엔드.
+
+## 빠른 시작 (Docker)
+
+```powershell
+# 레포 루트에서 실행
+.\dev.ps1 up        # postgres + minio + backend 시작 (첫 실행은 빌드 포함)
+.\dev.ps1 ps        # 3개 컨테이너 healthy 확인
+```
+
+API 문서: http://localhost:8000/docs
+
+임시 admin 계정:
+- Email: `admin@acme.example` (또는 .env의 ADMIN_EMAIL)
+- Password: `admin123` (또는 .env의 ADMIN_PASSWORD)
+
+## 로컬 개발 (가상환경)
+
+```powershell
+cd backend
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+
+# DB 마이그레이션 적용 (postgres 컨테이너 실행 중이어야 함)
+$env:DATABASE_URL = "postgresql+psycopg://icfr_user:changeme_in_production@localhost:5432/icfr_db"
+alembic upgrade head
+
+# uvicorn 직접 실행
+$env:DATABASE_URL = "postgresql+psycopg://icfr_user:changeme_in_production@localhost:5432/icfr_db"
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+## Alembic 마이그레이션
+
+```powershell
+# 새 마이그레이션 생성 (모델 변경 후)
+$env:DATABASE_URL = "postgresql+psycopg://icfr_user:changeme_in_production@localhost:5432/icfr_db"
+alembic revision --autogenerate -m "add column xxx"
+
+# 최신 버전으로 적용
+alembic upgrade head
+
+# 한 버전 되돌리기
+alembic downgrade -1
+
+# 현재 버전 확인
+alembic current
+```
+
+## 테스트
+
+```powershell
+# 로컬 venv에서
+pytest
+
+# Docker 컨테이너 내에서
+docker compose exec backend pytest
+```
+
+## 헬스체크 엔드포인트
+
+| URL | 설명 |
+|---|---|
+| `GET /api/health/` | 앱 상태 |
+| `GET /api/health/db` | PostgreSQL 연결 |
+| `GET /api/health/storage` | MinIO 연결 |
+
+## 프로젝트 구조
+
+```
+backend/
+├── app/
+│   ├── main.py          # FastAPI 앱 엔트리포인트
+│   ├── config.py        # 환경 변수 설정 (pydantic-settings)
+│   ├── core/
+│   │   ├── database.py  # SQLAlchemy 엔진·세션
+│   │   ├── security.py  # JWT + 패스워드 해싱
+│   │   ├── deps.py      # 의존성 주입 (get_current_user 등)
+│   │   └── exceptions.py
+│   ├── models/          # SQLAlchemy ORM 모델
+│   ├── schemas/         # Pydantic 스키마
+│   ├── api/             # FastAPI 라우터
+│   └── seeds/           # 초기 데이터 시드
+├── alembic/             # DB 마이그레이션
+├── tests/
+├── Dockerfile
+└── requirements.txt
+```

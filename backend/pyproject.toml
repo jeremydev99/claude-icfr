@@ -1,0 +1,18 @@
+[project]
+name = "icfr-backend"
+version = "0.1.0"
+description = "ICFR System Backend"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "-v --cov=app --cov-report=term-missing"
