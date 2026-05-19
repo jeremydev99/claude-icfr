@@ -1,5 +1,14 @@
 import logging
 from fastapi import Request
+
+
+class ICFRException(Exception):
+    """ICFR 도메인 예외 — status_code + detail 로 JSONResponse 변환."""
+
+    def __init__(self, status_code: int, detail: str) -> None:
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(detail)
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError

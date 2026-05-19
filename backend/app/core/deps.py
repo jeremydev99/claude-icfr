@@ -1,3 +1,4 @@
+from typing import Annotated
 from uuid import UUID
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -33,6 +34,9 @@ def get_current_user(
     if not user or not user.is_active:
         raise credentials_exception
     return user
+
+
+CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:

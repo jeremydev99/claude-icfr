@@ -68,6 +68,36 @@ docker compose exec backend pytest
 | `GET /api/health/db` | PostgreSQL 연결 |
 | `GET /api/health/storage` | MinIO 연결 |
 
+## 11개 모듈 구조
+
+| # | 모듈 ID | 한국어 | API prefix | 활성 Phase |
+|---|---|---|---|---|
+| 1 | schedule | 일정관리 | `/api/schedule` | Phase 2 |
+| 2 | rcm | RCM 관리 | `/api/rcm` | Phase 1 (A-1) |
+| 3 | scoping | Scoping | `/api/scoping` | Phase 2 |
+| 4 | euc | EUC | `/api/euc` | Phase 3 |
+| 5 | iuc | IUC | `/api/iuc` | Phase 3 |
+| 6 | remediation | 개선계획 | `/api/remediation` | Phase 1 (A-1) |
+| 7 | evidence | 증빙 관리 | `/api/evidence` | Phase 1 (A-1) |
+| 8 | user_mgmt | 사용자/권한 | `/api/users` | Phase 1 (A-1) |
+| 9 | notification | 알림 | `/api/notification` | Phase 2 |
+| 10 | report | Report | `/api/report` | Phase 3 |
+| 11 | test_module | Test (평가) | `/api/test` | Phase 1 (A-1) |
+
+각 모듈은 Phase 0에서 `GET /api/{module}/info` placeholder만 노출.
+Phase 1부터 단계적으로 CRUD·비즈니스 로직 추가.
+
+시스템 전체 메타 정보:
+- `GET /api/system/modules` — Frontend 메뉴 생성용 (11개 모듈 목록 + lucide-react 아이콘명)
+- `GET /api/system/info` — 시스템 버전·상태
+
+## 공통 미들웨어
+
+- **RequestIDMiddleware**: 모든 요청에 `X-Request-ID` 부여 (외부감사 추적용)
+- **AuditLogMiddleware**: 모든 API 호출을 콘솔 감사 로그 (Phase 1+에 audit_logs 테이블 저장)
+- **CORS**: `cors_allowed_origins` 환경변수로 제어
+- **ICFRException**: 도메인 예외를 표준 `{"detail": "..."}` 형식으로 응답
+
 ## 프로젝트 구조
 
 ```
