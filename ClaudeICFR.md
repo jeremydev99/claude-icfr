@@ -1163,6 +1163,21 @@ claude-icfr/
 - `fix/<short>` — 버그 수정.
 - `docs/<short>` — 문서 전용 변경.
 
+### 브랜치 명명 규칙
+
+모든 변경은 새 브랜치에서 시작하여 PR로 main에 머지한다.
+main에 직접 push는 권장하지 않지만 현재는 강제하지 않음 (신뢰 기반).
+
+| Prefix | 용도 | 예시 |
+|---|---|---|
+| `feature/be-<이름>` | 백엔드 신규 기능 | `feature/be-rcm-api` |
+| `feature/fe-<이름>` | 프론트엔드 신규 기능 | `feature/fe-rcm-list` |
+| `feature/infra-<이름>` | 공통 인프라 | `feature/infra-docker-compose` |
+| `fix/<이름>` | 버그 수정 | `fix/jwt-expiry` |
+| `docs/<이름>` | 문서만 변경 | `docs/api-standard` |
+
+ADR-0017 (협업 분담) 참조.
+
 ### 7.4 커밋 컨벤션 (Conventional Commits)
 ```
 feat(rcm): 통제 버전 Diff 화면 추가
@@ -1331,6 +1346,35 @@ cd claude-icfr
 - **결과**: 옵션 Y + Acme Corp 채택. IT 업계 표준 가공명이라 외부 개발자가 즉시 "샘플"임을 인식 가능.
 - **영향**: Phase 0 마지막 단계에서 Alembic seed 스크립트로 자동 생성. 섹션 16에 명세 누적.
 
+### ADR-0017 (2026-05-19) — 협업자 합류 + Backend/Frontend 수평 분담 채택
+- **배경**: 비개발자 2인 협업 환경. AI 도구 의존도 높음. 충돌 최소화 필요. 영역 경계가 명확한 분담 필요.
+- **결정**:
+  - **TrustBuilder** (GitHub: `jeremydev99`) = **Backend** 전담 (`backend/`, `infra/` 일부, 시드 데이터)
+  - **Regina** (GitHub: `0reiko0`) = **Frontend** 전담 (`frontend/`)
+  - **공통**: 문서(`ClaudeICFR.md`, `CLAUDE.md`, `README.md`), ADR, 명세 표준, `docker-compose.yml` 설계
+- **Phase 0 작업 분담**:
+  - TrustBuilder: 1.인프라 + 2.백엔드 골조 + 3.백엔드 모듈 골조 + 6.시드 데이터
+  - Regina: 4.프론트엔드 골조 + 5.프론트엔드 모듈 골조
+  - 순차 진행: TrustBuilder가 백엔드 골조 → Regina의 ClaudeICFR.md 정독 완료 후 프론트엔드 시작
+- **운영 원칙**:
+  - PR 리뷰: 셀프 머지 기본 (영역이 깔끔히 분담). 문제 시 Claude.ai 또는 Claude Code에 해결 요청
+  - 일일 진행 공유: ClaudeICFR.md 섹션 18 (자동 추가·자동 푸시)
+  - 정기 회의: 없음. 필요 시 즉시 대면 회의 (같은 사무실). Phase 끝 회고
+  - API 명세 합의: FastAPI 자동 OpenAPI를 단일 진실 공급원. 명세 표준은 섹션 19 + ADR
+  - 명세 동기화 체크: 코딩 전 자동 체크 (CLAUDE.md 섹션 9)
+- **대안**: 단독 진행 / 모듈별 분담 / 계층+모듈 혼합
+- **결과**: 수평 분담 채택. backend/, frontend/ 폴더로 자연 분리되어 충돌 최소화. API 명세가 두 영역의 인터페이스.
+
+### ADR-0018 (2026-05-19) — 작성자·역할 표기 규칙
+- **배경**: 협업자 합류로 변경 로그·ADR에 두 명의 작성자 표기 필요. 과거 "Admin" 표기와의 정합성도 필요.
+- **결정**:
+  - **변경 로그·ADR 작성자**: GitHub Display Name 사용 (TrustBuilder, Regina)
+  - **호환성 명시**: 과거 변경 로그의 `Admin` 표기는 `TrustBuilder`와 동일 의미. 별도 정정 없음 (이력 정확성 보존)
+  - **코드·기술 식별자**: 소문자 `admin` (예: Role enum의 `ADMIN`, 데이터베이스 컬럼)
+  - **한글 강한 문맥의 본문**: "관리자" 사용 (예: "관리자만 접근 가능합니다")
+- **대안**: 일괄 정정 / 본명 표기 / "사용자(이름)" 형식
+- **결과**: GitHub Display Name 채택. 미래 작성 시점부터 적용. 과거 항목은 호환성 표기로 처리.
+
 ### (다음 ADR은 여기에 추가)
 
 ---
@@ -1368,7 +1412,7 @@ cd claude-icfr
 | 6 | Git 레포 생성 및 초기 커밋 | ✅ 완료 | 2026-05-11 |
 | 7 | 로컬 환경 셋업 | ✅ 완료 | 2026-05-11 |
 | 8 | Claude Code 동작 확인 | ✅ 완료 | 2026-05-11 |
-| 9 | Phase 0 — Walking Skeleton 실행 | 🔄 다음 작업 (시작 전 결정사항 모두 완료) | — |
+| 9 | Phase 0 — Walking Skeleton 실행 | 🔄 진행 예정 (분담 확정, 즉시 시작 가능) | — |
 | 10 | Phase 1 — A-1안 구현 | ⏳ 대기 | — |
 | 11 | Phase 1.5 — A안 완성 | ⏳ 대기 | — |
 | 12 | Phase 2 — B안 완성 | ⏳ 대기 | — |
@@ -1392,6 +1436,8 @@ cd claude-icfr
 
 범례: ✅완료 / 🔄진행중 / ⏳대기 / — 시작 전
 
+비고: TrustBuilder는 1·2·3·6 영역, Regina는 4·5 영역 담당
+
 ---
 
 ## 13. 다음 작업 (Next Up)
@@ -1405,16 +1451,28 @@ cd claude-icfr
 ### 13.2 즉시 진행 가능 (갱신)
 
 1. **Phase 0 — Walking Skeleton 실행** (다음 큰 작업)
-   - 백엔드 골조: FastAPI 프로젝트 셋업, 11개 모듈 폴더·기본 API 엔드포인트, PostgreSQL 연결, Alembic 초기화, JWT 인증 골조, MinIO 연결, 감사로그·이벤트 버스 기반
-   - 프론트엔드 골조: Vite + React + TS 셋업, 11개 모듈 메뉴·라우트, shadcn/ui 베이스, axios + TanStack Query 클라이언트
-   - 인프라: docker-compose.yml (FastAPI + PostgreSQL + MinIO), `.env.example`, GitHub Actions CI 골조
+
+   **TrustBuilder 영역 (1·2·3·6)**:
+   - 작업 단위 1: 인프라 셋업 (`ICFR_infra_1_YYYYMMDD.md` 예정)
+     - Docker Compose (FastAPI + PostgreSQL + MinIO), `.env.example`, GitHub Actions CI 골조
+   - 작업 단위 2: 백엔드 골조 (`ICFR_backend_1_YYYYMMDD.md` 예정)
+     - FastAPI 프로젝트, DB 연결, Alembic, JWT 인증 골조
+   - 작업 단위 3: 백엔드 모듈 골조 (`ICFR_backend_2_YYYYMMDD.md` 예정)
+     - 11개 모듈 폴더·기본 API 엔드포인트 + 공통 미들웨어 (감사로그·이벤트버스 기반)
+   - 작업 단위 6: 시드 데이터 (`ICFR_seed_1_YYYYMMDD.md` 예정)
+     - Acme Corp 시드 데이터 생성 (옵션 Y 규모)
+
+   **Regina 영역 (4·5)**:
+   - 작업 단위 4: 프론트엔드 골조 (`ICFR_frontend_1_YYYYMMDD.md` 예정)
+     - Vite + React + TS + shadcn/ui + Tailwind 베이스, 인증 화면
+   - 작업 단위 5: 프론트엔드 모듈 골조 (`ICFR_frontend_2_YYYYMMDD.md` 예정)
+     - 11개 모듈 메뉴·라우트·빈 페이지 골조, axios + TanStack Query 클라이언트
 
    ✅ **시작 전 결정사항 모두 완료**:
-   - PK 전략: ADR-0015 (Surrogate UUID + 자연키 별도)
-   - 시드 데이터 방침: ADR-0016 (Acme Corp + 옵션 Y)
-   - 다국어·회계기간 단위 등 미결사항은 해당 Phase에서 재검토
-
-   진행 방식: 별도 프롬프트 파일(예: `ICFR_infra_1_YYYYMMDD.md`)로 작업 단위 분할 예정
+   - PK 전략: ADR-0015
+   - 시드 데이터: ADR-0016
+   - 협업 분담: ADR-0017
+   - 표기 규칙: ADR-0018
 
 ### 13.3 후속 작업
 
@@ -1430,6 +1488,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-05-19 / TrustBuilder + Claude** — 협업자(Regina) 합류 + 협업 원칙 정식 등록. ADR-0017 (Backend/Frontend 분담), ADR-0018 (표기 규칙) 등록. CLAUDE.md 섹션 9 (명세 동기화 체크) 신설. ClaudeICFR.md 섹션 18 (일일 진행 로그), 섹션 19 (API 명세 표준) 신설. 섹션 7 (브랜치 명명 규칙), 섹션 15.4 (협업 전략) 갱신. Phase 0 분담 확정 — 즉시 시작 가능.
 - **2026-05-15 / Admin + Claude** — PK 전략 + 시드 데이터 방침 결정. ADR-0015 (Surrogate UUID + 자연키 별도), ADR-0016 (Acme Corp 가상 회사 + 옵션 Y 시드) 등록. 섹션 5.6·5.7 갱신, 섹션 16 (시드 데이터 명세) 신설. Phase 0 시작 전 미결사항 모두 해결 → Phase 0 진입 준비 완료.
 - **2026-05-15 / 사용자(전용남) + Claude** — 4단계(개발 로드맵) + 5단계(기술 스택) 완료. Walking Skeleton + A-1안 MVP 전략 확정. 기술 스택 7개 영역 결정(FastAPI + PostgreSQL 16 + React/TS/shadcn/ui + JWT + MinIO + BG Tasks + Docker Compose). ADR-0007~0014 등록. 프롬프트 파일 운영 규칙 도입(CLAUDE.md 섹션 7 신설). 섹션 3 본문 작성, 섹션 15(개발 로드맵) 신설, 섹션 7.2·12·13 갱신.
 - **2026-05-13 / 사용자(전용남) + Claude Code** — 3단계 완료: 시스템 컨텍스트·컴포넌트 도식(6계층)·도메인 이벤트 흐름(5개 시나리오) 작성. 다이어그램 8종 `docs/diagrams/` 보관. 모듈 9 → 11개 확장(Report, Test 신설). ADR-0005·0006 등록. 섹션 1.2·2·4(4.2·4.10·4.11)·5.2·12·13 갱신.
@@ -1493,11 +1552,20 @@ cd claude-icfr
 
 ### 15.4 협업 전략
 
-현재는 단독 진행. 협업자 합류 시점에 분담 방식 재결정.
+**현재 분담** (ADR-0017 참조):
+- **TrustBuilder** (Backend) — `backend/`, `infra/` 일부, 시드 데이터
+- **Regina** (Frontend) — `frontend/`
 
-검토 대안 (미래용):
-- 수평 분담: 사용자 = Backend 전체, 협업자 = Frontend 전체
-- 계층+모듈 혼합: 사용자 = 공통 인프라 + 마스터 모듈(권한·RCM·증빙), 협업자 = 응용 모듈(Test·개선·Report)
+**Phase 0 작업 분담**:
+- TrustBuilder: 1.인프라, 2.백엔드 골조, 3.백엔드 모듈 골조, 6.시드 데이터
+- Regina: 4.프론트엔드 골조, 5.프론트엔드 모듈 골조
+
+**운영 원칙 요약** (자세한 내용은 ADR-0017):
+- PR 리뷰: 셀프 머지 기본
+- 일일 진행 공유: 섹션 18 자동 누적
+- 회의: 정기 회의 없음. 필요 시 즉시 대면 (같은 사무실)
+- API 명세: FastAPI 자동 OpenAPI + 섹션 19 표준
+- 명세 동기화 체크: CLAUDE.md 섹션 9
 
 ### 15.5 모듈 의존성·빌드 순서
 
@@ -1578,6 +1646,118 @@ ICFR 시스템 전반에 사용되는 단일 가상 회사.
 - 데이터는 결정적 생성(Deterministic) — 매번 동일한 시드 데이터가 나오도록 random seed 고정
 - 시드 스크립트는 멱등성(Idempotent) 보장 — 여러 번 실행해도 동일 결과
 - Phase 0 마지막 작업으로 시드 스크립트 작성 예정 (별도 프롬프트 파일)
+
+---
+
+## 18. 일일 진행 로그
+
+각 작업자(TrustBuilder, Regina)의 일일 진행 상황을 누적 기록한다.
+Claude Code가 작업 세션 종료 시 자동으로 한 줄을 추가하고 자동 푸시한다.
+
+### 18.1 운영 규칙
+- **추가 시점**: Claude Code 작업 세션 종료 시
+- **자동 푸시**: 이 섹션에 대한 변경만 자동 푸시 (commit prefix `chore(log): ... [auto]`)
+- **추가 형식**: `[YYYY-MM-DD] - [작성자명]: [오늘 한 일] / [내일 또는 다음 할 일]`
+- **막힌 사항**: 명시적으로 적기 (예: "막힘: Alembic 마이그레이션 실행 오류, 도움 필요")
+- **사용자 확인**: 일일 로그는 사용자 확인 없이 자동 푸시 (ADR-0004 자동화 + 협업 원칙 합의)
+
+### 18.2 로그 항목
+
+#### 2026-05-19
+- **TrustBuilder**: 협업자(Regina) 합류 셋업 + 협업 원칙 정식 등록 (ADR-0017·0018). Phase 0 진입 준비 완료. 다음: ICFR_infra_1 프롬프트 파일 작성 → 인프라 셋업 시작.
+
+---
+
+## 19. API 명세 표준
+
+ICFR 시스템의 모든 REST API는 다음 표준을 따른다.
+ADR-0017 (협업 분담)의 부속 결정 사항.
+
+### 19.1 URL 패턴
+
+```
+/api/{module}/{resource}
+```
+
+예시:
+- `/api/rcm/controls` — RCM 모듈의 통제 컬렉션
+- `/api/rcm/controls/{control_id}` — 특정 통제
+- `/api/test/plans` — Test 모듈의 평가 계획
+- `/api/users` — 사용자 (8.권한 모듈)
+
+### 19.2 HTTP 메소드
+
+| 메소드 | 용도 | 예시 |
+|---|---|---|
+| GET | 조회 | `GET /api/rcm/controls` |
+| POST | 생성 | `POST /api/rcm/controls` |
+| PUT | 전체 수정 | `PUT /api/rcm/controls/{id}` |
+| PATCH | 부분 수정 | `PATCH /api/rcm/controls/{id}` |
+| DELETE | 삭제 (논리 삭제) | `DELETE /api/rcm/controls/{id}` |
+
+### 19.3 응답 포맷
+
+- JSON, **snake_case** 필드명
+- 표준 응답 구조:
+  ```json
+  {
+    "data": {...} 또는 [...],
+    "meta": { "page": 1, "size": 20, "total": 50 }
+  }
+  ```
+- 단일 항목 조회 시 `data` 는 객체, 컬렉션 조회 시 배열
+
+### 19.4 페이지네이션
+
+쿼리 파라미터:
+- `?page=1` (1-indexed)
+- `?size=20` (기본 20, 최대 100)
+- `?sort=created_at` (정렬 기준)
+- `?order=desc` (asc / desc)
+
+### 19.5 에러 응답
+
+```json
+{
+  "detail": "에러 메시지"
+}
+```
+
+HTTP 상태 코드 사용:
+- 400: 요청 오류 (검증 실패 등)
+- 401: 인증 필요
+- 403: 권한 없음
+- 404: 리소스 없음
+- 409: 충돌 (예: 자연키 중복)
+- 500: 서버 오류
+
+### 19.6 인증
+
+- 모든 API는 인증 필요 (단, 로그인·헬스체크 제외)
+- 헤더: `Authorization: Bearer <JWT>`
+- JWT 만료: Access Token 30분, Refresh Token 7일 (ADR-0011)
+
+### 19.7 시간 형식
+
+- ISO 8601 (예: `2026-05-19T14:30:00Z`)
+- 타임존: UTC 기본, 표시 시 KST 변환 (Frontend 책임)
+
+### 19.8 자연키와 ID
+
+- API 경로에는 surrogate UUID 사용 (ADR-0015)
+- 응답 본문에 자연키도 함께 포함 (예: `control_id` UUID + `control_code` "O2C-AR-C001")
+
+### 19.9 FastAPI 자동 OpenAPI
+
+- 모든 API는 FastAPI의 자동 OpenAPI 생성을 활용
+- 개발 환경에서 Swagger UI 노출: `http://localhost:8000/docs`
+- 운영 환경에서는 인증된 사용자만 접근 가능
+
+### 19.10 명세 변경 시 절차
+
+- 작은 변경 (필드 이름, 응답 일부): GitHub Issue 또는 PR 코멘트에서 의논
+- 큰 변경 (모듈 간 인터페이스, 인증 변경): ADR로 등록
+- 변경 후 명세 동기화 체크 (CLAUDE.md 섹션 9)가 자동 발동
 
 ---
 

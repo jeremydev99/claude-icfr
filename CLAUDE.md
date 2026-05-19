@@ -153,3 +153,34 @@ prompts/ICFR_setup_1_20260515.md 대로 작업해줘
 
 > 사용자 OK 없이 commit·push 절대 금지.  
 > 커밋 메시지는 Conventional Commits 형식 준수 (섹션 2.2 참조).
+
+---
+
+## 9. 코딩 시작 전 명세 동기화 체크 (Contract Sync)
+
+사용자가 백엔드(`backend/`) 또는 프론트엔드(`frontend/`) 코드 작업을
+요청할 때, Claude Code는 **반드시 작업 시작 전 다음을 수행**한다.
+
+### 9.1 발동 조건
+- 사용자 요청에 `backend/`, `frontend/` 폴더의 코드 변경이 포함됨
+- 예외: 문서 변경, 일일 진행 로그(`ClaudeICFR.md` 섹션 18), `prompts/` 파일 작성
+
+### 9.2 체크 절차
+1. `git fetch origin` 으로 원격 최신 상태 가져오기
+2. 로컬 main과 원격 main의 차이 확인 (`git log HEAD..origin/main`)
+3. 다음 파일에 원격 변경이 있는지 점검:
+   - `ClaudeICFR.md` (특히 섹션 10 ADR, 섹션 19 API 명세 표준)
+   - `docs/api/openapi.yaml` (생성된 후)
+   - 프론트엔드 작업 시: `backend/app/api/**/*.py`, `backend/app/schemas/**/*.py`
+   - 백엔드 작업 시: 자기 영역이므로 동기화 확인만
+4. 변경 발견 시 사용자에게 보고하고 동기화 여부 확인
+5. 사용자 OK → `git pull` → 작업 시작
+6. 변경 없음 → 바로 작업 시작
+
+### 9.3 우회 금지
+- 사용자가 "체크 건너뛰고 바로 작업해" 라고 명시하지 않는 한 항상 체크
+- 사용자가 우회 지시 시에도 한 번 더 확인 요청
+
+### 9.4 Claude Code 미사용 시 수동 동기화
+- 사용자가 Claude Code를 거치지 않고 직접 코드 작업을 시작할 때는
+  본인이 수동으로 `git pull` 실행 권장
