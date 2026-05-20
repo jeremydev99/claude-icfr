@@ -1444,7 +1444,7 @@ cd claude-icfr
 | 6 | Git 레포 생성 및 초기 커밋 | ✅ 완료 | 2026-05-11 |
 | 7 | 로컬 환경 셋업 | ✅ 완료 | 2026-05-11 |
 | 8 | Claude Code 동작 확인 | ✅ 완료 | 2026-05-11 |
-| 9 | Phase 0 — Walking Skeleton 실행 | 🔄 진행중 (작업1·2·3 완료, 작업6 다음) | — |
+| 9 | Phase 0 — Walking Skeleton 실행 | 🔄 진행중 (작업1·2·3·4 완료, 작업5·6 다음) | — |
 | 10 | Phase 1 — A-1안 구현 | ⏳ 대기 | — |
 | 11 | Phase 1.5 — A안 완성 | ⏳ 대기 | — |
 | 12 | Phase 2 — B안 완성 | ⏳ 대기 | — |
@@ -1454,17 +1454,17 @@ cd claude-icfr
 
 | 모듈 | 명세 | ERD | API | BE | FE | 테스트 | 비고 |
 |---|---|---|---|---|---|---|---|
-| 일정관리 | ✅ | ✅ | — | — | — | — | |
-| RCM 관리 | ✅ | ✅ | — | — | — | — | 전역 키 역할 |
-| Scoping | ✅ | ✅ | — | — | — | — | |
-| EUC | ✅ | ✅ | — | — | — | — | |
-| IUC | ✅ | ✅ | — | — | — | — | |
-| 개선계획 | ✅ | ✅ | — | — | — | — | |
-| 증빙 관리 | ✅ | ✅ | — | — | — | — | |
-| 담당자/권한 | ✅ | ✅ | — | — | — | — | |
-| 메일발송 | ✅ | ✅ | — | — | — | — | |
-| Report | ✅ | — | — | — | — | — | ERD 미작성 |
-| Test | ✅ | — | — | — | — | — | ERD 미작성 |
+| 일정관리 | ✅ | ✅ | — | — | 🔄 골조 | — | |
+| RCM 관리 | ✅ | ✅ | — | — | 🔄 골조 | — | 전역 키 역할 |
+| Scoping | ✅ | ✅ | — | — | 🔄 골조 | — | |
+| EUC | ✅ | ✅ | — | — | 🔄 골조 | — | |
+| IUC | ✅ | ✅ | — | — | 🔄 골조 | — | |
+| 개선계획 | ✅ | ✅ | — | — | 🔄 골조 | — | |
+| 증빙 관리 | ✅ | ✅ | — | — | 🔄 골조 | — | |
+| 담당자/권한 | ✅ | ✅ | — | — | 🔄 골조 | — | |
+| 메일발송 | ✅ | ✅ | — | — | 🔄 골조 | — | |
+| Report | ✅ | — | — | — | 🔄 골조 | — | ERD 미작성 |
+| Test | ✅ | — | — | — | 🔄 골조 | — | ERD 미작성 |
 
 범례: ✅완료 / 🔄진행중 / ⏳대기 / — 시작 전
 
@@ -1495,8 +1495,7 @@ cd claude-icfr
      - Acme Corp 시드 데이터 생성 (옵션 Y 규모)
 
    **Regina 영역 (4·5)**:
-   - 작업 단위 4: 프론트엔드 골조 (`ICFR_frontend_1_YYYYMMDD.md` 예정)
-     - Vite + React + TS + shadcn/ui + Tailwind 베이스, 인증 화면
+   - ~~작업 단위 4: 프론트엔드 골조~~ ✅ 완료 (2026-05-20) — Vite + React + TS + shadcn/ui + 인증 화면 + AppLayout + PrivateRoute
    - 작업 단위 5: 프론트엔드 모듈 골조 (`ICFR_frontend_2_YYYYMMDD.md` 예정)
      - 11개 모듈 메뉴·라우트·빈 페이지 골조, axios + TanStack Query 클라이언트
 
@@ -1520,6 +1519,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-05-20 / Regina + Claude** — Phase 0 작업4 완료: 프론트엔드 골조 (Vite + React + TS + shadcn/ui + Tailwind + 인증 화면). 34개 파일 생성. `feature/fe-phase0-skeleton` 브랜치. 빌드 통과 확인. 다음: 작업5 (11개 모듈 골조).
 - **2026-05-19 / TrustBuilder + Claude** — 상용화 비전 + ADR-0019 등록 (섹션 20 신설). 타깃 = 중소 상장사·중견기업 (자산 1천억~5조). 도입 = 설치형 + 회계법인 SaaS (B2B2B 핵심 채널). 가치 = 표준 강제 + 회계법인 협업. 가격 = 빅4 대비 1/10~1/100. Phase 1.5 PoC로 검증 예정.
 - **2026-05-19 / TrustBuilder + Claude** — Phase 0 작업3 완료: 11개 모듈 API 골조 + system 메타 API + 공통 미들웨어(RequestID·AuditLog) + ICFRException. bcrypt 3.2.2 호환성 수정. 28개 테스트 전부 통과. Swagger UI에 13개 카테고리 노출.
 - **2026-05-19 / TrustBuilder + Claude** — Phase 0 작업2 완료: FastAPI 백엔드 골조 + PostgreSQL(Alembic 마이그레이션) + JWT 인증 + admin 시드 + 헬스체크 3종. Docker 빌드·3컨테이너 healthy·테스트 통과 확인.
@@ -1705,6 +1705,9 @@ Claude Code가 작업 세션 종료 시 자동으로 한 줄을 추가하고 자
 - **TrustBuilder**: Phase 0 작업2 완료 — FastAPI 백엔드 골조 + PostgreSQL + Alembic + JWT + admin 시드. 다음: 11개 모듈 API 골조 (작업3).
 - **TrustBuilder**: Phase 0 작업3 완료 — 11개 모듈 API 골조 + 공통 미들웨어 + 28개 테스트 통과. 다음: 시드 데이터 (작업6) 또는 Regina 프론트엔드 골조 시작 대기.
 - **TrustBuilder**: 상용화 비전 정립 (섹션 20 + ADR-0019). 타깃 = 중소 상장사·중견기업, 핵심 채널 = 회계법인 SaaS. 다음: Phase 0 작업6 (시드 데이터) 또는 Regina 작업4 대기.
+
+#### 2026-05-20
+- **Regina**: Phase 0 작업4 완료 — 프론트엔드 골조 생성 (34개 파일). Vite + React + TS + shadcn/ui + Tailwind + axios 인터셉터 + Zustand auth store + 로그인 화면 + AppLayout + PrivateRoute. 빌드 통과. 다음: 작업5 — 11개 모듈 골조 (`ICFR_frontend_2_YYYYMMDD.md` 예정).
 
 ---
 
