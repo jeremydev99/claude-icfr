@@ -1,13 +1,32 @@
-﻿"""
-사용자/권한 모듈 Pydantic 스키마.
+from uuid import UUID
+from datetime import datetime
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
-Phase 1에서 추가 예정:
-- UserListRead, UserAdminCreate, RoleUpdate
 
-snake_case 필드명, ISO 8601 시간 (ClaudeICFR.md 섹션 19 표준).
-"""
-# from pydantic import BaseModel, Field
-# from uuid import UUID
-# from datetime import datetime
+class UserRead(BaseModel):
+    id: UUID
+    email: EmailStr
+    display_name: str
+    role: str
+    is_active: bool
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
 
-# Phase 1에서 활성화
+
+class UserRoleBase(BaseModel):
+    user_id: UUID
+    role_name: str = Field(min_length=1, max_length=50)
+    scope: str | None = None
+
+class UserRoleCreate(UserRoleBase):
+    pass
+
+class UserRoleUpdate(BaseModel):
+    role_name: str | None = Field(None, min_length=1, max_length=50)
+    scope: str | None = None
+
+class UserRoleRead(UserRoleBase):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)

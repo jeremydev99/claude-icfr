@@ -1,13 +1,45 @@
-﻿"""
-개선계획 모듈 Pydantic 스키마.
+from uuid import UUID
+from datetime import date, datetime
+from pydantic import BaseModel, Field, ConfigDict
 
-Phase 1에서 추가 예정:
-- DeficiencyRead, DeficiencyCreate, RemediationPlanRead
 
-snake_case 필드명, ISO 8601 시간 (ClaudeICFR.md 섹션 19 표준).
-"""
-# from pydantic import BaseModel, Field
-# from uuid import UUID
-# from datetime import datetime
+class DeficiencyBase(BaseModel):
+    code: str = Field(min_length=1, max_length=20)
+    test_run_id: UUID | None = None
+    severity: str = Field(pattern="^(low|medium|high)$")
+    description: str
+    status: str = Field(default="open", pattern="^(open|in_progress|closed)$")
 
-# Phase 1에서 활성화
+class DeficiencyCreate(DeficiencyBase):
+    pass
+
+class DeficiencyUpdate(BaseModel):
+    severity: str | None = Field(None, pattern="^(low|medium|high)$")
+    description: str | None = None
+    status: str | None = Field(None, pattern="^(open|in_progress|closed)$")
+
+class DeficiencyRead(DeficiencyBase):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RemediationPlanBase(BaseModel):
+    deficiency_id: UUID
+    owner_id: UUID
+    target_date: date
+    action_plan: str
+
+class RemediationPlanCreate(RemediationPlanBase):
+    pass
+
+class RemediationPlanUpdate(BaseModel):
+    target_date: date | None = None
+    action_plan: str | None = None
+
+class RemediationPlanRead(RemediationPlanBase):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)

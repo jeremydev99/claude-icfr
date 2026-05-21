@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.main import create_app
+import app.models  # noqa: F401 — 모든 모델을 Base.metadata에 등록
 from app.models.base import Base
 from app.core.database import get_db
 from app.models.user import User

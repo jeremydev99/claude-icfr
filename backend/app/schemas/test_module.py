@@ -1,13 +1,43 @@
-﻿"""
-Test 평가 모듈 Pydantic 스키마.
+from uuid import UUID
+from datetime import date, datetime
+from pydantic import BaseModel, Field, ConfigDict
 
-Phase 1에서 추가 예정:
-- TestPlanRead, TestPlanCreate, OperatingTestRead, TestResultInput
 
-snake_case 필드명, ISO 8601 시간 (ClaudeICFR.md 섹션 19 표준).
-"""
-# from pydantic import BaseModel, Field
-# from uuid import UUID
-# from datetime import datetime
+class TestStepBase(BaseModel):
+    step_order: int
+    description: str
+    result: str = Field(pattern="^(pass|fail)$")
 
-# Phase 1에서 활성화
+class TestStepCreate(TestStepBase):
+    test_run_id: UUID
+
+class TestStepUpdate(BaseModel):
+    description: str | None = None
+    result: str | None = Field(None, pattern="^(pass|fail)$")
+
+class TestStepRead(TestStepBase):
+    id: UUID
+    test_run_id: UUID
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TestRunBase(BaseModel):
+    control_id: UUID
+    tester_id: UUID
+    test_date: date
+    result: str = Field(pattern="^(pass|fail|n/a)$")
+    notes: str | None = None
+
+class TestRunCreate(TestRunBase):
+    pass
+
+class TestRunUpdate(BaseModel):
+    result: str | None = Field(None, pattern="^(pass|fail|n/a)$")
+    notes: str | None = None
+
+class TestRunRead(TestRunBase):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)

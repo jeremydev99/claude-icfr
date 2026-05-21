@@ -1,13 +1,38 @@
-﻿"""
-증빙 관리 모듈 Pydantic 스키마.
+from uuid import UUID
+from datetime import datetime
+from pydantic import BaseModel, Field, ConfigDict
 
-Phase 1에서 추가 예정:
-- EvidenceRead, EvidenceUploadResponse, EvidenceLinkCreate
 
-snake_case 필드명, ISO 8601 시간 (ClaudeICFR.md 섹션 19 표준).
-"""
-# from pydantic import BaseModel, Field
-# from uuid import UUID
-# from datetime import datetime
+class EvidenceFileBase(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    mime_type: str = Field(min_length=1, max_length=100)
+    size_bytes: int
+    minio_key: str | None = None
 
-# Phase 1에서 활성화
+class EvidenceFileCreate(EvidenceFileBase):
+    pass
+
+class EvidenceFileUpdate(BaseModel):
+    filename: str | None = Field(None, min_length=1, max_length=255)
+    minio_key: str | None = None
+
+class EvidenceFileRead(EvidenceFileBase):
+    id: UUID
+    uploaded_by_id: UUID
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EvidenceLinkBase(BaseModel):
+    file_id: UUID
+    linked_entity_type: str = Field(min_length=1, max_length=50)
+    linked_entity_id: str = Field(min_length=1, max_length=36)
+
+class EvidenceLinkCreate(EvidenceLinkBase):
+    pass
+
+class EvidenceLinkRead(EvidenceLinkBase):
+    id: UUID
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)

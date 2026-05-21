@@ -7,5 +7,4 @@ htmlcov/
 .coverage
 .venv/
 venv/
-tests/
 *.md

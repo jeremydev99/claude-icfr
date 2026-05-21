@@ -1,13 +1,17 @@
-﻿"""
-사용자/권한 모듈 모델.
+from uuid import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import String, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from app.models.base import AuditedBase
 
-Phase 1에서 다음 엔티티 추가 예정 (ClaudeICFR.md 섹션 4.8 참조):
-- Department, UserProfile
 
-모든 PK: Surrogate UUID (ADR-0015).
-감사 컬럼: AuditedBase 상속 (created_at, updated_at, is_deleted 등).
-"""
-# from sqlalchemy.orm import Mapped, mapped_column
-# from app.models.base import AuditedBase
+class UserRole(AuditedBase):
+    __tablename__ = "user_roles"
 
-# Phase 1에서 활성화
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    role_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    scope: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])

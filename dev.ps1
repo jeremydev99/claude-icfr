@@ -63,6 +63,14 @@ switch ($Command) {
         Write-Host "사용자: minioadmin (또는 .env의 MINIO_ROOT_USER)"
         Write-Host "비밀번호: .env의 MINIO_ROOT_PASSWORD 참조"
     }
+    "seed" {
+        Write-Host "시드 데이터 생성 중..." -ForegroundColor Green
+        docker compose exec backend python -m app.seeds.run_all
+    }
+    "test" {
+        Write-Host "pytest 실행 중..." -ForegroundColor Green
+        docker compose exec backend python -m pytest tests/ -v
+    }
     default {
         Show-Help
     }
