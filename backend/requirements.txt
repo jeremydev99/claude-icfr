@@ -18,6 +18,9 @@ bcrypt==3.2.2
 # Storage
 boto3==1.35.*
 
+# UUID v7
+uuid-utils>=0.7.0
+
 # HTTP Client
 httpx==0.27.*
 

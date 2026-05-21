@@ -1407,6 +1407,14 @@ cd claude-icfr
   - 자유도 부여 영역 한정 (회계법인 멀티 클라이언트만 ⭐⭐⭐⭐⭐, 나머지 ⭐⭐ 이하)
   - 표준 양식·표준 워크플로를 시스템에 내장 (사용자 입력 부담 최소화)
 
+### ADR-0020 (2026-05-21) — UUID PK 정책 (UUIDv7 기본 + 유연한 옵션)
+- **배경**: 작업6에서 Claude Code가 PK를 UUID로 자율 결정(명세서는 int). 현재 UUIDv4(`default=uuid4`). Phase 1부터 모델 대거 추가 예정 → 일관 정책 + 미래 효율 고려 필요.
+- **결정**: ① PK 타입 UUID 유지 ② **UUIDv7 기본 채택** (시간 기반 정렬, B-tree 인덱스 효율 ↑) ③ Python 애플리케이션 레벨 생성(`default=uuid7`) ④ `uuid-utils>=0.7.0` (Rust 기반 고성능) ⑤ v4·사용자 지정 UUID는 호출자가 직접 지정(추상화 없음).
+- **구현**: `base.py`에 `uuid7()` 헬퍼 1개만 추가. `UUIDPrimaryKeyMixin` `default=uuid7` 변경. 작업6 시드 재실행으로 전체 v7 통일.
+- **원칙**: 코드 가벼움 극도 경계 — 추상화·팩토리·전략 패턴 미사용. `uuid7()` 함수 1개로 끝.
+- **결과**: 채택. 모든 PK UUIDv7. pytest 30개 통과. DB 검증(id 15번째 글자 `7`) 완료.
+- **향후**: PostgreSQL 17+ 네이티브 v7 함수 표준화 시 server_default 추가 검토(Phase 2+).
+
 ### (다음 ADR은 여기에 추가)
 
 ---
@@ -1521,6 +1529,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-05-21 / TrustBuilder + Claude** — ADR-0020 (UUID PK 정책) 등록. UUIDv7 기본 + v4 옵션. `UUIDPrimaryKeyMixin` 수정(`default=uuid7`). `uuid-utils>=0.7.0` 의존성 추가. 작업6 시드 재실행으로 전체 v7 통일. pytest 30개 모두 통과. 코드 가벼움 극도 경계 원칙 준수.
 - **2026-05-21 / TrustBuilder + Claude** — Phase 0 회고 등록 (섹션 21 신설). Keep 7·Problem 5·Try 5·Drop 2 정리. Phase 1 명세 작성 시 적용 룰 5가지 도출 (UUID ADR-0020·범위 표현·PowerShell cd·명세 누락 룰 강화·다운로드 즉시 이동). 학습 5가지 보존.
 - **2026-05-21 / TrustBuilder + Claude** — Phase 0 작업6 완료 → **Phase 0 전체 완료**. 5개 활성 모듈(RCM·Test·개선계획·증빙·사용자/권한) 최소 CRUD + 모델 11개 + DB 테이블 13개 + Alembic 마이그레이션 + 시드 인프라(API 호출·멱등성) + `dev.ps1 seed/test` 추가. pytest 30개 전부 통과. 시드 실행 성공(P-SALES·C-001·C-002·D-001·TestRun·Evidence 생성).
 - **2026-05-21 / Regina + Claude** — Phase 0 작업5 완료: 11개 모듈 메뉴·라우트·빈 페이지 골조. navigation.ts 단일 진실 공급원 + PlaceholderPage 공통 컴포넌트 + 5개 그룹 사이드바(sticky·접기/펼치기·활성 강조) + 11개 모듈 페이지 + routes 업데이트. `feature/fe-phase0-modules` 브랜치. 빌드 통과. 다음: 작업6 (시드 데이터, TrustBuilder).
@@ -1718,6 +1727,7 @@ Claude Code가 작업 세션 종료 시 자동으로 한 줄을 추가하고 자
 - **Regina**: Phase 0 작업5 완료 — 11개 모듈 메뉴·라우트·빈 페이지 골조. navigation.ts (단일 진실 공급원) + PlaceholderPage + 5개 그룹 사이드바(sticky·접기/펼치기·활성 강조) + 11개 PlaceholderPage + routes 11개 추가. 빌드 통과. 다음: 작업6 — 시드 데이터 (TrustBuilder 담당).
 - **TrustBuilder**: Phase 0 작업6 완료 → Phase 0 전체 완료. 5개 모듈 최소 CRUD(11개 테이블·30개 테스트·시드 멱등성). dev.ps1 seed/test 추가. 다음: Phase 1 A-1안 구현 시작.
 - **TrustBuilder**: Phase 0 회고 등록 (섹션 21 신설). Keep·Problem·Try·Drop 정리. Phase 1 적용 룰 5가지 도출. Phase 0 전체 완료 선언.
+- **TrustBuilder**: ADR-0020 (UUID PK 정책) 등록 + 작업6 v4 → v7 마이그레이션. Python uuid7 기본 + v4 옵션 호출 가능. 시드 재실행으로 전체 v7 통일. Phase 1 시작 전 PK 정책 확정.
 
 ---
 

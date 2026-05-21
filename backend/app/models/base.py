@@ -1,8 +1,14 @@
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+from uuid_utils import uuid7 as _uuid7_native
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import DateTime, String, Boolean, Integer, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+
+
+def uuid7() -> UUID:
+    """기본 PK 생성 — UUIDv7 (시간 기반 정렬, 인덱스 효율 ↑). ADR-0020."""
+    return UUID(str(_uuid7_native()))
 
 
 class Base(DeclarativeBase):
@@ -31,9 +37,9 @@ class VersionMixin:
 
 
 class UUIDPrimaryKeyMixin:
-    """Surrogate UUID PK (ADR-0015)."""
+    """Surrogate UUID PK — UUIDv7 기본 (ADR-0015, ADR-0020)."""
     id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True), primary_key=True, default=uuid4, nullable=False
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid7, nullable=False
     )
 
 
