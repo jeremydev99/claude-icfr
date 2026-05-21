@@ -82,3 +82,9 @@ tmp/
 temp/
 *.tmp
 *.bak
+
+# ===== 사내 비공개 문서 =====
+docs/*.pdf
+docs/*.docx
+docs/*.pptx
+docs/*.xlsx
