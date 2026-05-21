@@ -1521,6 +1521,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-05-21 / TrustBuilder + Claude** — Phase 0 회고 등록 (섹션 21 신설). Keep 7·Problem 5·Try 5·Drop 2 정리. Phase 1 명세 작성 시 적용 룰 5가지 도출 (UUID ADR-0020·범위 표현·PowerShell cd·명세 누락 룰 강화·다운로드 즉시 이동). 학습 5가지 보존.
 - **2026-05-21 / TrustBuilder + Claude** — Phase 0 작업6 완료 → **Phase 0 전체 완료**. 5개 활성 모듈(RCM·Test·개선계획·증빙·사용자/권한) 최소 CRUD + 모델 11개 + DB 테이블 13개 + Alembic 마이그레이션 + 시드 인프라(API 호출·멱등성) + `dev.ps1 seed/test` 추가. pytest 30개 전부 통과. 시드 실행 성공(P-SALES·C-001·C-002·D-001·TestRun·Evidence 생성).
 - **2026-05-21 / Regina + Claude** — Phase 0 작업5 완료: 11개 모듈 메뉴·라우트·빈 페이지 골조. navigation.ts 단일 진실 공급원 + PlaceholderPage 공통 컴포넌트 + 5개 그룹 사이드바(sticky·접기/펼치기·활성 강조) + 11개 모듈 페이지 + routes 업데이트. `feature/fe-phase0-modules` 브랜치. 빌드 통과. 다음: 작업6 (시드 데이터, TrustBuilder).
 - **2026-05-20 / Regina + Claude** — Phase 0 작업4 완료: 프론트엔드 골조 (Vite + React + TS + shadcn/ui + Tailwind + 인증 화면). 34개 파일 생성. `feature/fe-phase0-skeleton` 브랜치. 빌드 통과 확인. 다음: 작업5 (11개 모듈 골조).
@@ -1716,6 +1717,7 @@ Claude Code가 작업 세션 종료 시 자동으로 한 줄을 추가하고 자
 #### 2026-05-21
 - **Regina**: Phase 0 작업5 완료 — 11개 모듈 메뉴·라우트·빈 페이지 골조. navigation.ts (단일 진실 공급원) + PlaceholderPage + 5개 그룹 사이드바(sticky·접기/펼치기·활성 강조) + 11개 PlaceholderPage + routes 11개 추가. 빌드 통과. 다음: 작업6 — 시드 데이터 (TrustBuilder 담당).
 - **TrustBuilder**: Phase 0 작업6 완료 → Phase 0 전체 완료. 5개 모듈 최소 CRUD(11개 테이블·30개 테스트·시드 멱등성). dev.ps1 seed/test 추가. 다음: Phase 1 A-1안 구현 시작.
+- **TrustBuilder**: Phase 0 회고 등록 (섹션 21 신설). Keep·Problem·Try·Drop 정리. Phase 1 적용 룰 5가지 도출. Phase 0 전체 완료 선언.
 
 ---
 
@@ -1924,6 +1926,75 @@ PoC 종료 시 (Phase 1.5 후) 본격 ADR 등록:
 - 시장 사례: OneTrust (GRC SaaS), MetricStream, 빅4 회계법인 ICFR 시스템
 - 한국 외감법 적용 대상: 자산 1,000억 원 이상 (외부감사법 시행령)
 - 회계법인 시장: 빅4 외에 중견 회계법인 다수 존재 → 채널 다양화 가능
+
+---
+
+## 21. 회고 (Retrospectives)
+
+> 본 섹션은 각 Phase 종료 시 KPT (Keep·Problem·Try) + Drop 형식으로 회고를 누적 기록.
+> 협업 룰 (ADR-0017) 의 "Phase 끝 회고" 약속에 따른 영구 자산화.
+> 회고는 비난·평가가 아니라 다음 단계 학습 자료.
+
+### 21.1 Phase 0 회고 (2026-05-21)
+
+**기간**: 2026-05-15 ~ 2026-05-21 (7일)
+**인력**: TrustBuilder + Regina + Claude (AI)
+**산출물**: Walking Skeleton 완성 — 작업1~6 모두 완료
+
+#### Keep — 잘 된 것 (유지)
+
+1. **사전 승인 룰 작동**: 모든 작업이 claude.ai 사전 승인 → 명세서 다운로드 → Claude Code 호출 → 검증 → push 흐름으로 진행. 룰 위반 없음.
+2. **TrustBuilder + Regina 협업**: 각자 영역 (BE/FE) 자율 진행 + 같은 사무실 강점 + GitHub 통한 동기화.
+3. **첫 PR 머지 성공**: Regina 브랜치 (`feature/fe-phase0-modules`) Fast-Forward Merge 깔끔히 진행 (5/21).
+4. **단일 진실 공급원 (ClaudeICFR.md)**: 모든 결정이 한 곳에 누적. 19개 ADR 로 의사결정 추적 가능.
+5. **AI 도구 역할 분리**: Claude.ai (사전 승인·기획) + Claude Code (실행) 분리가 효과적.
+6. **사업 자료 병행**: 코드 개발과 CEO 보고서 v1~v4 + PPT 14장 동시 진행.
+7. **검증 문화**: push 전 pytest + Swagger UI + DB 직접 점검을 사용자가 5분 직접 검증.
+
+#### Problem — 어려웠던 것
+
+1. **명세서 파일 누락 (5/21)**: 사용자가 작업6 명세서 다운로드를 잊어 Claude Code 진행이 막힘. 5분 손실.
+2. **Claude Code 의 자체 명세 작성 시도 (5/21)**: 명세서 없자 자체 작성 제안. 사전 승인 룰 위반 시도. 사용자가 단호히 거부해서 해결.
+3. **명세 가설 vs 실제 차이**: 작업6 엔드포인트 25개 가설 → 실제 43개. 명세 정밀도 부족.
+4. **UUID vs int 일관성**: Claude Code 가 PK 를 UUID 로 자율 결정. 명세서는 int 로 작성. 사후 ADR 등록 필요.
+5. **PowerShell 폴더 오용 (5/21)**: 사용자가 hrmanage 폴더에서 dev.ps1 실행 → 명령 못 찾음. 정확한 폴더 경로 안내 필요.
+
+#### Try — Phase 1 에서 시도할 것
+
+1. **명세서 즉시 prompts/ 이동 습관화**: claude.ai 답변 받자마자 본인 PC 다운로드 → `prompts/` 폴더로 이동.
+2. **Claude Code 자체 명세 차단 룰 강화**: CLAUDE.md 섹션 9 에 "사전 승인 명세서가 `prompts/` 에 있어야만 진행. 없으면 사용자에게 요청" 명시.
+3. **명세 작성 시 정밀 가설**: 엔드포인트 수 = "모델 수 × 5" 로 계산. 모듈 수 × 5 아님.
+4. **UUID 결정사항 ADR-0020 정식 등록**: Phase 1 시작 전 PK 정책 ADR.
+5. **PowerShell 시작 명령 표준화**: 모든 명세서 첫 줄에 `cd C:\claudeprojects\ICFR` 명시.
+
+#### Drop — 그만둘 것
+
+1. **너무 정밀한 분량 가설**: 25개 / 43개 같은 정확한 숫자보다 범위 표시 ("20~50개") 사용.
+2. **Phase 0 에서 풀스케일 시도 본능**: 5/20 시드 풀스케일 → 미니멈 다운그레이드 판단 정확. 같은 패턴 반복 안 함.
+
+#### 학습 — 보존할 가치 있는 사실
+
+- **비개발자 2명 + AI 도구 = 1주에 Walking Skeleton 가능** — 입증됨
+- **사전 승인 → 명세서 → 실행 → 검증 → push 흐름** = 협업 룰의 견고함
+- **단일 진실 공급원 + ADR** = 컨텍스트 손실 없이 7일 진행 가능
+- **각자 본인 채팅 + GitHub 동기화** = 자율성과 협업의 균형
+- **CFO 출신 추진자의 도메인 깊이** = 사업 전략 (IP·수익 구조·3-Tier·수익권 차등) 의 강력한 자산
+
+#### Phase 1 시작 시 적용 룰
+
+위 회고 결과를 Phase 1 명세 작성·진행 시 반영:
+
+| 항목 | 적용 |
+|---|---|
+| 명세서 작성 후 즉시 다운로드 안내 강조 | ✓ |
+| 분량 가설 = 범위 표현 | ✓ |
+| UUID PK 명시 (ADR-0020) | ✓ |
+| PowerShell 첫 줄 cd 명령 추가 | ✓ |
+| 명세 누락 시 Claude Code 가 사용자에게 요청 룰 강화 | ✓ |
+
+---
+
+### 21.2 (다음 Phase 회고는 Phase 1 종료 시 추가)
 
 ---
 
