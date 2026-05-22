@@ -1453,7 +1453,7 @@ cd claude-icfr
 | 7 | 로컬 환경 셋업 | ✅ 완료 | 2026-05-11 |
 | 8 | Claude Code 동작 확인 | ✅ 완료 | 2026-05-11 |
 | 9 | Phase 0 — Walking Skeleton 실행 | ✅ 완료 (작업1~6 모두 완료) | 2026-05-21 |
-| 10 | Phase 1 — A-1안 구현 | ⏳ 대기 | — |
+| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (작업1 RCM 풀 확장 완료) | — |
 | 11 | Phase 1.5 — A안 완성 | ⏳ 대기 | — |
 | 12 | Phase 2 — B안 완성 | ⏳ 대기 | — |
 | 13 | Phase 3 — C안 완성 | ⏳ 대기 | — |
@@ -1463,7 +1463,7 @@ cd claude-icfr
 | 모듈 | 명세 | ERD | API | BE | FE | 테스트 | 비고 |
 |---|---|---|---|---|---|---|---|
 | 일정관리 | ✅ | ✅ | — | — | 🔄 골조 | — | 메뉴·라우트 연결 |
-| RCM 관리 | ✅ | ✅ | ✅ | 🔄 최소CRUD | 🔄 골조 | ✅ | 전역 키 역할 |
+| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 | 🔄 골조 | ✅ | SubProcess·Risk 신규, Control 30+컬럼, Excel업로드 |
 | Scoping | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | EUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
@@ -1529,6 +1529,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-05-22 / TrustBuilder + Claude** — Phase 1 작업1 (RCM 풀 확장) 완료. 사이냅소프트 RCM 양식 기반 — SubProcess·Risk 신규 모델 + Control 20+컬럼 확장 + Excel 업로드(preview/commit) + 풀 검색·필터 + 위험 매트릭스 + 벌크 삭제·수정·전체삭제 API. DB 테이블 15개(sub_processes·risks 신규). pytest 39개 전부 통과. 추상화 0개(ADR-0020 원칙 준수).
 - **2026-05-21 / TrustBuilder + Claude** — ADR-0020 (UUID PK 정책) 등록. UUIDv7 기본 + v4 옵션. `UUIDPrimaryKeyMixin` 수정(`default=uuid7`). `uuid-utils>=0.7.0` 의존성 추가. 작업6 시드 재실행으로 전체 v7 통일. pytest 30개 모두 통과. 코드 가벼움 극도 경계 원칙 준수.
 - **2026-05-21 / TrustBuilder + Claude** — Phase 0 회고 등록 (섹션 21 신설). Keep 7·Problem 5·Try 5·Drop 2 정리. Phase 1 명세 작성 시 적용 룰 5가지 도출 (UUID ADR-0020·범위 표현·PowerShell cd·명세 누락 룰 강화·다운로드 즉시 이동). 학습 5가지 보존.
 - **2026-05-21 / TrustBuilder + Claude** — Phase 0 작업6 완료 → **Phase 0 전체 완료**. 5개 활성 모듈(RCM·Test·개선계획·증빙·사용자/권한) 최소 CRUD + 모델 11개 + DB 테이블 13개 + Alembic 마이그레이션 + 시드 인프라(API 호출·멱등성) + `dev.ps1 seed/test` 추가. pytest 30개 전부 통과. 시드 실행 성공(P-SALES·C-001·C-002·D-001·TestRun·Evidence 생성).
@@ -1728,6 +1729,7 @@ Claude Code가 작업 세션 종료 시 자동으로 한 줄을 추가하고 자
 - **TrustBuilder**: Phase 0 작업6 완료 → Phase 0 전체 완료. 5개 모듈 최소 CRUD(11개 테이블·30개 테스트·시드 멱등성). dev.ps1 seed/test 추가. 다음: Phase 1 A-1안 구현 시작.
 - **TrustBuilder**: Phase 0 회고 등록 (섹션 21 신설). Keep·Problem·Try·Drop 정리. Phase 1 적용 룰 5가지 도출. Phase 0 전체 완료 선언.
 - **TrustBuilder**: ADR-0020 (UUID PK 정책) 등록 + 작업6 v4 → v7 마이그레이션. Python uuid7 기본 + v4 옵션 호출 가능. 시드 재실행으로 전체 v7 통일. Phase 1 시작 전 PK 정책 확정.
+- **TrustBuilder**: Phase 1 작업1 (RCM 풀 확장) 완료. 사이냅소프트 양식이 본 시스템의 표준 RCM 구조로 정착. SubProcess·Risk 신규 + Control 대폭 확장 + Excel 업로드 + 풀 검색·매트릭스·벌크. pytest 39개 통과.
 
 ---
 

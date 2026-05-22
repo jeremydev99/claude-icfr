@@ -1,8 +1,11 @@
 from app.seeds._shared import SeedContext, get_or_create
 
+# 메인 컨트롤 키 — test_module.py, evidence.py 와 공유
+MAIN_CONTROL_KEY = "control_P-SALES-010-10-10"
+
 
 def seed(ctx: SeedContext) -> None:
-    """Process, RiskCategory, Control, ControlAssertion 시드 데이터."""
+    """Process → SubProcess → Risk → Control 계층 시드 (Phase 1 구조)."""
 
     # Process
     process = get_or_create(
@@ -15,11 +18,77 @@ def seed(ctx: SeedContext) -> None:
     )
     ctx.ids["process_sales"] = process["id"]
 
-    # Risk Categories
-    for code, name, desc in [
-        ("E", "Existence", "자산·부채·거래의 실재성"),
-        ("C", "Completeness", "모든 거래의 완전한 기록"),
-        ("V", "Valuation", "적절한 금액으로 측정·표시"),
+    # SubProcess
+    sp = get_or_create(
+        ctx,
+        list_path="/api/rcm/sub-processes",
+        create_path="/api/rcm/sub-processes",
+        lookup_key="code",
+        lookup_value="P-SALES-010",
+        payload={"code": "P-SALES-010", "name": "주문 및 거래관리", "process_id": process["id"]},
+    )
+    ctx.ids["sub_process_P-SALES-010"] = sp["id"]
+
+    # Risk
+    risk = get_or_create(
+        ctx,
+        list_path="/api/rcm/risks",
+        create_path="/api/rcm/risks",
+        lookup_key="code",
+        lookup_value="P-SALES-010-10",
+        payload={
+            "code": "P-SALES-010-10",
+            "description": "매출 인식 위험 — 계약 조건 미충족 매출 조기 인식",
+            "assessment_level": "LR",
+            "sub_process_id": sp["id"],
+        },
+    )
+    ctx.ids["risk_P-SALES-010-10"] = risk["id"]
+
+    # Controls (2개)
+    ctl1 = get_or_create(
+        ctx,
+        list_path="/api/rcm/controls",
+        create_path="/api/rcm/controls",
+        lookup_key="code",
+        lookup_value="P-SALES-010-10-10",
+        payload={
+            "code": "P-SALES-010-10-10",
+            "name": "매출 인식 검토 통제",
+            "objective": "계약 조건 충족 여부 검토 후 매출 인식",
+            "owner_name": "재무팀장",
+            "risk_id": risk["id"],
+            "is_key_control": True,
+            "preventive_detective": "P",
+            "auto_manual": "M",
+            "activity_approval": True,
+            "frequency": "M",
+            "ipe_relevant": "N/A",
+        },
+    )
+    ctx.ids[MAIN_CONTROL_KEY] = ctl1["id"]
+
+    ctl2 = get_or_create(
+        ctx,
+        list_path="/api/rcm/controls",
+        create_path="/api/rcm/controls",
+        lookup_key="code",
+        lookup_value="P-SALES-010-10-20",
+        payload={
+            "code": "P-SALES-010-10-20",
+            "name": "매출 마감 통제",
+            "risk_id": risk["id"],
+            "frequency": "M",
+            "preventive_detective": "D",
+            "auto_manual": "M",
+        },
+    )
+    ctx.ids["control_P-SALES-010-10-20"] = ctl2["id"]
+
+    # RiskCategories (assertion 표준 7종)
+    for code, name in [
+        ("E", "Existence"), ("C", "Completeness"), ("R", "Rights & Obligations"),
+        ("V", "Valuation"), ("P", "Presentation"), ("O", "Occurrence"), ("M", "Measurement"),
     ]:
         rc = get_or_create(
             ctx,
@@ -27,41 +96,20 @@ def seed(ctx: SeedContext) -> None:
             create_path="/api/rcm/risk-categories",
             lookup_key="code",
             lookup_value=code,
-            payload={"code": code, "name": name, "description": desc},
+            payload={"code": code, "name": name},
         )
         ctx.ids[f"rc_{code}"] = rc["id"]
 
-    # Controls
-    for ctl_code, ctl_name in [
-        ("C-001", "매출 인식 검토 통제"),
-        ("C-002", "매출 마감 통제"),
-    ]:
-        ctl = get_or_create(
-            ctx,
-            list_path="/api/rcm/controls",
-            create_path="/api/rcm/controls",
-            lookup_key="code",
-            lookup_value=ctl_code,
-            payload={
-                "code": ctl_code,
-                "name": ctl_name,
-                "process_id": ctx.ids["process_sales"],
-                "frequency": "monthly",
-            },
-        )
-        ctx.ids[f"control_{ctl_code}"] = ctl["id"]
-
-    # Control Assertions: C-001 ↔ E, C-001 ↔ C, C-002 ↔ V
+    # ControlAssertions: C1 ↔ E·C, C2 ↔ V
     existing_ca = ctx.get("/api/rcm/control-assertions")
     existing_pairs = {
         (ca["control_id"], ca["risk_category_id"])
         for ca in existing_ca.get("items", [])
     }
-
     for ctl_key, rc_key in [
-        ("control_C-001", "rc_E"),
-        ("control_C-001", "rc_C"),
-        ("control_C-002", "rc_V"),
+        (MAIN_CONTROL_KEY, "rc_E"),
+        (MAIN_CONTROL_KEY, "rc_C"),
+        ("control_P-SALES-010-10-20", "rc_V"),
     ]:
         ctl_id = ctx.ids[ctl_key]
         rc_id = ctx.ids[rc_key]

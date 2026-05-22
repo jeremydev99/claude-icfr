@@ -4,7 +4,8 @@ from app.seeds._shared import SeedContext
 def seed(ctx: SeedContext) -> None:
     """EvidenceFile + EvidenceLink 시드 데이터."""
 
-    control_id = ctx.ids.get("control_C-001")
+    from app.seeds.rcm import MAIN_CONTROL_KEY
+    control_id = ctx.ids.get(MAIN_CONTROL_KEY)
 
     # EvidenceFile
     existing = ctx.get("/api/evidence/files")
@@ -25,7 +26,7 @@ def seed(ctx: SeedContext) -> None:
     ctx.ids["evidence_file_001"] = file_obj["id"]
 
     if not control_id:
-        print("  [evidence_links] control_C-001 없음 — EvidenceLink 건너뜀")
+        print("  [evidence_links] MAIN_CONTROL 없음 — EvidenceLink 건너뜀")
         return
 
     # EvidenceLink: file → control

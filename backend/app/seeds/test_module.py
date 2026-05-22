@@ -4,11 +4,12 @@ from app.seeds._shared import SeedContext
 def seed(ctx: SeedContext) -> None:
     """TestRun + TestStep 시드 데이터."""
 
-    control_id = ctx.ids.get("control_C-001")
+    from app.seeds.rcm import MAIN_CONTROL_KEY
+    control_id = ctx.ids.get(MAIN_CONTROL_KEY)
     tester_id = ctx.ids.get("tester@acme.example")
 
     if not control_id or not tester_id:
-        print("  [test_module] 필수 ID 누락 (control_C-001 또는 tester). RCM/Users 시드 먼저 실행 필요.")
+        print("  [test_module] 필수 ID 누락 (MAIN_CONTROL 또는 tester). RCM/Users 시드 먼저 실행 필요.")
         return
 
     # TestRun
