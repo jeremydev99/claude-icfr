@@ -186,6 +186,53 @@ def test_status_history_auto_on_transition(client: TestClient) -> None:
     assert items[1]["reason"] == "테스트 시작"
 
 
+def test_history_endpoint_returns_chronological_list(client: TestClient) -> None:
+    """GET /api/test/runs/{id}/history — 시간순 + changed_by {id, display_name} 포함."""
+    h = _headers(client)
+    control_id = _create_control(client, "HIST-CHR")
+    run = client.post("/api/test/runs", json={"control_id": control_id, "fiscal_year": 2025}, headers=h)
+    run_id = run.json()["id"]
+
+    client.post(f"/api/test/runs/{run_id}/transition", json={"to_status": "in_progress"}, headers=h)
+
+    resp = client.get(f"/api/test/runs/{run_id}/history", headers=h)
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 2
+
+    # 시간순 (오름차순) 확인
+    assert items[0]["changed_at"] <= items[1]["changed_at"]
+
+    # changed_by 중첩 객체: id + display_name 필수 (명세서 5.3절)
+    for item in items:
+        assert "changed_by" in item
+        assert "id" in item["changed_by"]
+        assert "display_name" in item["changed_by"]
+        assert item["changed_by"]["display_name"]  # 비어있지 않음
+
+
+def test_history_endpoint_no_post_or_delete(client: TestClient) -> None:
+    """history 엔드포인트는 GET 조회만 — POST·DELETE 없음 (ICFR 무결성)."""
+    h = _headers(client)
+    control_id = _create_control(client, "HIST-IMMUT")
+    run = client.post("/api/test/runs", json={"control_id": control_id, "fiscal_year": 2025}, headers=h)
+    run_id = run.json()["id"]
+
+    # GET 은 허용
+    resp = client.get(f"/api/test/runs/{run_id}/history", headers=h)
+    assert resp.status_code == 200
+
+    # POST·DELETE·PATCH 는 405 (path match, method 없음) 또는 404
+    resp_post = client.post(f"/api/test/runs/{run_id}/history", json={}, headers=h)
+    assert resp_post.status_code in (404, 405)
+
+    resp_delete = client.delete(f"/api/test/runs/{run_id}/history", headers=h)
+    assert resp_delete.status_code in (404, 405)
+
+    resp_patch = client.patch(f"/api/test/runs/{run_id}/history", json={}, headers=h)
+    assert resp_patch.status_code in (404, 405)
+
+
 def test_approved_records_user(client: TestClient) -> None:
     """approved 전이 시 approved_by_id·approved_at 자동 기록."""
     h = _headers(client)

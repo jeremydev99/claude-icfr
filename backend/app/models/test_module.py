@@ -128,3 +128,4 @@ class TestStatusHistory(AuditedBase):
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     test_run: Mapped["TestRun"] = relationship("TestRun", back_populates="status_history")
+    changed_by: Mapped["User"] = relationship("User", foreign_keys=[changed_by_id])

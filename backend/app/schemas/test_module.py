@@ -118,12 +118,20 @@ class TestStepRead(TestStepBase):
 
 # ── TestStatusHistory ─────────────────────────────────────
 
+class UserBrief(BaseModel):
+    """이력 응답용 사용자 간략 정보 (id + display_name)."""
+    id: UUID
+    display_name: str
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TestStatusHistoryRead(BaseModel):
     id: UUID
     test_run_id: UUID
     from_status: str | None
     to_status: str
-    changed_by_id: UUID
+    changed_by: UserBrief          # id + display_name (명세서 5.3절)
+    changed_by_id: UUID            # FK 원본 (하위 호환)
     changed_at: datetime
     reason: str | None
     model_config = ConfigDict(from_attributes=True)
