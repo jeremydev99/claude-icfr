@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import type { ControlSearchParams } from '../types'
+import type { Control, ControlSearchParams } from '../types'
 import { useControls } from '../api/useControls'
 import ControlSearchBar from '../components/ControlSearchBar'
 import ControlFilterChips from '../components/ControlFilterChips'
 import ControlTable from '../components/ControlTable'
+import ControlDetailSheet from '../components/ControlDetailSheet'
 
 const DEFAULT_PARAMS: ControlSearchParams = {
   skip: 0,
@@ -14,6 +15,9 @@ const DEFAULT_PARAMS: ControlSearchParams = {
 
 export default function RcmPage() {
   const [params, setParams] = useState<ControlSearchParams>(DEFAULT_PARAMS)
+  const [selectedControl, setSelectedControl] = useState<Control | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
+
   const { data } = useControls(params)
 
   const handleChange = (updated: Partial<ControlSearchParams>) => {
@@ -21,6 +25,11 @@ export default function RcmPage() {
   }
 
   const handleReset = () => setParams(DEFAULT_PARAMS)
+
+  const handleSelect = (control: Control) => {
+    setSelectedControl(control)
+    setSheetOpen(true)
+  }
 
   return (
     <div className="p-6 space-y-4">
@@ -31,7 +40,13 @@ export default function RcmPage() {
 
       <ControlSearchBar params={params} onChange={handleChange} onReset={handleReset} />
       <ControlFilterChips params={params} onChange={handleChange} />
-      <ControlTable data={data} params={params} onParamsChange={handleChange} />
+      <ControlTable data={data} params={params} onParamsChange={handleChange} onSelect={handleSelect} />
+
+      <ControlDetailSheet
+        control={selectedControl}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
     </div>
   )
 }

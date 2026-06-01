@@ -21,6 +21,7 @@ interface Props {
   data: ControlListResponse
   params: ControlSearchParams
   onParamsChange: (updated: Partial<ControlSearchParams>) => void
+  onSelect?: (control: Control) => void
 }
 
 const RISK_BADGE_VARIANT: Record<string, string> = {
@@ -41,7 +42,7 @@ function SortIcon({ col, params }: { col: SortCol; params: ControlSearchParams }
   )
 }
 
-export default function ControlTable({ data, params, onParamsChange }: Props) {
+export default function ControlTable({ data, params, onParamsChange, onSelect }: Props) {
   const { items, total, skip, limit } = data
 
   const toggleSort = (col: SortCol) => {
@@ -105,8 +106,8 @@ export default function ControlTable({ data, params, onParamsChange }: Props) {
               </TableRow>
             ) : (
               items.map((ctrl: Control) => (
-                <TableRow key={ctrl.id} className="hover:bg-muted/30 cursor-pointer">
-                  <TableCell className="font-mono text-xs font-medium text-blue-600 whitespace-nowrap">
+                <TableRow key={ctrl.id} className="hover:bg-muted/30 cursor-pointer" onClick={() => onSelect?.(ctrl)}>
+                  <TableCell className="font-mono text-xs font-medium text-blue-600 whitespace-nowrap hover:underline cursor-pointer">
                     {ctrl.code}
                   </TableCell>
                   <TableCell className="text-sm">{ctrl.name}</TableCell>
