@@ -1463,7 +1463,7 @@ cd claude-icfr
 | 모듈 | 명세 | ERD | API | BE | FE | 테스트 | 비고 |
 |---|---|---|---|---|---|---|---|
 | 일정관리 | ✅ | ✅ | — | — | 🔄 골조 | — | 메뉴·라우트 연결 |
-| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 | 🔄 목록+검색+상세보기 완료(편집 남음) | ✅ | SubProcess·Risk 신규, Control 30+컬럼, Excel업로드 |
+| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 | 🔄 목록+검색+상세+편집(mock) 완료(삭제·Excel업로드 남음) | ✅ | SubProcess·Risk 신규, Control 30+컬럼, Excel업로드 |
 | Scoping | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | EUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
@@ -1529,6 +1529,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-06-01 / Regina + Claude** — Phase 1 RCM 프론트엔드 작업3 완료: 통제 추가/편집 폼 (mock 데이터). ControlFormDialog (Dialog max-w-3xl, 4탭 — 기본정보·분류·활동유형·관련정보) + React Hook Form + Zod 검증 + 탭별 에러 배지 + 취소 confirm + Sonner 토스트. useControls 훅에 addControl·updateControl 추가(모듈 전역 상태). ControlTable "통제 추가" 버튼 + Pencil 편집 아이콘. ControlDetailSheet "편집" 버튼 실제 연결. shadcn dialog·tabs·textarea·sonner 추가. 빌드 통과. 브랜치: `feature/fe-rcm-edit`. 다음: 통제 삭제 또는 Excel 업로드 UI (ICFR_frontend_6).
 - **2026-05-22 / TrustBuilder + Claude** — Phase 1 작업3 (Test 워크플로 풀 + RAWC) 완료. 신규 모델 2개(ControlRiskAssessment·TestStatusHistory) + TestRun 12+컬럼 확장. 4단계 워크플로(planned→approved) + 전이 검증 + 자동 이력. DB 테이블 17개. pytest 50개 전부 통과. 추상화 0개(ADR-0020 준수).
 - **2026-05-22 / Regina + Claude** — Phase 1 RCM 프론트엔드 작업2 완료: 통제 상세보기 슬라이드 패널 (mock 데이터). ControlDetailSheet (Sheet side="right", 기본정보·분류·활동유형·어서션·관련정보 5섹션) + ControlTable onSelect 클릭 연결 + RcmPage 상태 관리. shadcn sheet·separator 추가. 빌드 통과. 브랜치: `feature/fe-rcm-detail`. 다음: 통제 추가/편집 폼 (ICFR_frontend_5).
 - **2026-05-22 / Regina + Claude** — Phase 1 RCM 프론트엔드 작업1 완료: 통제 목록 + 검색/필터 화면 (mock 데이터). types.ts (백엔드 스키마 100% 일치) + mockData(30건) + useControls 훅(axios 교체 포인트 명시) + ControlSearchBar(디바운스·필터 패널) + ControlFilterChips + ControlTable(정렬·Badge·페이지네이션). shadcn table·badge·select·checkbox 추가. 빌드 통과. 브랜치: `feature/fe-rcm-list`. 다음: 통제 상세보기 (ICFR_frontend_4).
@@ -1734,6 +1735,9 @@ Claude Code가 작업 세션 종료 시 자동으로 한 줄을 추가하고 자
 - **TrustBuilder**: ADR-0020 (UUID PK 정책) 등록 + 작업6 v4 → v7 마이그레이션. Python uuid7 기본 + v4 옵션 호출 가능. 시드 재실행으로 전체 v7 통일. Phase 1 시작 전 PK 정책 확정.
 - **TrustBuilder**: Phase 1 작업1 (RCM 풀 확장) 완료. 사이냅소프트 양식이 본 시스템의 표준 RCM 구조로 정착. SubProcess·Risk 신규 + Control 대폭 확장 + Excel 업로드 + 풀 검색·매트릭스·벌크. pytest 39개 통과.
 - **TrustBuilder**: Phase 1 작업3 (Test 워크플로 풀 + RAWC + 상태 이력) 완료. 사이냅소프트 양식 그룹 6·7 정착. ICFR 제도 추적성·증거성 충족. pytest 50개 통과.
+
+#### 2026-06-01
+- **Regina**: Phase 1 RCM 프론트엔드 작업3 완료 — 통제 추가/편집 폼 (mock). ControlFormDialog (Dialog 4탭·Zod·RHF·탭별 에러배지·취소confirm·Sonner토스트) + useControls addControl/updateControl + ControlTable "통제추가" 버튼·Pencil편집 + ControlDetailSheet "편집" 연결. 빌드 통과. 브랜치: `feature/fe-rcm-edit`. 다음: 통제 삭제 또는 Excel 업로드 UI (ICFR_frontend_6).
 
 #### 2026-05-22
 - **Regina**: Phase 1 RCM 프론트엔드 작업2 완료 — 통제 상세보기 슬라이드 패널 (mock). ControlDetailSheet (Sheet right, 5섹션) + ControlTable 행 클릭 연결. 빌드 통과. 브랜치: `feature/fe-rcm-detail`. 다음: 통제 추가/편집 폼 (ICFR_frontend_5).

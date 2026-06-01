@@ -5,6 +5,7 @@ import ControlSearchBar from '../components/ControlSearchBar'
 import ControlFilterChips from '../components/ControlFilterChips'
 import ControlTable from '../components/ControlTable'
 import ControlDetailSheet from '../components/ControlDetailSheet'
+import ControlFormDialog from '../components/ControlFormDialog'
 
 const DEFAULT_PARAMS: ControlSearchParams = {
   skip: 0,
@@ -17,6 +18,10 @@ export default function RcmPage() {
   const [params, setParams] = useState<ControlSearchParams>(DEFAULT_PARAMS)
   const [selectedControl, setSelectedControl] = useState<Control | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
+
+  const [formOpen, setFormOpen] = useState(false)
+  const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
+  const [editingControl, setEditingControl] = useState<Control | null>(null)
 
   const { data } = useControls(params)
 
@@ -31,6 +36,18 @@ export default function RcmPage() {
     setSheetOpen(true)
   }
 
+  const handleAddClick = () => {
+    setFormMode('create')
+    setEditingControl(null)
+    setFormOpen(true)
+  }
+
+  const handleEditClick = (control: Control) => {
+    setFormMode('edit')
+    setEditingControl(control)
+    setFormOpen(true)
+  }
+
   return (
     <div className="p-6 space-y-4">
       <div>
@@ -40,12 +57,27 @@ export default function RcmPage() {
 
       <ControlSearchBar params={params} onChange={handleChange} onReset={handleReset} />
       <ControlFilterChips params={params} onChange={handleChange} />
-      <ControlTable data={data} params={params} onParamsChange={handleChange} onSelect={handleSelect} />
+      <ControlTable
+        data={data}
+        params={params}
+        onParamsChange={handleChange}
+        onSelect={handleSelect}
+        onAddClick={handleAddClick}
+        onEdit={handleEditClick}
+      />
 
       <ControlDetailSheet
         control={selectedControl}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+        onEditClick={handleEditClick}
+      />
+
+      <ControlFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        mode={formMode}
+        control={editingControl ?? undefined}
       />
     </div>
   )

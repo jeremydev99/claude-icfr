@@ -1,4 +1,4 @@
-import { ChevronUp, ChevronDown, ChevronsUpDown, Star } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronsUpDown, Star, Pencil } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -9,6 +9,13 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { Control, ControlListResponse, ControlSearchParams } from '../types'
 import {
   AUTO_MANUAL_LABELS,
@@ -22,6 +29,8 @@ interface Props {
   params: ControlSearchParams
   onParamsChange: (updated: Partial<ControlSearchParams>) => void
   onSelect?: (control: Control) => void
+  onAddClick?: () => void
+  onEdit?: (control: Control) => void
 }
 
 const RISK_BADGE_VARIANT: Record<string, string> = {
@@ -42,7 +51,7 @@ function SortIcon({ col, params }: { col: SortCol; params: ControlSearchParams }
   )
 }
 
-export default function ControlTable({ data, params, onParamsChange, onSelect }: Props) {
+export default function ControlTable({ data, params, onParamsChange, onSelect, onAddClick, onEdit }: Props) {
   const { items, total, skip, limit } = data
 
   const toggleSort = (col: SortCol) => {
@@ -60,6 +69,11 @@ export default function ControlTable({ data, params, onParamsChange, onSelect }:
 
   return (
     <div className="space-y-2">
+      <div className="flex justify-end">
+        <Button onClick={onAddClick} size="sm">
+          + 통제 추가
+        </Button>
+      </div>
       <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
@@ -95,18 +109,19 @@ export default function ControlTable({ data, params, onParamsChange, onSelect }:
               </TableHead>
               <TableHead className="w-36">어서션</TableHead>
               <TableHead className="w-24">담당자</TableHead>
+              <TableHead className="w-16"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
                   검색 결과가 없습니다
                 </TableCell>
               </TableRow>
             ) : (
               items.map((ctrl: Control) => (
-                <TableRow key={ctrl.id} className="hover:bg-muted/30 cursor-pointer" onClick={() => onSelect?.(ctrl)}>
+                <TableRow key={ctrl.id} className="group hover:bg-muted/30 cursor-pointer" onClick={() => onSelect?.(ctrl)}>
                   <TableCell className="font-mono text-xs font-medium text-blue-600 whitespace-nowrap hover:underline cursor-pointer">
                     {ctrl.code}
                   </TableCell>
@@ -148,6 +163,17 @@ export default function ControlTable({ data, params, onParamsChange, onSelect }:
                   <TableCell className="text-xs text-muted-foreground">
                     {ctrl.owner_name ?? '—'}
                   </TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()} className="text-right pr-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                      onClick={() => onEdit?.(ctrl)}
+                      title="편집"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))
             )}
@@ -159,23 +185,42 @@ export default function ControlTable({ data, params, onParamsChange, onSelect }:
         <span>
           전체 {total}건 중 {from}–{to}
         </span>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page === 0}
-            onClick={() => onParamsChange({ skip: (page - 1) * limit })}
-          >
-            이전
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= totalPages - 1}
-            onClick={() => onParamsChange({ skip: (page + 1) * limit })}
-          >
-            다음
-          </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span>페이지당</span>
+            <Select
+              value={String(limit)}
+              onValueChange={(v) => onParamsChange({ limit: Number(v), skip: 0 })}
+            >
+              <SelectTrigger className="h-8 w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+            <span>개</span>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === 0}
+              onClick={() => onParamsChange({ skip: (page - 1) * limit })}
+            >
+              이전
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages - 1}
+              onClick={() => onParamsChange({ skip: (page + 1) * limit })}
+            >
+              다음
+            </Button>
+          </div>
         </div>
       </div>
     </div>
