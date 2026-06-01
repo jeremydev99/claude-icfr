@@ -21,6 +21,7 @@ interface Props {
   control: Control | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  onEditClick?: (control: Control) => void
 }
 
 const RISK_BADGE_CLASS: Record<string, string> = {
@@ -52,7 +53,7 @@ const ACTIVITIES: { key: keyof Control; label: string }[] = [
   { key: 'activity_supervision', label: '감독' },
 ]
 
-export default function ControlDetailSheet({ control, open, onOpenChange }: Props) {
+export default function ControlDetailSheet({ control, open, onOpenChange, onEditClick }: Props) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="sm:max-w-xl overflow-y-auto">
@@ -75,9 +76,11 @@ export default function ControlDetailSheet({ control, open, onOpenChange }: Prop
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled
-                  title="준비중입니다"
                   className="shrink-0 mr-8"
+                  onClick={() => {
+                    onOpenChange(false)
+                    onEditClick?.(control)
+                  }}
                 >
                   편집
                 </Button>
