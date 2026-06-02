@@ -1415,6 +1415,106 @@ cd claude-icfr
 - **결과**: 채택. 모든 PK UUIDv7. pytest 30개 통과. DB 검증(id 15번째 글자 `7`) 완료.
 - **향후**: PostgreSQL 17+ 네이티브 v7 함수 표준화 시 server_default 추가 검토(Phase 2+).
 
+### ADR-0021: Phase 1 협업 룰 (TrustBuilder + Regina 인터리브)
+
+**날짜**: 2026-06-02
+**상태**: 채택
+**컨텍스트**:
+- Phase 0 까지는 단순 순차 협업 (작업4 Regina 골조 → 작업5 Regina 모듈 골조).
+- Phase 1 부터는 백엔드·프론트엔드가 페어로 묶여 작업4·5·6 진행 예정.
+- 두 사람이 동시에 일하면서 의존성 충돌 없이 진행할 룰 필요.
+- 어제 (5/21) PDF 문서로 Regina 와 공유 + 일부 토론 진행.
+
+**결정**:
+1. **시나리오 C — 인터리브 패턴** 채택:
+   - TrustBuilder 가 항상 1단계 앞선 백엔드 진행
+   - Regina 는 이전 모듈 FE 작업
+   - 한 모듈 끝나면 자연 다음으로 이동
+2. **API 명세 자동 생성** (OpenAPI/Swagger UI) + 작업 시작 전 30분 합의 (대면)
+3. **백엔드 완료 신호** = 같은 사무실 대면 (PR/commit 메시지는 보조)
+4. **모듈 완성 시점 정기 통합 테스트** — 둘이 같이 화면 띄우고 API 호출 확인
+
+**Mock 데이터 사용 룰** (본 세션 학습 반영):
+- FE 작업 시 백엔드 미완 영역은 Mock 사용 가능
+- 단, **TODO 주석 명시 의무** ("// TODO: replace with axios.post(...)")
+- 모듈 완성 시점에 Mock → 실 API 전환 필수
+- 예: `useControls.ts` 가 좋은 패턴 — TODO 주석으로 의도 표시
+
+**비대칭 git 룰** (ADR-0017 유지):
+- TrustBuilder: main 직접 push (PM 권한 + 명세 사전 승인)
+- Regina: 브랜치 → PR → TrustBuilder 머지
+
+**결과**:
+- 두 사람 100% 시간 활용 + 의존성 자연 해결
+- Mock 사용 시점·전환 시점 명확
+- Phase 1 작업4·5·6 진행 기반
+
+**참조**: `docs/Phase1_협업룰_Regina공유_20260521.pdf`
+
+### ADR-0022: 기술 신뢰성·도메인 자산 영업자료 누적 원칙
+
+**날짜**: 2026-06-02
+**상태**: 채택
+**컨텍스트**:
+- 본 세션 중 FastAPI 의 기원·인기·신뢰성 정보 조사 결과를 보고 사용자가 결정.
+- 본 시스템이 사용하는 모든 외부 도구·표준·사례는 회계법인 협상 시 "검증된 글로벌 표준 사용" 메시지로 활용 가능.
+- 잊지 않고 매번 누적해야 자산이 됨.
+
+**결정**:
+- 본 시스템이 새 외부 도구·라이브러리·표준·사례를 도입하거나 발견할 때마다 영업자료에 즉시 누적.
+- 누적 항목:
+  - 도구·라이브러리: 제작자, 출시 시점, 라이선스, 사용 기업, GitHub Star 등
+  - 표준: K-ICFR, SOX, K-IFRS, ISO 등 시스템 적합성
+  - 사례: 사이냅소프트 등 실제 회사 양식 적용 결과
+  - 기술 신뢰성: 글로벌 사용량, 엔터프라이즈 채택 사례
+- **위치**: ClaudeICFR.md 의 신규 섹션 (섹션 22 신설 예정 — "기술스택 영업자료").
+- 자료 누적되면 향후 별도 `docs/sales_tech_stack.md` 로 이관 가능.
+
+**현재까지 누적할 항목** (다음 세션부터):
+- FastAPI (Sebastián Ramírez, 2018, MIT, Microsoft·Netflix 사용)
+- PostgreSQL (16.x, ACID, 글로벌 표준)
+- UUID v7 (RFC 9562, 시계열 정렬 가능, 인덱스 효율)
+- 사이냅소프트 RCM 적용 사례 (93통제, 한국 코스닥 상장 SW 사)
+
+**결과**:
+- 회계법인 협상 시 기술 신뢰성 자료로 즉시 활용
+- "이거 어떻게 만들었냐" 질문에 자신감 있는 답변
+
+**자동화 룰**:
+- claude.ai 가 본 시스템 작업 중 새 외부 도구·표준 사용·발견 시 → 자동으로 본 영업자료 누적 권고
+
+### ADR-0023: 데이터 복구 정책 — 시드 외 사용자 업로드 데이터 보호
+
+**날짜**: 2026-06-02
+**상태**: 채택
+**컨텍스트**:
+- 본 세션 중 Phase 1 작업3 진행 시점에 사이냅소프트 95통제 손실 사고 발생.
+- 원인: 작업3 명세서 10.3 절의 `docker compose down -v` (볼륨 포함 완전 삭제) 가 시드 외 데이터 (Excel 업로드 결과) 까지 삭제.
+- 시드 코드는 자동 재실행되지만, Excel 업로드는 시드 아니라서 미복구.
+- 사용자가 직접 검증 ("30개만 보이는데?") 으로 발견 → Excel 재업로드 5분만에 복구.
+- 회계법인 시연 시점이었다면 큰 사고 가능성.
+
+**결정**:
+- **작업 명세 작성 시점**: `docker compose down -v` 또는 DB 완전 재초기화 포함된 명세는 반드시 다음 두 가지 명시:
+  1. "사용자 업로드 데이터 손실 위험" 경고
+  2. 복구 절차 (예: "Excel 재업로드 필요")
+- **시드 정책**:
+  - 핵심 도메인 데이터 (사이냅소프트 양식 등) 는 시드에 자동 import 옵션 검토
+  - 또는 별도 "기본 데이터 import" 명령 (예: `dev.ps1 import-defaults`)
+- **명세서 작성 자동 점검**: claude.ai 가 명세 작성 중 `down -v` 발견 시 자동 경고 + 복구 절차 요구.
+
+**미래 보강 (Phase 1.5+)**:
+- 자동 백업: 일정 주기로 PostgreSQL `pg_dump` → MinIO 저장
+- 회계법인 PoC 시점에 운영 환경의 백업 정책 ADR 별도 등록 예정
+
+**본 사고의 학습 가치**:
+- 사용자 직접 검증의 가치 입증 (본 세션 4번째 사례)
+- CFO 출신 사업가의 데이터 감각이 시스템 무결성을 또 한 번 보호
+
+**결과**:
+- 같은 사고 재발 방지
+- 미래 작업 명세 작성 시 자동 점검 룰 정착
+
 ### (다음 ADR은 여기에 추가)
 
 ---
@@ -1529,6 +1629,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-06-02 / TrustBuilder + Claude** — ADR-0021·0022·0023 등록. Phase 1 협업 룰 (인터리브·Mock TODO 주석 의무) + 영업자료 누적 원칙 (FastAPI·PostgreSQL·UUID v7·사이냅소프트 사례) + 데이터 복구 정책 (down -v 경고 + 시드 정책). 본 세션의 4가지 검증 사례·데이터 손실 사고 학습 반영.
 - **2026-06-02 / TrustBuilder + Claude** — Excel 헤더 자동 인식 (Regina 제안). 시트명 무관·헤더 행 자동 탐색 (1~15→30→130 단계 확장)·한/영 동의어 사전 (HEADER_SYNONYMS). `backend/app/services/excel_parser.py` 신규 (함수 4개). `upload-excel` endpoint `expand_to` 파라미터 추가 + `_build_not_found_response`. 사이냅소프트 양식 회귀 호환 유지. pytest 18개 전부 통과 (신규 7개 포함). ADR-0020 준수 (추상화 0개).
 - **2026-06-01 / Regina + Claude** — Phase 1 RCM 프론트엔드 작업3 완료: 통제 추가/편집 폼 (mock 데이터). ControlFormDialog (Dialog max-w-3xl, 4탭 — 기본정보·분류·활동유형·관련정보) + React Hook Form + Zod 검증 + 탭별 에러 배지 + 취소 confirm + Sonner 토스트. useControls 훅에 addControl·updateControl 추가(모듈 전역 상태). ControlTable "통제 추가" 버튼 + Pencil 편집 아이콘. ControlDetailSheet "편집" 버튼 실제 연결. shadcn dialog·tabs·textarea·sonner 추가. 빌드 통과. 브랜치: `feature/fe-rcm-edit`. 다음: 통제 삭제 또는 Excel 업로드 UI (ICFR_frontend_6).
 - **2026-05-22 / TrustBuilder + Claude** — Phase 1 작업3 (Test 워크플로 풀 + RAWC) 완료. 신규 모델 2개(ControlRiskAssessment·TestStatusHistory) + TestRun 12+컬럼 확장. 4단계 워크플로(planned→approved) + 전이 검증 + 자동 이력. DB 테이블 17개. pytest 50개 전부 통과. 추상화 0개(ADR-0020 준수).
@@ -1738,6 +1839,7 @@ Claude Code가 작업 세션 종료 시 자동으로 한 줄을 추가하고 자
 - **TrustBuilder**: Phase 1 작업3 (Test 워크플로 풀 + RAWC + 상태 이력) 완료. 사이냅소프트 양식 그룹 6·7 정착. ICFR 제도 추적성·증거성 충족. pytest 50개 통과.
 
 #### 2026-06-02
+- **TrustBuilder**: ADR 3건 등록. 협업 룰·영업자료·데이터 복구. 본 세션 학습 영구 기록.
 - **TrustBuilder**: Excel 헤더 자동 인식 (Regina 제안). 시트명·헤더 위치·헤더명 모두 유연. AI 자동 ICFR 설정 비전의 기반 기술 첫 단계. pytest 18개 통과 (신규 7개 포함). ADR-0020 준수.
 
 #### 2026-06-01
