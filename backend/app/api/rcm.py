@@ -3,9 +3,12 @@ from io import BytesIO
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import JSONResponse
 from openpyxl import load_workbook
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+
+from app.services.excel_parser import find_rcm_sheet
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser
@@ -455,18 +458,20 @@ class _ParsedRCM:
     warnings: list = dc_field(default_factory=list)
 
 
-def _parse_rcm_excel(file_bytes: bytes) -> _ParsedRCM:
-    """사이냅소프트 RCM 양식 파싱. 헤더 7행, 데이터 8행~."""
+def _parse_rcm_sheet(ws, header_row: int, mapping: dict[str, int]) -> _ParsedRCM:
+    """헤더 위치가 결정된 시트에서 RCM 데이터 파싱.
+
+    필수 3개 컬럼은 mapping 사용. 나머지는 사이냅소프트 양식 고정 위치 유지.
+    """
     VALID_LEVELS = {"LR", "MR", "HR", "SR"}
     VALID_FREQ = {"O", "D", "W", "M", "Q", "A"}
     VALID_PD = {"P", "D"}
     VALID_AM = {"A", "M", "IT"}
     VALID_IPE = {"Y", "N", "N/A"}
 
-    wb = load_workbook(BytesIO(file_bytes), read_only=True, data_only=True)
-    if "RCM" not in wb.sheetnames:
-        raise ValueError("'RCM' 시트가 없습니다")
-    ws = wb["RCM"]
+    p_col = mapping["process_code"]
+    c_col = mapping["control_code"]
+    cn_col = mapping["control_name"]
 
     processes: dict = {}
     sub_processes: dict = {}
@@ -475,22 +480,22 @@ def _parse_rcm_excel(file_bytes: bytes) -> _ParsedRCM:
     errors: list = []
     warnings: list = []
 
-    for row_idx, row in enumerate(ws.iter_rows(min_row=8, values_only=True), start=8):
-        if not row or row[1] is None:
+    for row_idx, row in enumerate(ws.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
+        if not row or row[p_col] is None:
             break
         try:
-            p_code = str(row[1]).strip()
+            p_code = str(row[p_col]).strip()
             p_name = str(row[2] or "").strip()
             sp_code = str(row[3] or "").strip()
             sp_name = str(row[4] or "").strip()
             r_code = str(row[5] or "").strip()
-            c_code = str(row[6] or "").strip()
+            c_code = str(row[c_col] or "").strip()
 
             if not c_code:
-                errors.append(f"Row {row_idx}: 통제활동번호(G) 누락")
+                errors.append(f"Row {row_idx}: 통제활동번호 누락")
                 continue
             if not r_code:
-                errors.append(f"Row {row_idx}: 위험번호(F) 누락")
+                errors.append(f"Row {row_idx}: 위험번호 누락")
                 continue
 
             processes[p_code] = p_name
@@ -506,9 +511,9 @@ def _parse_rcm_excel(file_bytes: bytes) -> _ParsedRCM:
                 "sub_process_code": sp_code,
             }
 
-            c_name = str(row[16] or "").strip()
+            c_name = str(row[cn_col] or "").strip()
             if not c_name:
-                errors.append(f"Row {row_idx}: 통제활동이름(Q) 누락")
+                errors.append(f"Row {row_idx}: 통제활동이름 누락")
                 continue
 
             pd_val = str(row[25] or "P").strip().upper()
@@ -566,7 +571,6 @@ def _parse_rcm_excel(file_bytes: bytes) -> _ParsedRCM:
         except Exception as e:
             errors.append(f"Row {row_idx}: {e}")
 
-    wb.close()
     return _ParsedRCM(
         processes=processes,
         sub_processes=sub_processes,
@@ -577,14 +581,60 @@ def _parse_rcm_excel(file_bytes: bytes) -> _ParsedRCM:
     )
 
 
+def _build_not_found_response(sheet_names: list[str], current_range: int) -> JSONResponse:
+    """헤더 미발견 시 단계적 확장 또는 최종 오류 응답."""
+    NEXT_STAGE = {15: 30, 30: 130}
+
+    if current_range in NEXT_STAGE:
+        next_range = NEXT_STAGE[current_range]
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "needs_expansion",
+                "message": (
+                    f"1~{current_range}행에서 RCM 헤더를 찾지 못했습니다. "
+                    f"{current_range + 1}~{next_range}행까지 확장 검색할까요?"
+                ),
+                "current_range": current_range,
+                "next_range": next_range,
+                "expand_param": f"?expand_to={next_range}",
+                "sheets_checked": sheet_names,
+            },
+        )
+
+    return JSONResponse(
+        status_code=422,
+        content={
+            "status": "header_not_found",
+            "error": "RCM 헤더가 있는 시트를 찾을 수 없습니다.",
+            "checked_sheets": sheet_names,
+            "checked_rows": f"1~{current_range}",
+            "required_headers": {
+                "process_code": "프로세스번호 / 프로세스ID / Process ID / Process No 등",
+                "control_code": "통제활동번호 / 통제번호 / Control ID / Control No 등",
+                "control_name": "통제활동이름 / 통제명 / Control Name 등",
+            },
+            "suggestion": (
+                "헤더가 다른 이름이거나 130행 이후에 있다면 관리자에게 문의. "
+                "동의어 사전 확장이 필요합니다."
+            ),
+        },
+    )
+
+
 @router.post("/upload-excel")
 async def upload_excel(
     file: UploadFile = File(...),
     mode: str = Form(default="preview"),
+    expand_to: int = 15,
     user: CurrentUser = None,
     db: Session = Depends(get_db),
 ) -> dict:
-    """사이냅소프트 RCM Excel 업로드. mode=preview: 파싱 결과 반환. mode=commit: DB 저장."""
+    """RCM Excel 업로드. 시트명 무관, 헤더 자동 인식.
+
+    mode=preview: 파싱 결과 반환. mode=commit: DB 저장.
+    expand_to: 헤더 탐색 최대 행 (1차=15, 2차=30, 3차=130).
+    """
     if not file.filename or not file.filename.endswith(".xlsx"):
         raise HTTPException(status_code=400, detail=".xlsx 파일만 허용됩니다")
     if mode not in ("preview", "commit"):
@@ -592,9 +642,24 @@ async def upload_excel(
 
     contents = await file.read()
     try:
-        parsed = _parse_rcm_excel(contents)
+        wb = load_workbook(BytesIO(contents), read_only=True, data_only=True)
     except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Excel 파일 열기 오류: {e}")
+
+    found = find_rcm_sheet(wb, max_row=expand_to)
+    if found is None:
+        sheet_names = wb.sheetnames
+        wb.close()
+        return _build_not_found_response(sheet_names, expand_to)
+
+    sheet_name, header_row, mapping = found
+    ws = wb[sheet_name]
+    try:
+        parsed = _parse_rcm_sheet(ws, header_row, mapping)
+    except Exception as e:
+        wb.close()
         raise HTTPException(status_code=400, detail=f"Excel 파싱 오류: {e}")
+    wb.close()
 
     summary = {
         "total_rows": len(parsed.controls) + len(parsed.errors),

@@ -22,12 +22,19 @@ def _make_test_excel(
     r_code="TP-010-10",
     c_code="TP-010-10-10", c_name="테스트통제",
 ) -> bytes:
-    """최소 RCM Excel 파일 생성 (테스트용)."""
+    """최소 RCM Excel 파일 생성 (테스트용). 헤더 7행, 데이터 8행."""
     wb = Workbook()
     ws = wb.active
     ws.title = "RCM"
-    for _ in range(7):
+    for _ in range(6):
         ws.append([None] * 45)
+    # 헤더 행 (row 7) — 필수 3개 컬럼 동의어 사전 매칭
+    hdr = [None] * 45
+    hdr[1] = "프로세스번호"
+    hdr[6] = "통제활동번호"
+    hdr[16] = "통제활동이름"
+    ws.append(hdr)
+    # 데이터 행 (row 8)
     row = [None] * 45
     row[1] = p_code    # B
     row[2] = p_name    # C
@@ -49,6 +56,53 @@ def _make_test_excel(
     row[28] = "O"      # AC — assertion C
     row[35] = "M"      # AJ
     row[36] = "N/A"    # AK
+    ws.append(row)
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _make_excel_with_headers(
+    sheet_name: str = "RCM",
+    header_row: int = 7,
+    pc_header: str = "프로세스번호",
+    cc_header: str = "통제활동번호",
+    cn_header: str = "통제활동이름",
+    p_code: str = "TP", p_name: str = "테스트프로세스",
+    sp_code: str = "TP-010", sp_name: str = "테스트하위",
+    r_code: str = "TP-010-10",
+    c_code: str = "TP-010-10-10", c_name: str = "테스트통제",
+) -> bytes:
+    """헤더 위치·이름·시트명을 자유롭게 지정할 수 있는 테스트용 Excel 생성."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = sheet_name
+    for _ in range(header_row - 1):
+        ws.append([None] * 45)
+    hdr = [None] * 45
+    hdr[1] = pc_header
+    hdr[6] = cc_header
+    hdr[16] = cn_header
+    ws.append(hdr)
+    row = [None] * 45
+    row[1] = p_code
+    row[2] = p_name
+    row[3] = sp_code
+    row[4] = sp_name
+    row[5] = r_code
+    row[6] = c_code
+    row[7] = "관리자"
+    row[8] = "테스트위험"
+    row[14] = "LR"
+    row[15] = "통제목적"
+    row[16] = c_name
+    row[17] = "통제설명"
+    row[18] = "Yes"
+    row[25] = "P"
+    row[26] = "M"
+    row[27] = "O"
+    row[35] = "M"
+    row[36] = "N/A"
     ws.append(row)
     buf = BytesIO()
     wb.save(buf)
@@ -275,3 +329,151 @@ def test_clear_all(client: TestClient) -> None:
 
     resp = client.get("/api/rcm/controls", headers=h)
     assert resp.json()["total"] == 0
+
+
+# ── Excel 헤더 자동 인식 테스트 ──────────────────────────────
+
+def test_upload_excel_sheet_name_arbitrary(client: TestClient) -> None:
+    """시트명이 'RCM'이 아니어도 헤더 매칭 시 인식."""
+    h = _headers(client)
+    excel = _make_excel_with_headers(
+        sheet_name="통제매트릭스",
+        c_code="SN-001", c_name="시트명무관통제",
+        p_code="SN-P", sp_code="SN-SP", r_code="SN-R",
+    )
+    resp = client.post(
+        "/api/rcm/upload-excel",
+        files={"file": ("test.xlsx", excel, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        data={"mode": "preview"},
+        headers=h,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["summary"]["valid_rows"] == 1
+    assert data["preview"][0]["code"] == "SN-001"
+
+
+def test_upload_excel_header_row_position_varies(client: TestClient) -> None:
+    """헤더가 8행이 아닌 5행에 있어도 인식."""
+    h = _headers(client)
+    excel = _make_excel_with_headers(
+        header_row=5,
+        c_code="HR-001", c_name="헤더위치5행통제",
+        p_code="HR-P", sp_code="HR-SP", r_code="HR-R",
+    )
+    resp = client.post(
+        "/api/rcm/upload-excel",
+        files={"file": ("test.xlsx", excel, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        data={"mode": "preview"},
+        headers=h,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["summary"]["valid_rows"] == 1
+
+
+def test_upload_excel_korean_synonyms(client: TestClient) -> None:
+    """헤더 이름이 동의어 ('통제코드', '프로세스코드') 인 경우 인식."""
+    h = _headers(client)
+    excel = _make_excel_with_headers(
+        pc_header="프로세스코드",
+        cc_header="통제코드",
+        cn_header="통제명",
+        c_code="KS-001", c_name="한글동의어통제",
+        p_code="KS-P", sp_code="KS-SP", r_code="KS-R",
+    )
+    resp = client.post(
+        "/api/rcm/upload-excel",
+        files={"file": ("test.xlsx", excel, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        data={"mode": "preview"},
+        headers=h,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["summary"]["valid_rows"] == 1
+
+
+def test_upload_excel_english_synonyms(client: TestClient) -> None:
+    """헤더가 영문 (Control ID 등) 인 경우 인식."""
+    h = _headers(client)
+    excel = _make_excel_with_headers(
+        pc_header="Process Code",
+        cc_header="Control ID",
+        cn_header="Control Name",
+        c_code="EN-001", c_name="English Header Control",
+        p_code="EN-P", sp_code="EN-SP", r_code="EN-R",
+    )
+    resp = client.post(
+        "/api/rcm/upload-excel",
+        files={"file": ("test.xlsx", excel, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        data={"mode": "preview"},
+        headers=h,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["summary"]["valid_rows"] == 1
+
+
+def test_upload_excel_normalization(client: TestClient) -> None:
+    """공백·대소문자 차이 ('Process  ID', 'control name') 도 인식."""
+    h = _headers(client)
+    excel = _make_excel_with_headers(
+        pc_header="Process  ID",   # 공백 2개
+        cc_header="control id",    # 소문자
+        cn_header="Control  Name", # 공백 2개
+        c_code="NM-001", c_name="정규화통제",
+        p_code="NM-P", sp_code="NM-SP", r_code="NM-R",
+    )
+    resp = client.post(
+        "/api/rcm/upload-excel",
+        files={"file": ("test.xlsx", excel, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        data={"mode": "preview"},
+        headers=h,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["summary"]["valid_rows"] == 1
+
+
+def test_upload_excel_no_match_returns_expansion(client: TestClient) -> None:
+    """헤더 못 찾으면 needs_expansion 응답 (1차 시도, expand_to=15)."""
+    h = _headers(client)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    for _ in range(20):
+        ws.append(["무관한데이터", "abc", None])
+    buf = BytesIO()
+    wb.save(buf)
+    excel = buf.getvalue()
+
+    resp = client.post(
+        "/api/rcm/upload-excel",
+        files={"file": ("test.xlsx", excel, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        data={"mode": "preview"},
+        headers=h,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "needs_expansion"
+    assert data["next_range"] == 30
+
+
+def test_upload_excel_no_match_after_130_returns_error(client: TestClient) -> None:
+    """130행까지 시도해도 못 찾으면 422 + 가이드."""
+    h = _headers(client)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    for _ in range(5):
+        ws.append(["무관한데이터"])
+    buf = BytesIO()
+    wb.save(buf)
+    excel = buf.getvalue()
+
+    resp = client.post(
+        "/api/rcm/upload-excel?expand_to=130",
+        files={"file": ("test.xlsx", excel, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        data={"mode": "preview"},
+        headers=h,
+    )
+    assert resp.status_code == 422
+    data = resp.json()
+    assert data["status"] == "header_not_found"
+    assert "required_headers" in data
