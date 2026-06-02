@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 import type { Control, ControlSearchParams } from '../types'
 import { useControls } from '../api/useControls'
 import ControlSearchBar from '../components/ControlSearchBar'
@@ -6,6 +7,7 @@ import ControlFilterChips from '../components/ControlFilterChips'
 import ControlTable from '../components/ControlTable'
 import ControlDetailSheet from '../components/ControlDetailSheet'
 import ControlFormDialog from '../components/ControlFormDialog'
+import ExcelUploadDialog from '../components/ExcelUploadDialog'
 
 const DEFAULT_PARAMS: ControlSearchParams = {
   skip: 0,
@@ -22,6 +24,8 @@ export default function RcmPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
   const [editingControl, setEditingControl] = useState<Control | null>(null)
+
+  const [uploadOpen, setUploadOpen] = useState(false)
 
   const { data } = useControls(params)
 
@@ -48,6 +52,10 @@ export default function RcmPage() {
     setFormOpen(true)
   }
 
+  const handleUploadSuccess = () => {
+    toast.success('Excel 업로드가 완료되었습니다. 목록은 실제 API 연동 후 자동 갱신됩니다.')
+  }
+
   return (
     <div className="p-6 space-y-4">
       <div>
@@ -64,6 +72,7 @@ export default function RcmPage() {
         onSelect={handleSelect}
         onAddClick={handleAddClick}
         onEdit={handleEditClick}
+        onUploadClick={() => setUploadOpen(true)}
       />
 
       <ControlDetailSheet
@@ -78,6 +87,12 @@ export default function RcmPage() {
         onOpenChange={setFormOpen}
         mode={formMode}
         control={editingControl ?? undefined}
+      />
+
+      <ExcelUploadDialog
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        onSuccess={handleUploadSuccess}
       />
     </div>
   )

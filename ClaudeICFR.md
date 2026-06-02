@@ -1463,7 +1463,7 @@ cd claude-icfr
 | 모듈 | 명세 | ERD | API | BE | FE | 테스트 | 비고 |
 |---|---|---|---|---|---|---|---|
 | 일정관리 | ✅ | ✅ | — | — | 🔄 골조 | — | 메뉴·라우트 연결 |
-| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 | 🔄 목록+검색+상세+편집(mock) 완료(삭제·Excel업로드 남음) | ✅ | SubProcess·Risk 신규, Control 30+컬럼, Excel업로드 |
+| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 | 🔄 목록+검색+상세+편집+Excel업로드(mock→실API) 완료(삭제 남음) | ✅ | SubProcess·Risk 신규, Control 30+컬럼, Excel업로드 |
 | Scoping | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | EUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
@@ -1737,6 +1737,7 @@ Claude Code가 작업 세션 종료 시 자동으로 한 줄을 추가하고 자
 - **TrustBuilder**: Phase 1 작업3 (Test 워크플로 풀 + RAWC + 상태 이력) 완료. 사이냅소프트 양식 그룹 6·7 정착. ICFR 제도 추적성·증거성 충족. pytest 50개 통과.
 
 #### 2026-06-01
+- **Regina**: Phase 1 RCM 프론트엔드 작업4 완료 — Excel 업로드 UI + 첫 실제 API 연결. uploadExcel.ts (proxyClient·preview/commit 타입 백엔드 100% 매칭) + ExcelPreviewTable + ExcelUploadDialog (select→preview→commit 5단계·드래그앤드롭·오류/경고 표시) + ControlTable "Excel 업로드" 버튼. Vite proxy 경유 CORS 회피. 빌드 통과. 브랜치: `feature/fe-rcm-excel-upload`. 다음: 통제 삭제 또는 mock→실API 전환.
 - **Regina**: Phase 1 RCM 프론트엔드 작업3 완료 — 통제 추가/편집 폼 (mock). ControlFormDialog (Dialog 4탭·Zod·RHF·탭별 에러배지·취소confirm·Sonner토스트) + useControls addControl/updateControl + ControlTable "통제추가" 버튼·Pencil편집 + ControlDetailSheet "편집" 연결. 빌드 통과. 브랜치: `feature/fe-rcm-edit`. 다음: 통제 삭제 또는 Excel 업로드 UI (ICFR_frontend_6).
 
 #### 2026-05-22

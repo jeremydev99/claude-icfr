@@ -1,4 +1,4 @@
-import { ChevronUp, ChevronDown, ChevronsUpDown, Star, Pencil } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronsUpDown, Star, Pencil, Upload } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -31,6 +31,7 @@ interface Props {
   onSelect?: (control: Control) => void
   onAddClick?: () => void
   onEdit?: (control: Control) => void
+  onUploadClick?: () => void
 }
 
 const RISK_BADGE_VARIANT: Record<string, string> = {
@@ -51,7 +52,7 @@ function SortIcon({ col, params }: { col: SortCol; params: ControlSearchParams }
   )
 }
 
-export default function ControlTable({ data, params, onParamsChange, onSelect, onAddClick, onEdit }: Props) {
+export default function ControlTable({ data, params, onParamsChange, onSelect, onAddClick, onEdit, onUploadClick }: Props) {
   const { items, total, skip, limit } = data
 
   const toggleSort = (col: SortCol) => {
@@ -69,8 +70,12 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end">
-        <Button onClick={onAddClick} size="sm">
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={onUploadClick}>
+          <Upload className="h-4 w-4 mr-1.5" />
+          Excel 업로드
+        </Button>
+        <Button size="sm" onClick={onAddClick}>
           + 통제 추가
         </Button>
       </div>
