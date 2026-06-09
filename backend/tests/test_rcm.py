@@ -477,3 +477,86 @@ def test_upload_excel_no_match_after_130_returns_error(client: TestClient) -> No
     data = resp.json()
     assert data["status"] == "header_not_found"
     assert "required_headers" in data
+
+
+# ── ControlSearchOut 신규 필드 검증 ───────────────────────────
+
+def _create_hierarchy(client: TestClient, h: dict, prefix: str, risk_level: str = "LR") -> dict:
+    """테스트용 Process→SubProcess→Risk→Control 생성 후 ID 반환."""
+    p = client.post("/api/rcm/processes", json={"code": f"{prefix}-P", "name": f"{prefix} 프로세스"}, headers=h)
+    sp = client.post("/api/rcm/sub-processes", json={"code": f"{prefix}-SP", "name": f"{prefix} SP", "process_id": p.json()["id"]}, headers=h)
+    r = client.post("/api/rcm/risks", json={"code": f"{prefix}-R", "description": f"{prefix} 위험", "assessment_level": risk_level, "sub_process_id": sp.json()["id"]}, headers=h)
+    c = client.post("/api/rcm/controls", json={"code": f"{prefix}-CTL", "name": f"{prefix} 통제", "risk_id": r.json()["id"], "frequency": "M"}, headers=h)
+    return {"process_id": p.json()["id"], "control_id": c.json()["id"], "risk_id": r.json()["id"]}
+
+
+def test_search_response_includes_process_code(client: TestClient) -> None:
+    """search 응답에 process_code 포함."""
+    h = _headers(client)
+    _create_hierarchy(client, h, "SPC")
+    resp = client.get("/api/rcm/controls/search", params={"q": "SPC 통제"}, headers=h)
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["process_code"] == "SPC-P"
+
+
+def test_search_response_includes_sub_process_code(client: TestClient) -> None:
+    """search 응답에 sub_process_code 포함."""
+    h = _headers(client)
+    _create_hierarchy(client, h, "SSC")
+    resp = client.get("/api/rcm/controls/search", params={"q": "SSC 통제"}, headers=h)
+    assert resp.status_code == 200
+    assert resp.json()["items"][0]["sub_process_code"] == "SSC-SP"
+
+
+def test_search_response_includes_risk_level(client: TestClient) -> None:
+    """search 응답에 risk_level 포함 (LR/MR/HR/SR)."""
+    h = _headers(client)
+    _create_hierarchy(client, h, "SRL", risk_level="HR")
+    resp = client.get("/api/rcm/controls/search", params={"q": "SRL 통제"}, headers=h)
+    assert resp.status_code == 200
+    assert resp.json()["items"][0]["risk_level"] == "HR"
+
+
+def test_search_response_includes_assertions(client: TestClient) -> None:
+    """search 응답에 assertions 배열 포함 (ControlAssertion → assertion_code 매핑)."""
+    h = _headers(client)
+    ids = _create_hierarchy(client, h, "SAS")
+    # RiskCategory 생성 후 ControlAssertion 연결
+    rc = client.post("/api/rcm/risk-categories", json={"code": "TST", "name": "Test Assertion"}, headers=h)
+    client.post("/api/rcm/control-assertions", json={"control_id": ids["control_id"], "risk_category_id": rc.json()["id"]}, headers=h)
+
+    resp = client.get("/api/rcm/controls/search", params={"q": "SAS 통제"}, headers=h)
+    assert resp.status_code == 200
+    assertions = resp.json()["items"][0]["assertions"]
+    assert "TST" in assertions
+
+
+def test_search_no_n_plus_one(client: TestClient) -> None:
+    """여러 통제 검색 시 모두 관계 데이터 포함 — JOIN 단일 쿼리 효과 검증."""
+    h = _headers(client)
+    p = client.post("/api/rcm/processes", json={"code": "N1-P", "name": "N1 프로세스"}, headers=h)
+    sp = client.post("/api/rcm/sub-processes", json={"code": "N1-SP", "name": "N1 SP", "process_id": p.json()["id"]}, headers=h)
+    r = client.post("/api/rcm/risks", json={"code": "N1-R", "description": "N1 위험", "assessment_level": "MR", "sub_process_id": sp.json()["id"]}, headers=h)
+    for i in range(3):
+        client.post("/api/rcm/controls", json={"code": f"N1-CTL-{i:03d}", "name": f"N1 통제 {i}", "risk_id": r.json()["id"]}, headers=h)
+
+    resp = client.get("/api/rcm/controls/search", params={"q": "N1 통제"}, headers=h)
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 3
+    assert all(item["process_code"] == "N1-P" for item in items)
+    assert all(item["sub_process_code"] == "N1-SP" for item in items)
+    assert all(item["risk_level"] == "MR" for item in items)
+
+
+def test_other_endpoints_unchanged(client: TestClient) -> None:
+    """GET /controls 응답에 신규 필드(process_code, assertions) 없음 — 회귀 보호."""
+    h = _headers(client)
+    resp = client.get("/api/rcm/controls", headers=h)
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    if items:
+        assert "process_code" not in items[0]
+        assert "assertions" not in items[0]

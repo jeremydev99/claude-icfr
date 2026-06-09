@@ -1563,7 +1563,7 @@ cd claude-icfr
 | 모듈 | 명세 | ERD | API | BE | FE | 테스트 | 비고 |
 |---|---|---|---|---|---|---|---|
 | 일정관리 | ✅ | ✅ | — | — | 🔄 골조 | — | 메뉴·라우트 연결 |
-| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + Excel헤더자동인식 | 🔄 목록+검색+상세+편집+Excel업로드(mock→실API) 완료(삭제 남음) | ✅ | 시트명무관·동의어사전·헤더행자동탐색 추가 |
+| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + Excel헤더자동인식 + ControlSearchOut(search 응답 확장) | 🔄 목록+검색+상세+편집+Excel업로드(mock→실API) 완료(삭제 남음) | ✅ 65개 | search 응답에 process/sub_process/risk_level/assertions 포함 |
 | Scoping | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | EUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
@@ -1629,6 +1629,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-06-09 / TrustBuilder + Claude** — `ControlSearchOut` 스키마 신규. `GET /api/rcm/controls/search` 응답에 `process_code·sub_process_code·risk_level·assertions` 4개 필드 추가 (Regina FE `useControls` 요청). `selectinload` 체인으로 N+1 회피 (Control→Risk→SubProcess→Process, Control→Assertions→RiskCategory). 기존 `ControlOut` 보존 → 다른 엔드포인트 회귀 안전. ADR-0020 준수 (추상화 0개). pytest +6 = 65개 전부 통과.
 - **2026-06-02 / TrustBuilder + Claude** — ADR-0021·0022·0023 등록. Phase 1 협업 룰 (인터리브·Mock TODO 주석 의무) + 영업자료 누적 원칙 (FastAPI·PostgreSQL·UUID v7·사이냅소프트 사례) + 데이터 복구 정책 (down -v 경고 + 시드 정책). 본 세션의 4가지 검증 사례·데이터 손실 사고 학습 반영.
 - **2026-06-02 / TrustBuilder + Claude** — Excel 헤더 자동 인식 (Regina 제안). 시트명 무관·헤더 행 자동 탐색 (1~15→30→130 단계 확장)·한/영 동의어 사전 (HEADER_SYNONYMS). `backend/app/services/excel_parser.py` 신규 (함수 4개). `upload-excel` endpoint `expand_to` 파라미터 추가 + `_build_not_found_response`. 사이냅소프트 양식 회귀 호환 유지. pytest 18개 전부 통과 (신규 7개 포함). ADR-0020 준수 (추상화 0개).
 - **2026-06-01 / Regina + Claude** — Phase 1 RCM 프론트엔드 작업3 완료: 통제 추가/편집 폼 (mock 데이터). ControlFormDialog (Dialog max-w-3xl, 4탭 — 기본정보·분류·활동유형·관련정보) + React Hook Form + Zod 검증 + 탭별 에러 배지 + 취소 confirm + Sonner 토스트. useControls 훅에 addControl·updateControl 추가(모듈 전역 상태). ControlTable "통제 추가" 버튼 + Pencil 편집 아이콘. ControlDetailSheet "편집" 버튼 실제 연결. shadcn dialog·tabs·textarea·sonner 추가. 빌드 통과. 브랜치: `feature/fe-rcm-edit`. 다음: 통제 삭제 또는 Excel 업로드 UI (ICFR_frontend_6).
@@ -1837,6 +1838,9 @@ Claude Code가 작업 세션 종료 시 자동으로 한 줄을 추가하고 자
 - **TrustBuilder**: ADR-0020 (UUID PK 정책) 등록 + 작업6 v4 → v7 마이그레이션. Python uuid7 기본 + v4 옵션 호출 가능. 시드 재실행으로 전체 v7 통일. Phase 1 시작 전 PK 정책 확정.
 - **TrustBuilder**: Phase 1 작업1 (RCM 풀 확장) 완료. 사이냅소프트 양식이 본 시스템의 표준 RCM 구조로 정착. SubProcess·Risk 신규 + Control 대폭 확장 + Excel 업로드 + 풀 검색·매트릭스·벌크. pytest 39개 통과.
 - **TrustBuilder**: Phase 1 작업3 (Test 워크플로 풀 + RAWC + 상태 이력) 완료. 사이냅소프트 양식 그룹 6·7 정착. ICFR 제도 추적성·증거성 충족. pytest 50개 통과.
+
+#### 2026-06-09
+- **TrustBuilder**: search 응답 확장 (Regina 제안). ControlSearchOut 스키마 신규, search 엔드포인트에 관계 데이터 4개 필드 추가. selectinload N+1 회피. pytest 65개 통과. 다음: FE useControls mock→실API 전환 또는 Regina 삭제 기능.
 
 #### 2026-06-02
 - **TrustBuilder**: ADR 3건 등록. 협업 룰·영업자료·데이터 복구. 본 세션 학습 영구 기록.

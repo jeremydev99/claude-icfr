@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from fastapi.responses import JSONResponse
 from openpyxl import load_workbook
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.services.excel_parser import find_rcm_sheet
 
@@ -18,7 +18,7 @@ from app.models.rcm import (
 from app.schemas.rcm import (
     BulkDeleteRequest, BulkUpdateRequest, ClearAllRequest,
     ControlAssertionCreate, ControlAssertionRead,
-    ControlCreate, ControlRead, ControlUpdate,
+    ControlCreate, ControlRead, ControlSearchOut, ControlSearchResponse, ControlUpdate,
     ProcessCreate, ProcessRead, ProcessUpdate,
     RiskCategoryCreate, RiskCategoryRead, RiskCategoryUpdate,
     RiskCreate, RiskRead, RiskUpdate,
@@ -246,7 +246,7 @@ def delete_risk_category(rc_id: UUID, user: CurrentUser = None, db: Session = De
 
 # ── Controls — 정적 경로 먼저 (파라미터 경로보다 앞에 위치해야 함) ──
 
-@router.get("/controls/search")
+@router.get("/controls/search", response_model=ControlSearchResponse)
 def search_controls(
     q: str | None = None,
     process_code: str | None = None,
@@ -314,9 +314,35 @@ def search_controls(
     query = query.order_by(sort_col.desc() if sort_order == "desc" else sort_col.asc())
 
     total = query.count()
-    items = query.offset(skip).limit(limit).all()
+    items = (
+        query.options(
+            selectinload(Control.risk)
+                .selectinload(Risk.sub_process)
+                .selectinload(SubProcess.process),
+            selectinload(Control.assertions)
+                .selectinload(ControlAssertion.risk_category),
+        )
+        .offset(skip).limit(limit).all()
+    )
+
+    items_out = []
+    for c in items:
+        out = ControlSearchOut(**ControlRead.model_validate(c).model_dump())
+        if c.risk:
+            out.risk_level = c.risk.assessment_level
+            if c.risk.sub_process:
+                out.sub_process_code = c.risk.sub_process.code
+                if c.risk.sub_process.process:
+                    out.process_code = c.risk.sub_process.process.code
+        out.assertions = [
+            a.risk_category.code
+            for a in c.assertions
+            if not a.is_deleted and a.risk_category
+        ]
+        items_out.append(out)
+
     return {
-        "items": [ControlRead.model_validate(i) for i in items],
+        "items": items_out,
         "total": total,
         "skip": skip,
         "limit": limit,

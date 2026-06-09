@@ -173,3 +173,24 @@ class BulkUpdateRequest(BaseModel):
 
 class ClearAllRequest(BaseModel):
     confirm: str  # 반드시 "DELETE_ALL_RCM_DATA"
+
+
+# ── Search 전용 응답 스키마 ──────────────────────────────────
+
+class ControlSearchOut(ControlRead):
+    """Search 엔드포인트 전용. ControlRead + 관계 데이터 4개 필드.
+
+    FE 목록 화면이 별도 API 호출 없이 모든 정보를 받도록.
+    """
+    process_code: str | None = None
+    sub_process_code: str | None = None
+    risk_level: str | None = None  # risk.assessment_level (LR/MR/HR/SR)
+    assertions: list[str] = []    # ["E", "C", "V"] 형태
+
+
+class ControlSearchResponse(BaseModel):
+    items: list[ControlSearchOut]
+    total: int
+    skip: int
+    limit: int
+    sort: str
