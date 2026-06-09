@@ -122,8 +122,7 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
               <div className="rounded-md border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-800 flex gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>
-                  안내: Excel 업로드는 실제 백엔드 DB에 저장됩니다.
-                  현재 화면에 보이는 통제 목록(mock 데이터)과는 별도로 저장되며, 추후 목록도 실제 API로 전환 예정입니다.
+                  Excel 업로드는 실제 DB에 저장됩니다. 현재 통제 목록 화면은 mock 데이터를 표시 중이라 업로드된 항목이 바로 보이지 않을 수 있습니다.
                 </span>
               </div>
 
@@ -153,7 +152,7 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
                 ) : (
                   <div className="text-center">
                     <p className="text-sm font-medium">파일을 드래그하거나 클릭해서 선택하세요</p>
-                    <p className="text-xs text-muted-foreground mt-1">지원 형식: .xlsx (사이냅소프트 RCM 양식)</p>
+                    <p className="text-xs text-muted-foreground mt-1">지원 형식: .xlsx · 시트명은 자유롭게 작성하셔도 되며, 헤더는 자동으로 인식됩니다.</p>
                   </div>
                 )}
                 <input
