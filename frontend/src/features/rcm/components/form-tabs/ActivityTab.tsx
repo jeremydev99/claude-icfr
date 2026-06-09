@@ -6,8 +6,8 @@ import type { ControlFormData } from '../ControlFormDialog'
 const ACTIVITIES: { name: keyof ControlFormData; label: string }[] = [
   { name: 'activity_approval', label: '승인' },
   { name: 'activity_verification', label: '검증' },
-  { name: 'activity_inspection', label: '실사' },
-  { name: 'activity_master', label: '마스터' },
+  { name: 'activity_physical', label: '실사' },
+  { name: 'activity_master_data', label: '마스터' },
   { name: 'activity_reconciliation', label: '조정' },
   { name: 'activity_supervision', label: '감독' },
 ]

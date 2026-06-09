@@ -47,8 +47,8 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 const ACTIVITIES: { key: keyof Control; label: string }[] = [
   { key: 'activity_approval', label: '승인' },
   { key: 'activity_verification', label: '검증' },
-  { key: 'activity_inspection', label: '실사' },
-  { key: 'activity_master', label: '마스터' },
+  { key: 'activity_physical', label: '실사' },
+  { key: 'activity_master_data', label: '마스터' },
   { key: 'activity_reconciliation', label: '조정' },
   { key: 'activity_supervision', label: '감독' },
 ]

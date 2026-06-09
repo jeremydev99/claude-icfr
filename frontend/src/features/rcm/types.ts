@@ -19,8 +19,8 @@ export interface Control {
   ipe_relevant: 'Y' | 'N' | 'N/A'
   activity_approval: boolean
   activity_verification: boolean
-  activity_inspection: boolean
-  activity_master: boolean
+  activity_physical: boolean
+  activity_master_data: boolean
   activity_reconciliation: boolean
   activity_supervision: boolean
   related_accounts: string | null
