@@ -1553,7 +1553,7 @@ cd claude-icfr
 | 7 | 로컬 환경 셋업 | ✅ 완료 | 2026-05-11 |
 | 8 | Claude Code 동작 확인 | ✅ 완료 | 2026-05-11 |
 | 9 | Phase 0 — Walking Skeleton 실행 | ✅ 완료 (작업1~6 모두 완료) | 2026-05-21 |
-| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (작업1 RCM + 작업3 Test 완료) | — |
+| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (작업1 RCM + 작업3 Test + 작업4 Remediation 완료) | — |
 | 11 | Phase 1.5 — A안 완성 | ⏳ 대기 | — |
 | 12 | Phase 2 — B안 완성 | ⏳ 대기 | — |
 | 13 | Phase 3 — C안 완성 | ⏳ 대기 | — |
@@ -1567,7 +1567,7 @@ cd claude-icfr
 | Scoping | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | EUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
-| 개선계획 | ✅ | ✅ | ✅ | 🔄 최소CRUD | 🔄 골조 | — | |
+| 개선계획 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + DesignAssessment + 4단계워크플로 + 이력 | 🔄 골조 | ✅ 75개 | DesignAssessment·RemediationStatusHistory 신규. ADR-0020 준수 |
 | 증빙 관리 | ✅ | ✅ | ✅ | 🔄 최소CRUD | 🔄 골조 | — | |
 | 담당자/권한 | ✅ | ✅ | ✅ | 🔄 최소CRUD | 🔄 골조 | — | |
 | 메일발송 | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
@@ -1629,6 +1629,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-06-09 / TrustBuilder + Claude** — Phase 1 작업4 완료. Remediation·설계평가 풀 확장 (사이냅소프트 양식 그룹 8). 신규 모델 2개 (DesignAssessment, RemediationStatusHistory) + Deficiency·RemediationPlan 확장 (fiscal_year·control_id·final_conclusion 등). 작업3 스타일 4단계 워크플로 (planned→in_progress→completed→approved) + 자동 이력. DesignAssessment 8요소 점수 + 평가방법·통제수행자. Alembic 마이그레이션 (phase1_remediation_full). pytest 75개 전부 통과 (+10). ADR-0020 준수 (추상화 0개). **핵심 디버깅**: SQLite NUMERIC affinity가 순수 숫자 UUID hex (`00000000...0001`)를 integer로 저장 → `PG_UUID` result_processor에서 `hex=1` AttributeError. 해결: 테스트에서 JWT sub 파싱으로 실제 사용자 ID 사용.
 - **2026-06-09 / TrustBuilder + Claude** — `ControlSearchOut` 스키마 신규. `GET /api/rcm/controls/search` 응답에 `process_code·sub_process_code·risk_level·assertions` 4개 필드 추가 (Regina FE `useControls` 요청). `selectinload` 체인으로 N+1 회피 (Control→Risk→SubProcess→Process, Control→Assertions→RiskCategory). 기존 `ControlOut` 보존 → 다른 엔드포인트 회귀 안전. ADR-0020 준수 (추상화 0개). pytest +6 = 65개 전부 통과.
 - **2026-06-02 / TrustBuilder + Claude** — ADR-0021·0022·0023 등록. Phase 1 협업 룰 (인터리브·Mock TODO 주석 의무) + 영업자료 누적 원칙 (FastAPI·PostgreSQL·UUID v7·사이냅소프트 사례) + 데이터 복구 정책 (down -v 경고 + 시드 정책). 본 세션의 4가지 검증 사례·데이터 손실 사고 학습 반영.
 - **2026-06-02 / TrustBuilder + Claude** — Excel 헤더 자동 인식 (Regina 제안). 시트명 무관·헤더 행 자동 탐색 (1~15→30→130 단계 확장)·한/영 동의어 사전 (HEADER_SYNONYMS). `backend/app/services/excel_parser.py` 신규 (함수 4개). `upload-excel` endpoint `expand_to` 파라미터 추가 + `_build_not_found_response`. 사이냅소프트 양식 회귀 호환 유지. pytest 18개 전부 통과 (신규 7개 포함). ADR-0020 준수 (추상화 0개).
@@ -1841,6 +1842,7 @@ Claude Code가 작업 세션 종료 시 자동으로 한 줄을 추가하고 자
 
 #### 2026-06-09
 - **TrustBuilder**: search 응답 확장 (Regina 제안). ControlSearchOut 스키마 신규, search 엔드포인트에 관계 데이터 4개 필드 추가. selectinload N+1 회피. pytest 65개 통과. 다음: FE useControls mock→실API 전환 또는 Regina 삭제 기능.
+- **TrustBuilder**: 작업4 완료. 설계평가·개선업무·결론 워크플로. 작업3 패턴 그대로 — ICFR 제도 일관성. pytest 75개 통과.
 
 #### 2026-06-02
 - **TrustBuilder**: ADR 3건 등록. 협업 룰·영업자료·데이터 복구. 본 세션 학습 영구 기록.
