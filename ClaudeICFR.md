@@ -1563,7 +1563,7 @@ cd claude-icfr
 | 모듈 | 명세 | ERD | API | BE | FE | 테스트 | 비고 |
 |---|---|---|---|---|---|---|---|
 | 일정관리 | ✅ | ✅ | — | — | 🔄 골조 | — | 메뉴·라우트 연결 |
-| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + Excel헤더자동인식 | 🔄 목록+검색+상세+편집+Excel업로드(mock→실API) 완료(삭제 남음) | ✅ | 시트명무관·동의어사전·헤더행자동탐색 추가 |
+| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + Excel헤더자동인식 | 🔄 목록+검색+상세+편집+Excel업로드(mock→실API)+Excel확장검색처리 완료(삭제 남음) | ✅ | 시트명무관·동의어사전·헤더행자동탐색·needs_expansion UI 추가 |
 | Scoping | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | EUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
@@ -1629,6 +1629,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-06-09 / Regina + Claude** — Excel 업로드 needs_expansion 응답 처리 + 확장 검색 UI 추가. `uploadExcel.ts`: ExcelPreviewSuccess·ExcelPreviewNeedsExpansion union 타입 + isNeedsExpansion 타입가드 + previewExcel·commitExcel에 expandTo 옵셔널 파라미터 추가. `ExcelUploadDialog.tsx`: needsExpansion step 신설 (Search 아이콘·메시지·시트목록·안내박스·확장 검색 버튼) + handleExpand·currentExpandTo 상태 관리 + commit 단계에 expand_to 전달. extractErrorMessage에 data.error 필드 처리 추가. 빌드 통과. 브랜치: feature/fe-rcm-excel-expansion.
 - **2026-06-02 / TrustBuilder + Claude** — ADR-0021·0022·0023 등록. Phase 1 협업 룰 (인터리브·Mock TODO 주석 의무) + 영업자료 누적 원칙 (FastAPI·PostgreSQL·UUID v7·사이냅소프트 사례) + 데이터 복구 정책 (down -v 경고 + 시드 정책). 본 세션의 4가지 검증 사례·데이터 손실 사고 학습 반영.
 - **2026-06-02 / TrustBuilder + Claude** — Excel 헤더 자동 인식 (Regina 제안). 시트명 무관·헤더 행 자동 탐색 (1~15→30→130 단계 확장)·한/영 동의어 사전 (HEADER_SYNONYMS). `backend/app/services/excel_parser.py` 신규 (함수 4개). `upload-excel` endpoint `expand_to` 파라미터 추가 + `_build_not_found_response`. 사이냅소프트 양식 회귀 호환 유지. pytest 18개 전부 통과 (신규 7개 포함). ADR-0020 준수 (추상화 0개).
 - **2026-06-01 / Regina + Claude** — Phase 1 RCM 프론트엔드 작업3 완료: 통제 추가/편집 폼 (mock 데이터). ControlFormDialog (Dialog max-w-3xl, 4탭 — 기본정보·분류·활동유형·관련정보) + React Hook Form + Zod 검증 + 탭별 에러 배지 + 취소 confirm + Sonner 토스트. useControls 훅에 addControl·updateControl 추가(모듈 전역 상태). ControlTable "통제 추가" 버튼 + Pencil 편집 아이콘. ControlDetailSheet "편집" 버튼 실제 연결. shadcn dialog·tabs·textarea·sonner 추가. 빌드 통과. 브랜치: `feature/fe-rcm-edit`. 다음: 통제 삭제 또는 Excel 업로드 UI (ICFR_frontend_6).

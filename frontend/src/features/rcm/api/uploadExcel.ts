@@ -42,9 +42,28 @@ export interface ExcelPreviewItem {
   euc_description: string | null
 }
 
-export interface ExcelPreviewResponse {
+// 정상 미리보기 응답 (status 필드 없음)
+export interface ExcelPreviewSuccess {
   summary: ExcelUploadSummary
   preview: ExcelPreviewItem[]  // max 20 items (valid rows only)
+}
+
+// 헤더 탐색 범위 확장 필요 응답
+export interface ExcelPreviewNeedsExpansion {
+  status: 'needs_expansion'
+  message: string
+  current_range: number
+  next_range: number
+  expand_param: string    // 힌트 문자열 — 무시하고 next_range만 사용
+  sheets_checked: string[]
+}
+
+export type ExcelPreviewResponse = ExcelPreviewSuccess | ExcelPreviewNeedsExpansion
+
+export function isNeedsExpansion(
+  res: ExcelPreviewResponse
+): res is ExcelPreviewNeedsExpansion {
+  return (res as ExcelPreviewNeedsExpansion).status === 'needs_expansion'
 }
 
 export interface ExcelCreatedCounts {
@@ -62,20 +81,31 @@ export interface ExcelCommitResponse {
 
 const UPLOAD_URL = '/api/rcm/upload-excel'
 
-export async function previewExcel(file: File): Promise<ExcelPreviewResponse> {
+export async function previewExcel(
+  file: File,
+  expandTo?: number
+): Promise<ExcelPreviewResponse> {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('mode', 'preview')
+  if (expandTo !== undefined) {
+    formData.append('expand_to', String(expandTo))
+  }
   // Do NOT set Content-Type manually — browser sets multipart boundary automatically
   const res = await proxyClient.post<ExcelPreviewResponse>(UPLOAD_URL, formData)
   return res.data
 }
 
-export async function commitExcel(file: File): Promise<ExcelCommitResponse> {
+export async function commitExcel(
+  file: File,
+  expandTo?: number
+): Promise<ExcelCommitResponse> {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('mode', 'commit')
+  if (expandTo !== undefined) {
+    formData.append('expand_to', String(expandTo))
+  }
   const res = await proxyClient.post<ExcelCommitResponse>(UPLOAD_URL, formData)
   return res.data
 }
-

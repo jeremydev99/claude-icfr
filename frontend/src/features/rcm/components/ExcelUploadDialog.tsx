@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react'
-import { Upload, FileSpreadsheet, AlertTriangle, X } from 'lucide-react'
+import { Upload, FileSpreadsheet, AlertTriangle, X, Search } from 'lucide-react'
 import { isAxiosError } from 'axios'
 
 function extractErrorMessage(err: unknown): string {
   if (isAxiosError(err)) {
-    const detail = err.response?.data?.detail
-    if (typeof detail === 'string') return detail
+    const data = err.response?.data
+    if (typeof data?.detail === 'string') return data.detail
+    if (typeof data?.error === 'string') return data.error
     if (err.response?.status === 401) return '로그인이 필요합니다'
     if (err.response?.status === 422) return '파일 형식 또는 요청이 올바르지 않습니다'
     if (err.response?.status === 500) return '서버 오류가 발생했습니다'
@@ -25,11 +26,13 @@ import ExcelPreviewTable from './ExcelPreviewTable'
 import {
   previewExcel,
   commitExcel,
-  type ExcelPreviewResponse,
+  isNeedsExpansion,
+  type ExcelPreviewSuccess,
+  type ExcelPreviewNeedsExpansion,
   type ExcelCommitResponse,
 } from '../api/uploadExcel'
 
-type Step = 'select' | 'previewing' | 'preview' | 'committing' | 'done' | 'error'
+type Step = 'select' | 'previewing' | 'preview' | 'needsExpansion' | 'committing' | 'done' | 'error'
 
 interface Props {
   open: boolean
@@ -40,7 +43,9 @@ interface Props {
 export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Props) {
   const [step, setStep] = useState<Step>('select')
   const [file, setFile] = useState<File | null>(null)
-  const [previewData, setPreviewData] = useState<ExcelPreviewResponse | null>(null)
+  const [previewData, setPreviewData] = useState<ExcelPreviewSuccess | null>(null)
+  const [expansionInfo, setExpansionInfo] = useState<ExcelPreviewNeedsExpansion | null>(null)
+  const [currentExpandTo, setCurrentExpandTo] = useState<number | undefined>(undefined)
   const [commitData, setCommitData] = useState<ExcelCommitResponse | null>(null)
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [isDragging, setIsDragging] = useState(false)
@@ -50,6 +55,8 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
     setStep('select')
     setFile(null)
     setPreviewData(null)
+    setExpansionInfo(null)
+    setCurrentExpandTo(undefined)
     setCommitData(null)
     setErrorMsg('')
   }
@@ -80,9 +87,34 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
     if (!file) return
     setStep('previewing')
     try {
-      const data = await previewExcel(file)
-      setPreviewData(data)
-      setStep('preview')
+      const result = await previewExcel(file, currentExpandTo)
+      if (isNeedsExpansion(result)) {
+        setExpansionInfo(result)
+        setStep('needsExpansion')
+      } else {
+        setPreviewData(result)
+        setStep('preview')
+      }
+    } catch (err) {
+      setErrorMsg(extractErrorMessage(err))
+      setStep('error')
+    }
+  }
+
+  const handleExpand = async () => {
+    if (!expansionInfo || !file) return
+    const nextRange = expansionInfo.next_range
+    setCurrentExpandTo(nextRange)
+    setStep('previewing')
+    try {
+      const result = await previewExcel(file, nextRange)
+      if (isNeedsExpansion(result)) {
+        setExpansionInfo(result)
+        setStep('needsExpansion')
+      } else {
+        setPreviewData(result)
+        setStep('preview')
+      }
     } catch (err) {
       setErrorMsg(extractErrorMessage(err))
       setStep('error')
@@ -93,7 +125,7 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
     if (!file) return
     setStep('committing')
     try {
-      const data = await commitExcel(file)
+      const data = await commitExcel(file, currentExpandTo)
       setCommitData(data)
       setStep('done')
     } catch (err) {
@@ -172,6 +204,25 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
               <p className="text-sm text-muted-foreground">Excel 분석 중...</p>
               <p className="text-xs text-muted-foreground">100건 이상은 잠시 걸릴 수 있습니다</p>
+            </div>
+          )}
+
+          {/* ── STEP: needsExpansion ── */}
+          {step === 'needsExpansion' && expansionInfo && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border bg-muted/30 p-5 space-y-3">
+                <div className="flex items-center gap-2 text-foreground">
+                  <Search className="h-5 w-5 shrink-0" />
+                  <span className="font-medium">RCM 헤더를 찾는 중</span>
+                </div>
+                <p className="text-sm text-muted-foreground">{expansionInfo.message}</p>
+                <p className="text-xs text-muted-foreground">
+                  확인한 시트: {expansionInfo.sheets_checked.join(', ')}
+                </p>
+              </div>
+              <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                💡 Excel 파일 상단에 빈 행이 많으면 헤더 인식이 어려울 수 있어요. 확장 검색을 진행하면 더 넓은 범위에서 헤더를 찾습니다.
+              </div>
             </div>
           )}
 
@@ -273,6 +324,15 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
           )}
           {(step === 'previewing' || step === 'committing') && (
             <Button variant="outline" disabled>취소</Button>
+          )}
+          {step === 'needsExpansion' && expansionInfo && (
+            <>
+              <Button variant="outline" onClick={handleClose}>취소</Button>
+              <Button onClick={handleExpand}>
+                <Search className="h-4 w-4 mr-1.5" />
+                확장 검색 (1~{expansionInfo.next_range}행)
+              </Button>
+            </>
           )}
           {step === 'preview' && previewData && (
             <>
