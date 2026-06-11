@@ -27,7 +27,7 @@ export default function RcmPage() {
 
   const [uploadOpen, setUploadOpen] = useState(false)
 
-  const { data } = useControls(params)
+  const { data, isLoading, isError, error, refetch } = useControls(params)
 
   const handleChange = (updated: Partial<ControlSearchParams>) => {
     setParams((prev) => ({ ...prev, ...updated }))
@@ -53,7 +53,9 @@ export default function RcmPage() {
   }
 
   const handleUploadSuccess = () => {
-    toast.success('Excel 업로드가 완료되었습니다. 목록은 실제 API 연동 후 자동 갱신됩니다.')
+    setUploadOpen(false)
+    toast.success('Excel 업로드가 완료되었습니다.')
+    refetch()
   }
 
   return (
@@ -73,6 +75,9 @@ export default function RcmPage() {
         onAddClick={handleAddClick}
         onEdit={handleEditClick}
         onUploadClick={() => setUploadOpen(true)}
+        isLoading={isLoading}
+        isError={isError}
+        error={error}
       />
 
       <ControlDetailSheet

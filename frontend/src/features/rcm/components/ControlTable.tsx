@@ -1,4 +1,4 @@
-import { ChevronUp, ChevronDown, ChevronsUpDown, Star, Pencil, Upload } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronsUpDown, Star, Pencil, Upload, Loader2 } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -25,13 +25,16 @@ import {
 } from '../types'
 
 interface Props {
-  data: ControlListResponse
+  data: ControlListResponse | undefined
   params: ControlSearchParams
   onParamsChange: (updated: Partial<ControlSearchParams>) => void
   onSelect?: (control: Control) => void
   onAddClick?: () => void
   onEdit?: (control: Control) => void
   onUploadClick?: () => void
+  isLoading?: boolean
+  isError?: boolean
+  error?: Error | null
 }
 
 const RISK_BADGE_VARIANT: Record<string, string> = {
@@ -52,8 +55,8 @@ function SortIcon({ col, params }: { col: SortCol; params: ControlSearchParams }
   )
 }
 
-export default function ControlTable({ data, params, onParamsChange, onSelect, onAddClick, onEdit, onUploadClick }: Props) {
-  const { items, total, skip, limit } = data
+export default function ControlTable({ data, params, onParamsChange, onSelect, onAddClick, onEdit, onUploadClick, isLoading, isError, error }: Props) {
+  const { items = [], total = 0, skip = 0, limit = params.limit ?? 20 } = data ?? {}
 
   const toggleSort = (col: SortCol) => {
     if (params.sort_by === col) {
@@ -67,6 +70,25 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
   const totalPages = Math.ceil(total / limit)
   const from = total === 0 ? 0 : skip + 1
   const to = Math.min(skip + limit, total)
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-12 text-muted-foreground gap-2">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        불러오는 중...
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 p-6 text-red-700 text-sm">
+        불러오기 실패: {error?.message ?? '알 수 없는 오류'}
+        <br />
+        백엔드가 실행 중인지, 로그인 상태인지 확인해주세요.
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-2">
@@ -132,16 +154,24 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
                   </TableCell>
                   <TableCell className="text-sm">{ctrl.name}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="text-xs">
-                      {ctrl.process_code}
-                    </Badge>
+                    {ctrl.process_code ? (
+                      <Badge variant="outline" className="text-xs">
+                        {ctrl.process_code}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <span
-                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${RISK_BADGE_VARIANT[ctrl.risk_level]}`}
-                    >
-                      {RISK_LEVEL_LABELS[ctrl.risk_level]}
-                    </span>
+                    {ctrl.risk_level ? (
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${RISK_BADGE_VARIANT[ctrl.risk_level]}`}
+                      >
+                        {RISK_LEVEL_LABELS[ctrl.risk_level]}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {ctrl.is_key_control ? (
@@ -158,7 +188,7 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
                   <TableCell className="text-xs">{FREQUENCY_LABELS[ctrl.frequency]}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-0.5">
-                      {ctrl.assertions.map((a) => (
+                      {(ctrl.assertions ?? []).map((a) => (
                         <Badge key={a} variant="secondary" className="text-xs px-1.5 py-0">
                           {a}
                         </Badge>
@@ -166,7 +196,7 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {ctrl.owner_name ?? '—'}
+                    {ctrl.owner_name ? ctrl.owner_name.split(/[\s,]+/).filter(Boolean).join(', ') : '—'}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()} className="text-right pr-2">
                     <Button

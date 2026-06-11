@@ -1563,7 +1563,7 @@ cd claude-icfr
 | 모듈 | 명세 | ERD | API | BE | FE | 테스트 | 비고 |
 |---|---|---|---|---|---|---|---|
 | 일정관리 | ✅ | ✅ | — | — | 🔄 골조 | — | 메뉴·라우트 연결 |
-| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + Excel헤더자동인식 + ControlSearchOut(search 응답 확장) | 🔄 목록+검색+상세+편집+Excel업로드(mock→실API)+Excel확장검색처리 완료(삭제 남음) | ✅ 65개 | search 응답에 process/sub_process/risk_level/assertions 포함·needs_expansion UI 추가 |
+| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + Excel헤더자동인식 + ControlSearchOut(search 응답 확장) | 🔄 목록+검색+상세+편집+Excel업로드+목록실API전환(TanStack Query) 완료(추가/편집 실API·삭제 남음) | ✅ 65개 | useControls mock→실API 전환·refetch 연결 완료 |
 | Scoping | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | EUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
@@ -1629,6 +1629,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-06-10 / Regina + Claude** — useControls mock → 백엔드 실API 전환 (TanStack Query). `controlsApi.ts` 신규 (fetchControls, `/api/rcm/controls/search`). `useControls` 재작성: useQuery + placeholderData + staleTime 30s. `addControl`·`updateControl` mock 유지(TODO ICFR_frontend_8). `ControlTable` isLoading·isError·error props 추가. `RcmPage` refetch → ExcelUploadDialog onSuccess 연결. `types.ts` 4개 필드 nullable 수정 (process_code·sub_process_code·risk_level). 빌드 통과. 브랜치: feature/fe-rcm-list-api.
 - **2026-06-09 / Regina + Claude** — Excel 업로드 needs_expansion 응답 처리 + 확장 검색 UI 추가. `uploadExcel.ts`: ExcelPreviewSuccess·ExcelPreviewNeedsExpansion union 타입 + isNeedsExpansion 타입가드 + previewExcel·commitExcel에 expandTo 옵셔널 파라미터 추가. `ExcelUploadDialog.tsx`: needsExpansion step 신설 (Search 아이콘·메시지·시트목록·안내박스·확장 검색 버튼) + handleExpand·currentExpandTo 상태 관리 + commit 단계에 expand_to 전달. extractErrorMessage에 data.error 필드 처리 추가. 빌드 통과. 브랜치: feature/fe-rcm-excel-expansion.
 - **2026-06-09 / TrustBuilder + Claude** — Phase 1 작업4 완료. Remediation·설계평가 풀 확장 (사이냅소프트 양식 그룹 8). 신규 모델 2개 (DesignAssessment, RemediationStatusHistory) + Deficiency·RemediationPlan 확장 (fiscal_year·control_id·final_conclusion 등). 작업3 스타일 4단계 워크플로 (planned→in_progress→completed→approved) + 자동 이력. DesignAssessment 8요소 점수 + 평가방법·통제수행자. Alembic 마이그레이션 (phase1_remediation_full). pytest 75개 전부 통과 (+10). ADR-0020 준수 (추상화 0개). **핵심 디버깅**: SQLite NUMERIC affinity가 순수 숫자 UUID hex (`00000000...0001`)를 integer로 저장 → `PG_UUID` result_processor에서 `hex=1` AttributeError. 해결: 테스트에서 JWT sub 파싱으로 실제 사용자 ID 사용.
 - **2026-06-09 / TrustBuilder + Claude** — `ControlSearchOut` 스키마 신규. `GET /api/rcm/controls/search` 응답에 `process_code·sub_process_code·risk_level·assertions` 4개 필드 추가 (Regina FE `useControls` 요청). `selectinload` 체인으로 N+1 회피 (Control→Risk→SubProcess→Process, Control→Assertions→RiskCategory). 기존 `ControlOut` 보존 → 다른 엔드포인트 회귀 안전. ADR-0020 준수 (추상화 0개). pytest +6 = 65개 전부 통과.
