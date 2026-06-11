@@ -95,15 +95,17 @@ export default function ControlDetailSheet({ control, open, onOpenChange, onEdit
               <InfoRow
                 label="위험 수준"
                 value={
-                  <span
-                    className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${RISK_BADGE_CLASS[control.risk_level]}`}
-                  >
-                    {RISK_LEVEL_LABELS[control.risk_level]}
-                  </span>
+                  control.risk_level ? (
+                    <span
+                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${RISK_BADGE_CLASS[control.risk_level]}`}
+                    >
+                      {RISK_LEVEL_LABELS[control.risk_level]}
+                    </span>
+                  ) : '—'
                 }
               />
               <InfoRow label="통제 목적" value={control.objective} />
-              <InfoRow label="담당자" value={control.owner_name} />
+              <InfoRow label="담당자" value={control.owner_name ? control.owner_name.split(/[\s,]+/).filter(Boolean).join(', ') : undefined} />
 
               <SectionTitle>통제 분류</SectionTitle>
               <Separator />
@@ -134,8 +136,8 @@ export default function ControlDetailSheet({ control, open, onOpenChange, onEdit
               <SectionTitle>어서션</SectionTitle>
               <Separator />
               <div className="flex flex-wrap gap-1.5 py-2">
-                {control.assertions.length > 0 ? (
-                  control.assertions.map((a) => (
+                {(control.assertions ?? []).length > 0 ? (
+                  (control.assertions ?? []).map((a) => (
                     <Badge key={a} variant="secondary" className="text-xs">
                       {a} {ASSERTION_LABELS[a]}
                     </Badge>

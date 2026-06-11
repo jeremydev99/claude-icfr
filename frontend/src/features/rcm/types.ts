@@ -26,10 +26,10 @@ export interface Control {
   related_accounts: string | null
   related_systems: string | null
   euc_description: string | null
-  assertions: AssertionCode[]
-  process_code: string
-  sub_process_code: string
-  risk_level: RiskLevel
+  assertions: AssertionCode[] | null
+  process_code: string | null
+  sub_process_code: string | null
+  risk_level: RiskLevel | null
   created_at: string
 }
 
@@ -55,6 +55,7 @@ export interface ControlListResponse {
   total: number
   skip: number
   limit: number
+  sort?: string
 }
 
 export const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {

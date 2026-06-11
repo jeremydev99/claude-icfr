@@ -35,9 +35,9 @@
 1. `git fetch origin && git checkout main && git pull`
 2. `feature/fe-rcm-list-api` 브랜치 생성
 3. 백엔드 컨테이너 healthy 확인 (`docker-compose ps`)
-4. **백엔드 응답 스키마 정확히 매칭**: `backend/app/schemas/rcm.py`의 `ControlOut`(또는 응답 모델) 필드 ↔ 프론트엔드 `Control` 타입(`features/rcm/types.ts`) 비교
-   - 필드 누락·이름 불일치 있으면 프론트엔드 `Control` 타입을 백엔드에 맞춰 보정
-   - 특히 `process_code`, `sub_process_code`, `risk_level`, `assertions` 같은 표시용 필드가 백엔드 응답에 포함되는지 확인. **없으면 프롬프트 작성자(claude.ai)에게 보고하고 멈춤** — 백엔드 명세 변경 필요할 수 있음
+4. **백엔드 응답 스키마 정확히 매칭**: `/controls/search` 엔드포인트는 `ControlSearchOut` 스키마를 반환함 (`ControlRead` 확장, `backend/app/schemas/rcm.py` 참조)
+   - `ControlSearchOut`에는 `process_code`, `sub_process_code`, `risk_level`, `assertions` 4개 필드가 **이미 포함되어 있음** (협업자 2026-06-09 추가)
+   - 프론트엔드 `Control` 타입(`features/rcm/types.ts`)에 이 4개 필드가 있는지 확인하고, 없으면 아래 섹션 2.5를 참고해 추가
 
 ---
 
@@ -64,6 +64,26 @@ frontend/src/features/rcm/
 ├── pages/RcmPage.tsx               ← 수정: 로딩/에러 표시 + 추가/편집 mock 사용 명시 주석
 └── components/ControlTable.tsx     ← 수정: isLoading·error props 받아 표시
 ```
+
+---
+
+## 2.5 types.ts — Control 인터페이스 필드 추가
+
+`backend/app/schemas/rcm.py`의 `ControlSearchOut`이 `/controls/search` 응답 스키마임.
+`ControlSearchOut`은 `ControlRead`를 상속하고 아래 4개 필드를 추가로 반환함.
+
+`frontend/src/features/rcm/types.ts`의 `Control` 인터페이스에 누락된 필드를 추가:
+
+```typescript
+// Control 인터페이스에 추가 (기존에 없는 것만)
+process_code: string | null         // 상위 프로세스 코드
+sub_process_code: string | null     // 하위 프로세스 코드
+risk_level: 'LR' | 'MR' | 'HR' | 'SR' | null  // risk.assessment_level
+assertions: AssertionCode[]         // ["E", "C", "V"] 형태
+```
+
+> **주의**: 이미 일부 필드가 `types.ts`에 존재할 수 있음. 기존 타입과 비교해서 **누락된 것만** 추가할 것. 전체 재작성 금지.
+> `AssertionCode`가 아직 없다면 `type AssertionCode = 'E' | 'C' | 'V' | 'O' | 'P'` 형태로 먼저 정의.
 
 ---
 
@@ -284,9 +304,10 @@ git push -u origin feature/fe-rcm-list-api
 
 작업 중 흔히 발생할 수 있는 문제:
 
-1. **백엔드 응답 필드 누락** (예: `process_code`가 응답에 없음):
-   - 백엔드 코드(`backend/app/api/rcm.py`의 `/controls/search` 응답)에서 어떤 필드를 반환하는지 정확히 확인
-   - 누락된 필드가 있으면 → 멈추고 보고. 백엔드 명세 변경(JOIN 추가)이 필요할 수 있음
+1. **백엔드 응답 스키마 확인** (`ControlSearchOut` — 2026-06-09 확정):
+   - `/controls/search`는 `ControlSearchResponse { items: ControlSearchOut[], total, skip, limit, sort }` 반환
+   - `ControlSearchOut`은 `ControlRead`를 상속하며 `process_code`, `sub_process_code`, `risk_level`, `assertions` 4개 필드를 포함
+   - `types.ts`에 이 필드들이 누락되어 있으면 섹션 2.5 참고해서 추가 (백엔드 재작업 불필요)
 
 2. **CORS 또는 401 오류**:
    - vite.config.ts 프록시 또는 백엔드 CORS 확인 (Excel 업로드는 됐으니 이미 OK일 가능성 큼)
