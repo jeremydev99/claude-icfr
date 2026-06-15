@@ -274,6 +274,7 @@ def search_controls(
                 Control.code.ilike(f"%{q}%"),
                 Control.name.ilike(f"%{q}%"),
                 Control.description.ilike(f"%{q}%"),
+                Control.owner_name.ilike(f"%{q}%"),
             )
         )
     if owner:
@@ -309,7 +310,7 @@ def search_controls(
             )
             query = query.filter(Control.id.in_(assertion_ids))
 
-    valid_sort = {"code", "name", "frequency", "created_at"}
+    valid_sort = {"code", "name", "frequency", "created_at", "owner_name"}
     sort_col = getattr(Control, sort_by if sort_by in valid_sort else "code")
     query = query.order_by(sort_col.desc() if sort_order == "desc" else sort_col.asc())
 
