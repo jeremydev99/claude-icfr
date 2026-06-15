@@ -3,6 +3,7 @@ import { useForm, FormProvider } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
+import { isAxiosError } from 'axios'
 import {
   Dialog,
   DialogContent,
@@ -12,22 +13,36 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import type { Control } from '../types'
-import { addControl, updateControl } from '../api/useControls'
+import type { Control, ControlCreatePayload, ControlUpdatePayload } from '../types'
+import { useCreateControl, useUpdateControl } from '../api/useControls'
 import BasicInfoTab from './form-tabs/BasicInfoTab'
 import ClassificationTab from './form-tabs/ClassificationTab'
 import ActivityTab from './form-tabs/ActivityTab'
 import RelatedInfoTab from './form-tabs/RelatedInfoTab'
 
+function extractErrorMessage(err: unknown): string {
+  if (isAxiosError(err)) {
+    const data = err.response?.data
+    if (typeof data?.detail === 'string') return data.detail
+    if (Array.isArray(data?.detail)) return data.detail.map((d: { msg: string }) => d.msg).join(', ')
+    if (err.response?.status === 401) return '로그인이 필요합니다'
+    if (err.response?.status === 422) return '입력값을 확인해주세요'
+    if (err.response?.status === 409) return '이미 존재하는 통제 코드입니다'
+    if (!err.response) return '서버에 연결할 수 없습니다'
+  }
+  return '알 수 없는 오류가 발생했습니다'
+}
+
 export const controlFormSchema = z.object({
-  code: z.string().min(1, '통제 코드는 필수입니다').max(50),
-  name: z.string().min(1, '통제명은 필수입니다').max(200),
+  code: z.string().min(1, '통제 코드는 필수입니다').max(30),
+  name: z.string().min(1, '통제명은 필수입니다').max(500),
   description: z.string().nullable().optional(),
   objective: z.string().nullable().optional(),
   owner_name: z.string().nullable().optional(),
   process_code: z.string().min(1, '프로세스를 선택하세요'),
   sub_process_code: z.string().min(1, '세부 프로세스를 선택하세요'),
   risk_level: z.enum(['LR', 'MR', 'HR', 'SR']),
+  risk_id: z.string().optional(),
   is_key_control: z.boolean(),
   preventive_detective: z.enum(['P', 'D']),
   auto_manual: z.enum(['A', 'M', 'IT']),
@@ -56,6 +71,7 @@ const DEFAULT_VALUES: ControlFormData = {
   process_code: '',
   sub_process_code: '',
   risk_level: 'MR',
+  risk_id: '',
   is_key_control: false,
   preventive_detective: 'P',
   auto_manual: 'M',
@@ -73,7 +89,6 @@ const DEFAULT_VALUES: ControlFormData = {
   euc_description: '',
 }
 
-// Maps form fields to their tab
 const FIELD_TAB_MAP: Record<string, string> = {
   code: 'basic', name: 'basic', description: 'basic', objective: 'basic',
   owner_name: 'basic', process_code: 'basic', sub_process_code: 'basic', risk_level: 'basic',
@@ -98,6 +113,9 @@ interface Props {
 
 export default function ControlFormDialog({ open, onOpenChange, mode, control, onSuccess }: Props) {
   const [activeTab, setActiveTab] = useState('basic')
+  const createMutation = useCreateControl()
+  const updateMutation = useUpdateControl()
+  const isPending = createMutation.isPending || updateMutation.isPending
 
   const methods = useForm<ControlFormData>({
     resolver: zodResolver(controlFormSchema),
@@ -117,7 +135,8 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
         owner_name: control.owner_name ?? '',
         process_code: control.process_code ?? '',
         sub_process_code: control.sub_process_code ?? '',
-        risk_level: control.risk_level ?? undefined,
+        risk_level: control.risk_level ?? 'MR',
+        risk_id: control.risk_id,
         is_key_control: control.is_key_control,
         preventive_detective: control.preventive_detective,
         auto_manual: control.auto_manual,
@@ -140,46 +159,77 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
     setActiveTab('basic')
   }, [open, mode, control, reset])
 
-  // Count errors per tab
   const errorTabCounts: Record<string, number> = {}
   for (const field of Object.keys(errors)) {
     const tab = FIELD_TAB_MAP[field]
     if (tab) errorTabCounts[tab] = (errorTabCounts[tab] ?? 0) + 1
   }
 
-  const onSubmit = (data: ControlFormData) => {
-    let saved: Control
-    if (mode === 'create') {
-      saved = addControl({
-        ...data,
-        description: data.description || null,
-        objective: data.objective || null,
-        owner_name: data.owner_name || null,
-        related_accounts: data.related_accounts || null,
-        related_systems: data.related_systems || null,
-        euc_description: data.euc_description || null,
-        risk_id: '',
-      })
-    } else {
-      const result = updateControl(control!.id, {
-        ...data,
-        description: data.description || null,
-        objective: data.objective || null,
-        owner_name: data.owner_name || null,
-        related_accounts: data.related_accounts || null,
-        related_systems: data.related_systems || null,
-        euc_description: data.euc_description || null,
-      })
-      if (!result) return
-      saved = result
+  const onSubmit = async (data: ControlFormData) => {
+    try {
+      if (mode === 'create') {
+        if (!data.risk_id) {
+          toast.error('프로세스 → 세부 프로세스 → 위험 수준을 선택하여 위험 항목을 연결해주세요')
+          setActiveTab('basic')
+          return
+        }
+        const payload: ControlCreatePayload = {
+          code: data.code,
+          name: data.name,
+          risk_id: data.risk_id,
+          description: data.description || null,
+          objective: data.objective || null,
+          owner_name: data.owner_name || null,
+          is_key_control: data.is_key_control,
+          preventive_detective: data.preventive_detective,
+          auto_manual: data.auto_manual,
+          frequency: data.frequency,
+          ipe_relevant: data.ipe_relevant,
+          activity_approval: data.activity_approval,
+          activity_verification: data.activity_verification,
+          activity_physical: data.activity_physical,
+          activity_master_data: data.activity_master_data,
+          activity_reconciliation: data.activity_reconciliation,
+          activity_supervision: data.activity_supervision,
+          related_accounts: data.related_accounts || null,
+          related_systems: data.related_systems || null,
+          euc_description: data.euc_description || null,
+        }
+        const saved = await createMutation.mutateAsync(payload)
+        toast.success('통제가 추가되었습니다')
+        onSuccess?.(saved)
+      } else if (mode === 'edit' && control) {
+        const payload: ControlUpdatePayload = {
+          name: data.name,
+          description: data.description || null,
+          objective: data.objective || null,
+          owner_name: data.owner_name || null,
+          is_key_control: data.is_key_control,
+          preventive_detective: data.preventive_detective,
+          auto_manual: data.auto_manual,
+          frequency: data.frequency,
+          ipe_relevant: data.ipe_relevant,
+          activity_approval: data.activity_approval,
+          activity_verification: data.activity_verification,
+          activity_physical: data.activity_physical,
+          activity_master_data: data.activity_master_data,
+          activity_reconciliation: data.activity_reconciliation,
+          activity_supervision: data.activity_supervision,
+          related_accounts: data.related_accounts || null,
+          related_systems: data.related_systems || null,
+          euc_description: data.euc_description || null,
+        }
+        const saved = await updateMutation.mutateAsync({ id: control.id, payload })
+        toast.success('통제가 수정되었습니다')
+        onSuccess?.(saved)
+      }
+      onOpenChange(false)
+    } catch (err) {
+      toast.error(extractErrorMessage(err))
     }
-    toast.success('저장되었습니다')
-    onSuccess?.(saved)
-    onOpenChange(false)
   }
 
   const onInvalid = () => {
-    // Navigate to the first tab that has errors
     for (const tab of TAB_ORDER) {
       if (errorTabCounts[tab]) {
         setActiveTab(tab)
@@ -251,14 +301,13 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
             </Tabs>
 
             <DialogFooter className="px-6 py-4 border-t flex items-center justify-between gap-2">
-              <p className="text-xs text-muted-foreground">
-                ⓘ mock 데이터입니다 — 새로고침 시 초기화됩니다.
-              </p>
               <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={handleCancel}>
+                <Button type="button" variant="outline" onClick={handleCancel} disabled={isPending}>
                   취소
                 </Button>
-                <Button type="submit">저장</Button>
+                <Button type="submit" disabled={isPending}>
+                  {isPending ? '저장 중...' : '저장'}
+                </Button>
               </div>
             </DialogFooter>
           </form>

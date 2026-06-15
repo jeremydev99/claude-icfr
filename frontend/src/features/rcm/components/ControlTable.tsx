@@ -1,4 +1,4 @@
-import { ChevronUp, ChevronDown, ChevronsUpDown, Star, Pencil, Upload, Loader2 } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronsUpDown, Star, Pencil, Trash2, Upload, Loader2 } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -31,6 +31,7 @@ interface Props {
   onSelect?: (control: Control) => void
   onAddClick?: () => void
   onEdit?: (control: Control) => void
+  onDelete?: (control: Control) => void
   onUploadClick?: () => void
   isLoading?: boolean
   isError?: boolean
@@ -55,7 +56,7 @@ function SortIcon({ col, params }: { col: SortCol; params: ControlSearchParams }
   )
 }
 
-export default function ControlTable({ data, params, onParamsChange, onSelect, onAddClick, onEdit, onUploadClick, isLoading, isError, error }: Props) {
+export default function ControlTable({ data, params, onParamsChange, onSelect, onAddClick, onEdit, onDelete, onUploadClick, isLoading, isError, error }: Props) {
   const { items = [], total = 0, skip = 0, limit = params.limit ?? 20 } = data ?? {}
 
   const toggleSort = (col: SortCol) => {
@@ -136,7 +137,7 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
               </TableHead>
               <TableHead className="w-36">어서션</TableHead>
               <TableHead className="w-24">담당자</TableHead>
-              <TableHead className="w-16"></TableHead>
+              <TableHead className="w-20"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -199,15 +200,26 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
                     {ctrl.owner_name ? ctrl.owner_name.split(/[\s,]+/).filter(Boolean).join(', ') : '—'}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()} className="text-right pr-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 opacity-0 group-hover:opacity-100"
-                      onClick={() => onEdit?.(ctrl)}
-                      title="편집"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => onEdit?.(ctrl)}
+                        title="편집"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 hover:bg-red-50 hover:text-red-600"
+                        onClick={() => onDelete?.(ctrl)}
+                        title="삭제"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
