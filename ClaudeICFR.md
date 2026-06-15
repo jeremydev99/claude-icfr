@@ -1572,7 +1572,7 @@ cd claude-icfr
 | 담당자/권한 | ✅ | ✅ | ✅ | 🔄 최소CRUD | 🔄 골조 | — | |
 | 메일발송 | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | Report | ✅ | — | — | — | 🔄 골조 | — | Phase 3 |
-| Test | ✅ | — | ✅ | ✅ Phase1 풀확장 | 🔄 골조 | ✅ | RAWC+워크플로+이력 |
+| Test | ✅ | — | ✅ | ✅ Phase1 풀확장 | 🔄 목록·추가 (실 API) | ✅ | RAWC+워크플로+이력. FE: TestRunTable·SearchBar·ControlSelector·CreateDialog 완료. control_code/name 클라이언트 매핑 |
 
 범례: ✅완료 / 🔄진행중 / ⏳대기 / — 시작 전
 
@@ -1629,6 +1629,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-06-15 / Regina + Claude** — Test 모듈 FE 1단계 완료: TestRun 목록 + 추가 (실 API). `frontend/src/features/test/` 신규 (types.ts·testRunsApi.ts·useTestRuns.ts·TestRunSearchBar·TestRunTable·ControlSelector·CreateTestRunDialog). TestPage placeholder 교체. control_code/name 미포함 확인 → controls API로 클라이언트 매핑. 409 에러(중복 평가) 안내 메시지 처리. 빌드 통과. 브랜치: feature/fe-test-list-create.
 - **2026-06-11 / Regina + Claude** — RCM 통제 추가/편집/단건 삭제 실 API 전환. mock 완전 제거. `useCreateControl`·`useUpdateControl`·`useDeleteControl` useMutation 훅 신규. `controlsApi.ts` 확장 (createControl·updateControlById·deleteControl·fetchSubProcesses·fetchRisksBySubProcessId). `BasicInfoTab` risk_id 자동 해결 (sub_process_code→id 조회 → risk assessment_level 매칭). `DeleteConfirmDialog.tsx` 신규 (AlertDialog). `ControlTable` Trash2 아이콘·onDelete 콜백. `ExcelUploadDialog` 안내 박스 노란색→파란색. `types.ts` ControlCreatePayload·ControlUpdatePayload·SubProcessItem·RiskItem 추가. 빌드 통과. 브랜치: feature/fe-rcm-mutations.
 - **2026-06-10 / Regina + Claude** — useControls mock → 백엔드 실API 전환 (TanStack Query). `controlsApi.ts` 신규 (fetchControls, `/api/rcm/controls/search`). `useControls` 재작성: useQuery + placeholderData + staleTime 30s. `addControl`·`updateControl` mock 유지(TODO ICFR_frontend_8). `ControlTable` isLoading·isError·error props 추가. `RcmPage` refetch → ExcelUploadDialog onSuccess 연결. `types.ts` 4개 필드 nullable 수정 (process_code·sub_process_code·risk_level). 빌드 통과. 브랜치: feature/fe-rcm-list-api.
 - **2026-06-09 / Regina + Claude** — Excel 업로드 needs_expansion 응답 처리 + 확장 검색 UI 추가. `uploadExcel.ts`: ExcelPreviewSuccess·ExcelPreviewNeedsExpansion union 타입 + isNeedsExpansion 타입가드 + previewExcel·commitExcel에 expandTo 옵셔널 파라미터 추가. `ExcelUploadDialog.tsx`: needsExpansion step 신설 (Search 아이콘·메시지·시트목록·안내박스·확장 검색 버튼) + handleExpand·currentExpandTo 상태 관리 + commit 단계에 expand_to 전달. extractErrorMessage에 data.error 필드 처리 추가. 빌드 통과. 브랜치: feature/fe-rcm-excel-expansion.
@@ -1842,6 +1843,9 @@ Claude Code가 작업 세션 종료 시 자동으로 한 줄을 추가하고 자
 - **TrustBuilder**: ADR-0020 (UUID PK 정책) 등록 + 작업6 v4 → v7 마이그레이션. Python uuid7 기본 + v4 옵션 호출 가능. 시드 재실행으로 전체 v7 통일. Phase 1 시작 전 PK 정책 확정.
 - **TrustBuilder**: Phase 1 작업1 (RCM 풀 확장) 완료. 사이냅소프트 양식이 본 시스템의 표준 RCM 구조로 정착. SubProcess·Risk 신규 + Control 대폭 확장 + Excel 업로드 + 풀 검색·매트릭스·벌크. pytest 39개 통과.
 - **TrustBuilder**: Phase 1 작업3 (Test 워크플로 풀 + RAWC + 상태 이력) 완료. 사이냅소프트 양식 그룹 6·7 정착. ICFR 제도 추적성·증거성 충족. pytest 50개 통과.
+
+#### 2026-06-15
+- **Regina**: Phase 1 Test 모듈 FE 1단계 완료 — TestRun 목록·추가 화면 (실 API). TestPage placeholder → 실제 화면 교체. ControlSelector sub-dialog (debounce 검색·카드 선택). 409 중복 에러 안내. controls API 클라이언트 매핑으로 통제코드/명 표시. 빌드 통과. 브랜치: feature/fe-test-list-create. 다음: 화면 테스트 후 push → Test 2단계 (상세·워크플로·이력).
 
 #### 2026-06-11
 - **Regina**: Phase 1 RCM FE 작업7 완료 — 통제 추가/편집/단건 삭제 실 API 전환. mock 완전 제거. useCreateControl·useUpdateControl·useDeleteControl 훅 + risk_id 자동 해결 + DeleteConfirmDialog. 빌드 통과. 브랜치: feature/fe-rcm-mutations. 다음: 화면 테스트 후 push → 다건 bulk 삭제/편집 또는 다른 모듈.
