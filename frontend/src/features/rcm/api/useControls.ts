@@ -1,6 +1,15 @@
-import { useQuery } from '@tanstack/react-query'
-import { fetchControls } from './controlsApi'
-import type { Control, ControlSearchParams, ControlListResponse } from '../types'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  fetchControls,
+  createControl,
+  updateControlById,
+  deleteControl,
+} from './controlsApi'
+import type {
+  ControlSearchParams,
+  ControlListResponse,
+  ControlUpdatePayload,
+} from '../types'
 
 export function useControls(params: ControlSearchParams) {
   return useQuery<ControlListResponse>({
@@ -11,18 +20,33 @@ export function useControls(params: ControlSearchParams) {
   })
 }
 
-// TODO: ICFR_frontend_8에서 POST /api/rcm/controls 로 교체
-export function addControl(payload: Omit<Control, 'id' | 'created_at'>): Control {
-  console.warn('[mock] addControl — 새로고침 시 사라집니다. 다음 작업에서 실제 API로 전환됩니다.')
-  return {
-    ...payload,
-    id: crypto.randomUUID(),
-    created_at: new Date().toISOString(),
-  }
+export function useCreateControl() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createControl,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['controls'] })
+    },
+  })
 }
 
-// TODO: ICFR_frontend_8에서 PATCH /api/rcm/controls/{id} 로 교체
-export function updateControl(_id: string, _payload: Partial<Control>): null {
-  console.warn('[mock] updateControl — 새로고침 시 사라집니다. 다음 작업에서 실제 API로 전환됩니다.')
-  return null
+export function useUpdateControl() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: ControlUpdatePayload }) =>
+      updateControlById(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['controls'] })
+    },
+  })
+}
+
+export function useDeleteControl() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: deleteControl,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['controls'] })
+    },
+  })
 }

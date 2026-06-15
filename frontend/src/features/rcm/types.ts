@@ -94,3 +94,33 @@ export const ASSERTION_LABELS: Record<AssertionCode, string> = {
   O: '발생',
   M: '기타',
 }
+
+export interface ProcessItem {
+  id: string
+  code: string
+  name: string
+}
+
+export interface SubProcessItem {
+  id: string
+  code: string
+  name: string
+  process_id: string
+}
+
+export interface RiskItem {
+  id: string
+  code: string
+  description: string
+  assessment_level: RiskLevel
+  sub_process_id: string
+}
+
+// POST /controls 요청 페이로드 (서버 생성 필드 + JOIN 표시 필드 제외)
+export type ControlCreatePayload = Omit<Control,
+  | 'id' | 'created_at' | 'updated_at'
+  | 'process_code' | 'sub_process_code' | 'risk_level' | 'assertions'
+>
+
+// PATCH /controls/{id} 요청 페이로드 (code·risk_id 불변 필드 제외, 전부 옵셔널)
+export type ControlUpdatePayload = Partial<Omit<ControlCreatePayload, 'code' | 'risk_id'>>

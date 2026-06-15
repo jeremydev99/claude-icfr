@@ -1,4 +1,5 @@
 import { Controller, useFormContext } from 'react-hook-form'
+import { useQuery } from '@tanstack/react-query'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -9,24 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { fetchProcesses, fetchSubProcesses, fetchRisksBySubProcessId } from '../../api/controlsApi'
 import type { ControlFormData } from '../ControlFormDialog'
-
-const PROCESS_CODES = ['O2C', 'P2P', 'R2R', 'HR', 'ITG'] as const
-
-const SUB_PROCESS_MAP: Record<string, string[]> = {
-  O2C: ['O2C-AR', 'O2C-REV', 'O2C-COL', 'O2C-CR', 'O2C-INV'],
-  P2P: ['P2P-PO', 'P2P-AP', 'P2P-INV', 'P2P-PAY', 'P2P-VEND'],
-  R2R: ['R2R-GL', 'R2R-CLOSE', 'R2R-FA', 'R2R-TAX'],
-  HR: ['HR-PAY', 'HR-REC', 'HR-TERM'],
-  ITG: ['ITG-ACC', 'ITG-BCP', 'ITG-CHG', 'ITG-DR', 'ITG-SEC'],
-}
-
-const RISK_LEVEL_OPTIONS = [
-  { value: 'LR', label: 'LR — 낮음' },
-  { value: 'MR', label: 'MR — 보통' },
-  { value: 'HR', label: 'HR — 높음' },
-  { value: 'SR', label: 'SR — 유의' },
-]
 
 function FieldError({ name }: { name: string }) {
   const { formState: { errors } } = useFormContext<ControlFormData>()
@@ -40,13 +25,42 @@ interface Props {
 }
 
 export default function BasicInfoTab({ isEditMode }: Props) {
-  const { register, control, watch, setValue, formState: { errors } } = useFormContext<ControlFormData>()
-  const selectedProcess = watch('process_code')
+  const { register, control, watch, setValue } = useFormContext<ControlFormData>()
+  const selectedProcessCode = watch('process_code')
+  const selectedSubProcessCode = watch('sub_process_code')
 
-  const subProcessOptions = selectedProcess ? SUB_PROCESS_MAP[selectedProcess] ?? [] : []
+  // ── 1. 프로세스 목록 ──────────────────────────────────────
+  const { data: processesData, isLoading: processesLoading } = useQuery({
+    queryKey: ['processes'],
+    queryFn: fetchProcesses,
+    staleTime: 1000 * 60 * 10,
+    enabled: !isEditMode,
+  })
+
+  const selectedProcess = processesData?.items.find((p) => p.code === selectedProcessCode)
+
+  // ── 2. 세부 프로세스 목록 (process_id 서버 필터) ──────────
+  const { data: subProcessesData, isLoading: subProcessesLoading } = useQuery({
+    queryKey: ['sub-processes', selectedProcess?.id],
+    queryFn: () => fetchSubProcesses(selectedProcess!.id),
+    enabled: !!selectedProcess?.id && !isEditMode,
+    staleTime: 1000 * 60 * 10,
+  })
+
+  const selectedSubProcess = subProcessesData?.items.find((sp) => sp.code === selectedSubProcessCode)
+
+  // ── 3. 위험 목록 (sub_process_id 서버 필터) ───────────────
+  const { data: risksData, isLoading: risksLoading } = useQuery({
+    queryKey: ['risks', selectedSubProcess?.id],
+    queryFn: () => fetchRisksBySubProcessId(selectedSubProcess!.id),
+    enabled: !!selectedSubProcess?.id && !isEditMode,
+    staleTime: 1000 * 60 * 10,
+  })
 
   return (
     <div className="space-y-4 py-2">
+
+      {/* 통제 코드 + 담당자 */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="code">
@@ -61,13 +75,13 @@ export default function BasicInfoTab({ isEditMode }: Props) {
           />
           <FieldError name="code" />
         </div>
-
         <div className="space-y-1.5">
           <Label htmlFor="owner_name">담당자명</Label>
           <Input id="owner_name" {...register('owner_name')} placeholder="예: 김재무" />
         </div>
       </div>
 
+      {/* 통제명 */}
       <div className="space-y-1.5">
         <Label htmlFor="name">
           통제명 <span className="text-destructive">*</span>
@@ -76,99 +90,138 @@ export default function BasicInfoTab({ isEditMode }: Props) {
         <FieldError name="name" />
       </div>
 
+      {/* 프로세스 + 세부 프로세스 */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label>
             프로세스 <span className="text-destructive">*</span>
           </Label>
-          <Controller
-            name="process_code"
-            control={control}
-            render={({ field }) => (
-              <Select
-                value={field.value}
-                onValueChange={(v) => {
-                  field.onChange(v)
-                  setValue('sub_process_code', '')
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="프로세스 선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROCESS_CODES.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-          {errors.process_code && (
-            <p className="text-xs text-destructive mt-1">{errors.process_code.message}</p>
+          {isEditMode ? (
+            <Input value={selectedProcessCode} readOnly className="bg-muted cursor-not-allowed" />
+          ) : (
+            <Controller
+              name="process_code"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={(v) => {
+                    field.onChange(v)
+                    setValue('sub_process_code', '')
+                    setValue('risk_id', '')
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={processesLoading ? '불러오는 중...' : '프로세스 선택'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(processesData?.items ?? []).map((p) => (
+                      <SelectItem key={p.id} value={p.code}>
+                        {p.code} — {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           )}
+          <FieldError name="process_code" />
         </div>
 
         <div className="space-y-1.5">
           <Label>
             세부 프로세스 <span className="text-destructive">*</span>
           </Label>
+          {isEditMode ? (
+            <Input value={selectedSubProcessCode} readOnly className="bg-muted cursor-not-allowed" />
+          ) : (
+            <Controller
+              name="sub_process_code"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={(v) => {
+                    field.onChange(v)
+                    setValue('risk_id', '')
+                  }}
+                  disabled={!selectedProcess}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={
+                      !selectedProcess ? '프로세스를 먼저 선택하세요'
+                      : subProcessesLoading ? '불러오는 중...'
+                      : '세부 프로세스 선택'
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(subProcessesData?.items ?? []).map((sp) => (
+                      <SelectItem key={sp.id} value={sp.code}>
+                        {sp.code} — {sp.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          )}
+          <FieldError name="sub_process_code" />
+        </div>
+      </div>
+
+      {/* 위험 항목 */}
+      <div className="space-y-1.5">
+        <Label>
+          위험 항목 <span className="text-destructive">*</span>
+        </Label>
+        {isEditMode ? (
+          <Input value={watch('risk_level') ?? ''} readOnly className="bg-muted cursor-not-allowed" />
+        ) : (
           <Controller
-            name="sub_process_code"
+            name="risk_id"
             control={control}
             render={({ field }) => (
               <Select
-                value={field.value}
-                onValueChange={field.onChange}
-                disabled={!selectedProcess}
+                value={field.value ?? ''}
+                onValueChange={(v) => {
+                  field.onChange(v)
+                  const risk = risksData?.items.find((r) => r.id === v)
+                  if (risk) setValue('risk_level', risk.assessment_level)
+                }}
+                disabled={!selectedSubProcess}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={selectedProcess ? '선택' : '프로세스 먼저 선택'} />
+                  <SelectValue placeholder={
+                    !selectedSubProcess ? '세부 프로세스를 먼저 선택하세요'
+                    : risksLoading ? '불러오는 중...'
+                    : '위험 항목 선택'
+                  } />
                 </SelectTrigger>
                 <SelectContent>
-                  {subProcessOptions.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  {(risksData?.items ?? []).map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.code} — {r.description} ({r.assessment_level})
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             )}
           />
-          {errors.sub_process_code && (
-            <p className="text-xs text-destructive mt-1">{errors.sub_process_code.message}</p>
-          )}
-        </div>
+        )}
       </div>
 
-      <div className="space-y-1.5">
-        <Label>
-          위험 수준 <span className="text-destructive">*</span>
-        </Label>
-        <Controller
-          name="risk_level"
-          control={control}
-          render={({ field }) => (
-            <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {RISK_LEVEL_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        />
-      </div>
-
+      {/* 통제 목적 */}
       <div className="space-y-1.5">
         <Label htmlFor="objective">통제 목적</Label>
         <Textarea id="objective" {...register('objective')} rows={2} placeholder="통제 목적을 입력하세요" />
       </div>
 
+      {/* 통제 설명 */}
       <div className="space-y-1.5">
         <Label htmlFor="description">통제 설명</Label>
         <Textarea id="description" {...register('description')} rows={3} placeholder="통제 절차를 상세히 설명하세요" />
       </div>
+
     </div>
   )
 }

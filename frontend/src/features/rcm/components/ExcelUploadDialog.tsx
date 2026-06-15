@@ -151,10 +151,10 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
           {/* ── STEP: select ── */}
           {step === 'select' && (
             <>
-              <div className="rounded-md border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-800 flex gap-2">
+              <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 flex gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>
-                  Excel 업로드는 실제 DB에 저장됩니다. 현재 통제 목록 화면은 mock 데이터를 표시 중이라 업로드된 항목이 바로 보이지 않을 수 있습니다.
+                  Excel 업로드는 실제 DB에 저장됩니다. 업로드 완료 후 통제 목록에 즉시 반영됩니다.
                 </span>
               </div>
 

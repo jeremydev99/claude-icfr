@@ -1563,7 +1563,7 @@ cd claude-icfr
 | 모듈 | 명세 | ERD | API | BE | FE | 테스트 | 비고 |
 |---|---|---|---|---|---|---|---|
 | 일정관리 | ✅ | ✅ | — | — | 🔄 골조 | — | 메뉴·라우트 연결 |
-| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + Excel헤더자동인식 + ControlSearchOut(search 응답 확장) | 🔄 목록+검색+상세+편집+Excel업로드+목록실API전환(TanStack Query) 완료(추가/편집 실API·삭제 남음) | ✅ 65개 | useControls mock→실API 전환·refetch 연결 완료 |
+| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + Excel헤더자동인식 + ControlSearchOut(search 응답 확장) | 🔄 목록·검색·필터·페이지네이션·상세·편집·추가·삭제·Excel업로드 모두 실 API 연결 완료 (다건 bulk 삭제/편집 남음) | ✅ 65개 | mock 완전 제거. useCreateControl·useUpdateControl·useDeleteControl 뮤테이션 훅. risk_id 자동 해결(sub-process→risk 조회). DeleteConfirmDialog 신규 |
 | Scoping | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | EUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
@@ -1629,6 +1629,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-06-11 / Regina + Claude** — RCM 통제 추가/편집/단건 삭제 실 API 전환. mock 완전 제거. `useCreateControl`·`useUpdateControl`·`useDeleteControl` useMutation 훅 신규. `controlsApi.ts` 확장 (createControl·updateControlById·deleteControl·fetchSubProcesses·fetchRisksBySubProcessId). `BasicInfoTab` risk_id 자동 해결 (sub_process_code→id 조회 → risk assessment_level 매칭). `DeleteConfirmDialog.tsx` 신규 (AlertDialog). `ControlTable` Trash2 아이콘·onDelete 콜백. `ExcelUploadDialog` 안내 박스 노란색→파란색. `types.ts` ControlCreatePayload·ControlUpdatePayload·SubProcessItem·RiskItem 추가. 빌드 통과. 브랜치: feature/fe-rcm-mutations.
 - **2026-06-10 / Regina + Claude** — useControls mock → 백엔드 실API 전환 (TanStack Query). `controlsApi.ts` 신규 (fetchControls, `/api/rcm/controls/search`). `useControls` 재작성: useQuery + placeholderData + staleTime 30s. `addControl`·`updateControl` mock 유지(TODO ICFR_frontend_8). `ControlTable` isLoading·isError·error props 추가. `RcmPage` refetch → ExcelUploadDialog onSuccess 연결. `types.ts` 4개 필드 nullable 수정 (process_code·sub_process_code·risk_level). 빌드 통과. 브랜치: feature/fe-rcm-list-api.
 - **2026-06-09 / Regina + Claude** — Excel 업로드 needs_expansion 응답 처리 + 확장 검색 UI 추가. `uploadExcel.ts`: ExcelPreviewSuccess·ExcelPreviewNeedsExpansion union 타입 + isNeedsExpansion 타입가드 + previewExcel·commitExcel에 expandTo 옵셔널 파라미터 추가. `ExcelUploadDialog.tsx`: needsExpansion step 신설 (Search 아이콘·메시지·시트목록·안내박스·확장 검색 버튼) + handleExpand·currentExpandTo 상태 관리 + commit 단계에 expand_to 전달. extractErrorMessage에 data.error 필드 처리 추가. 빌드 통과. 브랜치: feature/fe-rcm-excel-expansion.
 - **2026-06-09 / TrustBuilder + Claude** — Phase 1 작업4 완료. Remediation·설계평가 풀 확장 (사이냅소프트 양식 그룹 8). 신규 모델 2개 (DesignAssessment, RemediationStatusHistory) + Deficiency·RemediationPlan 확장 (fiscal_year·control_id·final_conclusion 등). 작업3 스타일 4단계 워크플로 (planned→in_progress→completed→approved) + 자동 이력. DesignAssessment 8요소 점수 + 평가방법·통제수행자. Alembic 마이그레이션 (phase1_remediation_full). pytest 75개 전부 통과 (+10). ADR-0020 준수 (추상화 0개). **핵심 디버깅**: SQLite NUMERIC affinity가 순수 숫자 UUID hex (`00000000...0001`)를 integer로 저장 → `PG_UUID` result_processor에서 `hex=1` AttributeError. 해결: 테스트에서 JWT sub 파싱으로 실제 사용자 ID 사용.
@@ -1841,6 +1842,9 @@ Claude Code가 작업 세션 종료 시 자동으로 한 줄을 추가하고 자
 - **TrustBuilder**: ADR-0020 (UUID PK 정책) 등록 + 작업6 v4 → v7 마이그레이션. Python uuid7 기본 + v4 옵션 호출 가능. 시드 재실행으로 전체 v7 통일. Phase 1 시작 전 PK 정책 확정.
 - **TrustBuilder**: Phase 1 작업1 (RCM 풀 확장) 완료. 사이냅소프트 양식이 본 시스템의 표준 RCM 구조로 정착. SubProcess·Risk 신규 + Control 대폭 확장 + Excel 업로드 + 풀 검색·매트릭스·벌크. pytest 39개 통과.
 - **TrustBuilder**: Phase 1 작업3 (Test 워크플로 풀 + RAWC + 상태 이력) 완료. 사이냅소프트 양식 그룹 6·7 정착. ICFR 제도 추적성·증거성 충족. pytest 50개 통과.
+
+#### 2026-06-11
+- **Regina**: Phase 1 RCM FE 작업7 완료 — 통제 추가/편집/단건 삭제 실 API 전환. mock 완전 제거. useCreateControl·useUpdateControl·useDeleteControl 훅 + risk_id 자동 해결 + DeleteConfirmDialog. 빌드 통과. 브랜치: feature/fe-rcm-mutations. 다음: 화면 테스트 후 push → 다건 bulk 삭제/편집 또는 다른 모듈.
 
 #### 2026-06-09
 - **TrustBuilder**: search 응답 확장 (Regina 제안). ControlSearchOut 스키마 신규, search 엔드포인트에 관계 데이터 4개 필드 추가. selectinload N+1 회피. pytest 65개 통과. 다음: FE useControls mock→실API 전환 또는 Regina 삭제 기능.
