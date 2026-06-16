@@ -70,3 +70,24 @@ export const RESULT_BADGE_CLASS: Record<TestResult, string> = {
   fail: 'bg-red-100 text-red-700 border-red-200',
   'n/a': 'bg-gray-100 text-gray-500 border-gray-200',
 }
+
+export interface UserBrief {
+  id: string
+  display_name: string
+}
+
+export interface TransitionRequest {
+  to_status: 'in_progress' | 'completed' | 'approved'
+  reason?: string
+}
+
+export interface TestStatusHistory {
+  id: string
+  test_run_id: string
+  from_status: TestRunStatus | null
+  to_status: TestRunStatus
+  changed_by: UserBrief
+  changed_by_id: string
+  changed_at: string
+  reason: string | null
+}

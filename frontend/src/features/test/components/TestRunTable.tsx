@@ -16,7 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { toast } from 'sonner'
 import type { TestRun, TestRunListResponse, TestRunSearchParams } from '../types'
 import {
   STATUS_LABELS,
@@ -32,6 +31,7 @@ interface Props {
   params: TestRunSearchParams
   onParamsChange: (updated: Partial<TestRunSearchParams>) => void
   onAddClick: () => void
+  onRowClick?: (id: string) => void
   isLoading: boolean
   isError: boolean
   error: Error | null | unknown
@@ -48,6 +48,7 @@ export default function TestRunTable({
   params,
   onParamsChange,
   onAddClick,
+  onRowClick,
   isLoading,
   isError,
   error,
@@ -117,7 +118,11 @@ export default function TestRunTable({
             {items.map((run: TestRun) => {
               const ctrl = controlMap[run.control_id]
               return (
-                <TableRow key={run.id}>
+                <TableRow
+                  key={run.id}
+                  className="cursor-pointer hover:bg-muted/30"
+                  onClick={() => onRowClick?.(run.id)}
+                >
                   <TableCell className="font-mono text-sm">{ctrl?.code ?? '—'}</TableCell>
                   <TableCell className="max-w-xs truncate">{ctrl?.name ?? run.control_id.slice(0, 8) + '...'}</TableCell>
                   <TableCell>{run.fiscal_year}</TableCell>
@@ -143,11 +148,11 @@ export default function TestRunTable({
                   </TableCell>
                   <TableCell>{formatDate(run.test_date)}</TableCell>
                   <TableCell className="text-muted-foreground">—</TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => toast.info('준비중입니다 (다음 업데이트 예정)')}
+                      onClick={() => onRowClick?.(run.id)}
                     >
                       상세
                     </Button>
