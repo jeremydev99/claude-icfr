@@ -27,6 +27,7 @@ from app.api import (
     test_module,
 )
 from app.seeds.bootstrap import bootstrap_admin
+from app.minio_client import ensure_bucket
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -44,6 +45,11 @@ async def lifespan(app: FastAPI):
         logger.error(f"Bootstrap admin failed: {e}")
     finally:
         db.close()
+    try:
+        ensure_bucket()
+        logger.info(f"MinIO bucket '{settings.minio_bucket}' ready")
+    except Exception as e:
+        logger.error(f"MinIO bucket ensure failed: {e}")
     yield
     logger.info("Shutting down")
 

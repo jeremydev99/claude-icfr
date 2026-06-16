@@ -12,6 +12,7 @@ class EvidenceFile(AuditedBase):
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     minio_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     uploaded_by_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
     )

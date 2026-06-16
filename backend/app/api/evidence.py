@@ -1,15 +1,30 @@
-from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+import hashlib
+from uuid import UUID, uuid4
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.core.deps import CurrentUser, get_db
+from app.minio_client import presigned_download_url, remove_object_safe, upload_object
 from app.models.evidence import EvidenceFile, EvidenceLink
 from app.schemas.evidence import (
-    EvidenceFileCreate, EvidenceFileUpdate, EvidenceFileRead,
-    EvidenceLinkCreate, EvidenceLinkRead,
+    EvidenceFileRead,
+    EvidenceFileUpdate,
+    EvidenceLinkCreate,
+    EvidenceLinkRead,
 )
 
 router = APIRouter(prefix="/api/evidence", tags=["evidence"])
+
+ALLOWED_MIME = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/haansofthwp",
+    "application/x-hwp",
+}
 
 
 @router.get("/info")
@@ -35,8 +50,35 @@ def list_files(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Se
 
 
 @router.post("/files", status_code=status.HTTP_201_CREATED, response_model=EvidenceFileRead)
-def create_file(body: EvidenceFileCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> EvidenceFile:
-    obj = EvidenceFile(**body.model_dump(), uploaded_by_id=user.id)
+async def create_file(
+    file: UploadFile = File(...),
+    user: CurrentUser = None,
+    db: Session = Depends(get_db),
+) -> EvidenceFile:
+    settings = get_settings()
+
+    data = await file.read()
+
+    if len(data) > settings.max_upload_bytes:
+        raise HTTPException(status_code=413, detail=f"파일 크기 초과 (최대 {settings.max_upload_bytes // 1024 // 1024}MB)")
+
+    content_type = file.content_type or ""
+    if content_type not in ALLOWED_MIME:
+        raise HTTPException(status_code=415, detail=f"허용되지 않는 파일 형식: {content_type}")
+
+    sha256 = hashlib.sha256(data).hexdigest()
+    minio_key = f"{uuid4()}/{file.filename}"
+
+    upload_object(minio_key, data, content_type)
+
+    obj = EvidenceFile(
+        filename=file.filename,
+        mime_type=content_type,
+        size_bytes=len(data),
+        minio_key=minio_key,
+        sha256=sha256,
+        uploaded_by_id=user.id,
+    )
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -49,6 +91,17 @@ def get_file(file_id: UUID, user: CurrentUser = None, db: Session = Depends(get_
     if not obj:
         raise HTTPException(status_code=404, detail="EvidenceFile not found")
     return obj
+
+
+@router.get("/files/{file_id}/download")
+def download_file(file_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    obj = db.query(EvidenceFile).filter(EvidenceFile.id == file_id, EvidenceFile.is_deleted == False).first()  # noqa: E712
+    if not obj:
+        raise HTTPException(status_code=404, detail="EvidenceFile not found")
+    if not obj.minio_key:
+        raise HTTPException(status_code=409, detail="파일 본체가 없습니다 (레거시 메타 전용 행)")
+    url = presigned_download_url(obj.minio_key, expires_seconds=900)
+    return {"url": url, "expires_in": 900}
 
 
 @router.patch("/files/{file_id}", response_model=EvidenceFileRead)
@@ -68,6 +121,8 @@ def delete_file(file_id: UUID, user: CurrentUser = None, db: Session = Depends(g
     obj = db.query(EvidenceFile).filter(EvidenceFile.id == file_id, EvidenceFile.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="EvidenceFile not found")
+    if obj.minio_key:
+        remove_object_safe(obj.minio_key)
     obj.is_deleted = True
     db.commit()
 

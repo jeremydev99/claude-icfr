@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     admin_password: str = "admin123"
     admin_display_name: str = "System Administrator"
 
+    # Upload
+    max_upload_bytes: int = 52428800  # 50MB
+
     # CORS
     cors_allowed_origins: List[str] = ["http://localhost:5173"]
 

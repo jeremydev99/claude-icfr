@@ -8,6 +8,7 @@ class EvidenceFileBase(BaseModel):
     mime_type: str = Field(min_length=1, max_length=100)
     size_bytes: int
     minio_key: str | None = None
+    sha256: str | None = None
 
 class EvidenceFileCreate(EvidenceFileBase):
     pass
