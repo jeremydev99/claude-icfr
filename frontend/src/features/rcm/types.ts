@@ -46,7 +46,7 @@ export interface ControlSearchParams {
   owner?: string
   skip?: number
   limit?: number
-  sort_by?: 'code' | 'name' | 'frequency' | 'created_at'
+  sort_by?: 'code' | 'name' | 'frequency' | 'created_at' | 'owner_name'
   sort_order?: 'asc' | 'desc'
 }
 
