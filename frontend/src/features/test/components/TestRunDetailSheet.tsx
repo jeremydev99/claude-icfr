@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { CheckCircle2, Circle, Loader2, Pencil, Trash2 } from 'lucide-react'
 import {
   Sheet,
@@ -61,21 +61,14 @@ interface StepInlineFormProps {
 function StepInlineForm({ initialDescription, initialResult, onSave, onCancel, isSaving }: StepInlineFormProps) {
   const [description, setDescription] = useState(initialDescription)
   const [result, setResult] = useState<'pass' | 'fail'>(initialResult)
-  const composingRef = useRef(false)
 
   return (
     <div className="rounded-md border p-3 space-y-2 bg-muted/30">
       <Input
         placeholder="단계 설명을 입력하세요"
-        value={description}
-        onChange={(e) => {
-          if (!composingRef.current) setDescription(e.target.value)
-        }}
-        onCompositionStart={() => { composingRef.current = true }}
-        onCompositionEnd={(e) => {
-          composingRef.current = false
-          setDescription((e.currentTarget as HTMLInputElement).value)
-        }}
+        defaultValue={initialDescription}
+        onBlur={(e) => setDescription(e.target.value)}
+        onChange={(e) => setDescription(e.target.value)}
         autoFocus
       />
       <div className="flex items-center gap-2">
