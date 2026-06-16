@@ -48,6 +48,62 @@ import {
 import type { Control } from '@/features/rcm/types'
 import TestRunEditDialog from './TestRunEditDialog'
 
+// ── StepInlineForm ────────────────────────────────────────────
+
+interface StepInlineFormProps {
+  initialDescription: string
+  initialResult: 'pass' | 'fail'
+  onSave: (description: string, result: 'pass' | 'fail') => void
+  onCancel: () => void
+  isSaving?: boolean
+}
+
+function StepInlineForm({ initialDescription, initialResult, onSave, onCancel, isSaving }: StepInlineFormProps) {
+  const [description, setDescription] = useState(initialDescription)
+  const [result, setResult] = useState<'pass' | 'fail'>(initialResult)
+  const composingRef = useRef(false)
+
+  return (
+    <div className="rounded-md border p-3 space-y-2 bg-muted/30">
+      <Input
+        placeholder="단계 설명을 입력하세요"
+        value={description}
+        onChange={(e) => {
+          if (!composingRef.current) setDescription(e.target.value)
+        }}
+        onCompositionStart={() => { composingRef.current = true }}
+        onCompositionEnd={(e) => {
+          composingRef.current = false
+          setDescription((e.currentTarget as HTMLInputElement).value)
+        }}
+        autoFocus
+      />
+      <div className="flex items-center gap-2">
+        <Select value={result} onValueChange={(v) => setResult(v as 'pass' | 'fail')}>
+          <SelectTrigger className="w-28 h-8">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="pass">적합</SelectItem>
+            <SelectItem value="fail">부적합</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          size="sm"
+          onClick={() => onSave(description, result)}
+          disabled={!description.trim() || isSaving}
+        >
+          {isSaving && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+          저장
+        </Button>
+        <Button size="sm" variant="outline" onClick={onCancel}>취소</Button>
+      </div>
+    </div>
+  )
+}
+
+// ── TestRunDetailSheet ────────────────────────────────────────
+
 interface Props {
   runId: string | null
   open: boolean
@@ -106,9 +162,7 @@ export default function TestRunDetailSheet({ runId, open, onOpenChange, controlM
   const [editOpen, setEditOpen] = useState(false)
   const [addingStep, setAddingStep] = useState(false)
   const [editingStepId, setEditingStepId] = useState<string | null>(null)
-  const [stepForm, setStepForm] = useState({ description: '', result: 'pass' as 'pass' | 'fail' })
   const [deleteStepId, setDeleteStepId] = useState<string | null>(null)
-  const composingRef = useRef(false)
 
   const ctrl = run ? controlMap?.[run.control_id] : undefined
   const nextTrans = run ? NEXT_TRANSITION[run.status] : null
@@ -129,20 +183,18 @@ export default function TestRunDetailSheet({ runId, open, onOpenChange, controlM
   const startEditStep = (step: TestStep) => {
     setEditingStepId(step.id)
     setAddingStep(false)
-    setStepForm({ description: step.description, result: step.result })
   }
 
   const cancelStepForm = () => {
     setAddingStep(false)
     setEditingStepId(null)
-    setStepForm({ description: '', result: 'pass' })
   }
 
-  const handleSaveStep = () => {
-    if (!stepForm.description.trim() || !run) return
+  const handleSaveStep = (description: string, result: 'pass' | 'fail') => {
+    if (!description.trim() || !run) return
     if (editingStepId) {
       updateStep.mutate(
-        { id: editingStepId, payload: stepForm, runId: run.id },
+        { id: editingStepId, payload: { description, result }, runId: run.id },
         {
           onSuccess: () => { cancelStepForm(); toast.success('단계가 수정되었습니다') },
           onError: () => toast.error('수정에 실패했습니다'),
@@ -150,7 +202,7 @@ export default function TestRunDetailSheet({ runId, open, onOpenChange, controlM
       )
     } else {
       createStep.mutate(
-        { test_run_id: run.id, step_order: steps.length + 1, ...stepForm },
+        { test_run_id: run.id, step_order: steps.length + 1, description, result },
         {
           onSuccess: () => { cancelStepForm(); toast.success('단계가 추가되었습니다') },
           onError: () => toast.error('추가에 실패했습니다'),
@@ -169,51 +221,6 @@ export default function TestRunDetailSheet({ runId, open, onOpenChange, controlM
       },
     )
   }
-
-  const StepInlineForm = () => (
-    <div className="rounded-md border p-3 space-y-2 bg-muted/30">
-      <Input
-        placeholder="단계 설명을 입력하세요"
-        value={stepForm.description}
-        onChange={(e) => {
-          if (!composingRef.current) {
-            setStepForm((f) => ({ ...f, description: e.target.value }))
-          }
-        }}
-        onCompositionStart={() => { composingRef.current = true }}
-        onCompositionEnd={(e) => {
-          composingRef.current = false
-          setStepForm((f) => ({ ...f, description: (e.currentTarget as HTMLInputElement).value }))
-        }}
-        autoFocus
-      />
-      <div className="flex items-center gap-2">
-        <Select
-          value={stepForm.result}
-          onValueChange={(v) => setStepForm((f) => ({ ...f, result: v as 'pass' | 'fail' }))}
-        >
-          <SelectTrigger className="w-28 h-8">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="pass">적합</SelectItem>
-            <SelectItem value="fail">부적합</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button
-          size="sm"
-          onClick={handleSaveStep}
-          disabled={!stepForm.description.trim() || createStep.isPending || updateStep.isPending}
-        >
-          {(createStep.isPending || updateStep.isPending) && (
-            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-          )}
-          저장
-        </Button>
-        <Button size="sm" variant="outline" onClick={cancelStepForm}>취소</Button>
-      </div>
-    </div>
-  )
 
   return (
     <>
@@ -319,7 +326,14 @@ export default function TestRunDetailSheet({ runId, open, onOpenChange, controlM
                       {steps.map((step) => (
                         <div key={step.id} className="rounded-md border p-2.5">
                           {editingStepId === step.id ? (
-                            <StepInlineForm />
+                            <StepInlineForm
+                              key={step.id}
+                              initialDescription={step.description}
+                              initialResult={step.result}
+                              onSave={handleSaveStep}
+                              onCancel={cancelStepForm}
+                              isSaving={updateStep.isPending}
+                            />
                           ) : (
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex items-start gap-2 text-sm min-w-0">
@@ -353,7 +367,16 @@ export default function TestRunDetailSheet({ runId, open, onOpenChange, controlM
                           )}
                         </div>
                       ))}
-                      {addingStep && <StepInlineForm />}
+                      {addingStep && (
+                        <StepInlineForm
+                          key="new"
+                          initialDescription=""
+                          initialResult="pass"
+                          onSave={handleSaveStep}
+                          onCancel={cancelStepForm}
+                          isSaving={createStep.isPending}
+                        />
+                      )}
                       {!addingStep && !editingStepId && !isLocked && (
                         <Button
                           variant="outline"
