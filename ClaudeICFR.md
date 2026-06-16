@@ -1563,7 +1563,7 @@ cd claude-icfr
 | 모듈 | 명세 | ERD | API | BE | FE | 테스트 | 비고 |
 |---|---|---|---|---|---|---|---|
 | 일정관리 | ✅ | ✅ | — | — | 🔄 골조 | — | 메뉴·라우트 연결 |
-| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + Excel헤더자동인식 + ControlSearchOut(search 응답 확장) | 🔄 목록·검색·필터·페이지네이션·상세·편집·추가·삭제·Excel업로드 모두 실 API 연결 완료 (다건 bulk 삭제/편집 남음) | ✅ 65개 | mock 완전 제거. useCreateControl·useUpdateControl·useDeleteControl 뮤테이션 훅. risk_id 자동 해결(sub-process→risk 조회). DeleteConfirmDialog 신규 |
+| RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + Excel헤더자동인식 + ControlSearchOut(search 응답 확장) + owner_name 정렬·검색 | 🔄 목록·검색·필터·페이지네이션·상세·편집·추가·삭제·Excel업로드·담당자 정렬 모두 실 API 연결 완료 (다건 bulk 삭제/편집 남음) | ✅ 65개 | mock 완전 제거. useCreateControl·useUpdateControl·useDeleteControl 뮤테이션 훅. risk_id 자동 해결(sub-process→risk 조회). DeleteConfirmDialog 신규. 담당자 컬럼 sort_by=owner_name 정렬 연결 (de81d52) |
 | Scoping | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | EUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
@@ -1629,6 +1629,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-06-16 / Regina + Claude** — RCM 담당자 컬럼 owner_name 정렬 추가. `types.ts` sort_by 유니온에 `'owner_name'` 추가. `ControlTable.tsx` SortCol 타입 확장 + 담당자 헤더 클릭 시 asc/desc 토글 연결 (기존 컬럼과 동일 패턴). 빌드 통과. 커밋: de81d52. 브랜치: feature/fe-rcm-owner-sort → main 머지 완료.
 - **2026-06-15 / Regina + Claude** — Test 모듈 FE 1단계 완료: TestRun 목록 + 추가 (실 API). `frontend/src/features/test/` 신규 (types.ts·testRunsApi.ts·useTestRuns.ts·TestRunSearchBar·TestRunTable·ControlSelector·CreateTestRunDialog). TestPage placeholder 교체. control_code/name 미포함 확인 → controls API로 클라이언트 매핑. 409 에러(중복 평가) 안내 메시지 처리. 빌드 통과. 브랜치: feature/fe-test-list-create.
 - **2026-06-11 / Regina + Claude** — RCM 통제 추가/편집/단건 삭제 실 API 전환. mock 완전 제거. `useCreateControl`·`useUpdateControl`·`useDeleteControl` useMutation 훅 신규. `controlsApi.ts` 확장 (createControl·updateControlById·deleteControl·fetchSubProcesses·fetchRisksBySubProcessId). `BasicInfoTab` risk_id 자동 해결 (sub_process_code→id 조회 → risk assessment_level 매칭). `DeleteConfirmDialog.tsx` 신규 (AlertDialog). `ControlTable` Trash2 아이콘·onDelete 콜백. `ExcelUploadDialog` 안내 박스 노란색→파란색. `types.ts` ControlCreatePayload·ControlUpdatePayload·SubProcessItem·RiskItem 추가. 빌드 통과. 브랜치: feature/fe-rcm-mutations.
 - **2026-06-10 / Regina + Claude** — useControls mock → 백엔드 실API 전환 (TanStack Query). `controlsApi.ts` 신규 (fetchControls, `/api/rcm/controls/search`). `useControls` 재작성: useQuery + placeholderData + staleTime 30s. `addControl`·`updateControl` mock 유지(TODO ICFR_frontend_8). `ControlTable` isLoading·isError·error props 추가. `RcmPage` refetch → ExcelUploadDialog onSuccess 연결. `types.ts` 4개 필드 nullable 수정 (process_code·sub_process_code·risk_level). 빌드 통과. 브랜치: feature/fe-rcm-list-api.
