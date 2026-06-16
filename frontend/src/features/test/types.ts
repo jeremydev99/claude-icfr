@@ -71,6 +71,37 @@ export const RESULT_BADGE_CLASS: Record<TestResult, string> = {
   'n/a': 'bg-gray-100 text-gray-500 border-gray-200',
 }
 
+export interface TestStep {
+  id: string
+  test_run_id: string
+  step_order: number
+  description: string
+  result: 'pass' | 'fail'
+  created_at: string
+}
+
+export interface TestStepCreatePayload {
+  test_run_id: string
+  step_order: number
+  description: string
+  result: 'pass' | 'fail'
+}
+
+export interface TestStepUpdatePayload {
+  description?: string
+  result?: 'pass' | 'fail'
+}
+
+export interface TestRunUpdatePayload {
+  test_date?: string | null
+  result?: TestResult | null
+  sample_size?: number | null
+  method_inspection?: boolean | null
+  method_reperformance?: boolean | null
+  method_observation?: boolean | null
+  method_inquiry?: boolean | null
+}
+
 export interface UserBrief {
   id: string
   display_name: string
