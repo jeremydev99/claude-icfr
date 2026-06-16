@@ -1572,7 +1572,7 @@ cd claude-icfr
 | 담당자/권한 | ✅ | ✅ | ✅ | 🔄 최소CRUD | 🔄 골조 | — | |
 | 메일발송 | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | Report | ✅ | — | — | — | 🔄 골조 | — | Phase 3 |
-| Test | ✅ | — | ✅ | ✅ Phase1 풀확장 | 🔄 목록·추가 (실 API) | ✅ | RAWC+워크플로+이력. FE: TestRunTable·SearchBar·ControlSelector·CreateDialog 완료. control_code/name 클라이언트 매핑 |
+| Test | ✅ | — | ✅ | ✅ Phase1 풀확장 | 🔄 목록·추가·상세패널·워크플로전이·이력타임라인 (실 API) | ✅ | RAWC+워크플로+이력. FE: TestRunTable·SearchBar·ControlSelector·CreateDialog·TestRunDetailSheet 완료. 행 클릭→슬라이드 패널. 워크플로 전이 버튼(planned→approved). 상태 이력 타임라인. (커밋: 061c65e) |
 
 범례: ✅완료 / 🔄진행중 / ⏳대기 / — 시작 전
 
@@ -1629,6 +1629,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-06-16 / Regina + Claude** — Test 모듈 FE 2-A 완료: TestRun 상세 패널 + 워크플로 전이 + 이력 타임라인. `TestRunDetailSheet.tsx` 신규 (Sheet side="right", 기본정보·워크플로·이력 3섹션). `types.ts` UserBrief·TransitionRequest·TestStatusHistory 추가. `testRunsApi.ts` fetchTestRunDetail·fetchTestRunHistory·transitionTestRun 추가. `useTestRuns.ts` useTestRunDetail·useTestRunHistory·useTransitionTestRun 추가. `TestRunTable` 행 클릭 onRowClick 연결. `TestPage` selectedRunId·detailOpen state + DetailSheet 연결. 빌드 통과. 커밋: 061c65e. 브랜치: feature/fe-test-detail-2a → main 머지 완료.
 - **2026-06-16 / Regina + Claude** — RCM 담당자 컬럼 owner_name 정렬 추가. `types.ts` sort_by 유니온에 `'owner_name'` 추가. `ControlTable.tsx` SortCol 타입 확장 + 담당자 헤더 클릭 시 asc/desc 토글 연결 (기존 컬럼과 동일 패턴). 빌드 통과. 커밋: de81d52. 브랜치: feature/fe-rcm-owner-sort → main 머지 완료.
 - **2026-06-15 / Regina + Claude** — Test 모듈 FE 1단계 완료: TestRun 목록 + 추가 (실 API). `frontend/src/features/test/` 신규 (types.ts·testRunsApi.ts·useTestRuns.ts·TestRunSearchBar·TestRunTable·ControlSelector·CreateTestRunDialog). TestPage placeholder 교체. control_code/name 미포함 확인 → controls API로 클라이언트 매핑. 409 에러(중복 평가) 안내 메시지 처리. 빌드 통과. 브랜치: feature/fe-test-list-create.
 - **2026-06-11 / Regina + Claude** — RCM 통제 추가/편집/단건 삭제 실 API 전환. mock 완전 제거. `useCreateControl`·`useUpdateControl`·`useDeleteControl` useMutation 훅 신규. `controlsApi.ts` 확장 (createControl·updateControlById·deleteControl·fetchSubProcesses·fetchRisksBySubProcessId). `BasicInfoTab` risk_id 자동 해결 (sub_process_code→id 조회 → risk assessment_level 매칭). `DeleteConfirmDialog.tsx` 신규 (AlertDialog). `ControlTable` Trash2 아이콘·onDelete 콜백. `ExcelUploadDialog` 안내 박스 노란색→파란색. `types.ts` ControlCreatePayload·ControlUpdatePayload·SubProcessItem·RiskItem 추가. 빌드 통과. 브랜치: feature/fe-rcm-mutations.
