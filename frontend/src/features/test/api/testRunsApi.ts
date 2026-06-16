@@ -4,6 +4,8 @@ import type {
   TestRunCreatePayload,
   TestRunListResponse,
   TestRunSearchParams,
+  TestStatusHistory,
+  TransitionRequest,
 } from '../types'
 
 export async function fetchTestRuns(params: TestRunSearchParams): Promise<TestRunListResponse> {
@@ -20,4 +22,18 @@ export async function fetchTestRuns(params: TestRunSearchParams): Promise<TestRu
 export async function createTestRun(payload: TestRunCreatePayload): Promise<TestRun> {
   const res = await apiClient.post<TestRun>('/api/test/runs', payload)
   return res.data
+}
+
+export async function fetchTestRunDetail(id: string): Promise<TestRun> {
+  const res = await apiClient.get<TestRun>(`/api/test/runs/${id}`)
+  return res.data
+}
+
+export async function fetchTestRunHistory(id: string): Promise<{ items: TestStatusHistory[] }> {
+  const res = await apiClient.get<{ items: TestStatusHistory[] }>(`/api/test/runs/${id}/history`)
+  return res.data
+}
+
+export async function transitionTestRun({ id, payload }: { id: string; payload: TransitionRequest }): Promise<void> {
+  await apiClient.post(`/api/test/runs/${id}/transition`, payload)
 }

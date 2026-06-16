@@ -5,6 +5,7 @@ import { useControls } from '@/features/rcm/api/useControls'
 import TestRunSearchBar from '../components/TestRunSearchBar'
 import TestRunTable from '../components/TestRunTable'
 import CreateTestRunDialog from '../components/CreateTestRunDialog'
+import TestRunDetailSheet from '../components/TestRunDetailSheet'
 import type { TestRunSearchParams } from '../types'
 import type { Control } from '@/features/rcm/types'
 
@@ -19,6 +20,8 @@ const DEFAULT_PARAMS: TestRunSearchParams = {
 export default function TestPage() {
   const [searchParams, setSearchParams] = useState<TestRunSearchParams>(DEFAULT_PARAMS)
   const [createOpen, setCreateOpen] = useState(false)
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
 
   const { data, isLoading, isError, error } = useTestRuns(searchParams)
 
@@ -60,6 +63,7 @@ export default function TestPage() {
         params={searchParams}
         onParamsChange={handleParamsChange}
         onAddClick={() => setCreateOpen(true)}
+        onRowClick={(id) => { setSelectedRunId(id); setDetailOpen(true) }}
         isLoading={isLoading}
         isError={isError}
         error={error}
@@ -73,6 +77,13 @@ export default function TestPage() {
           setCreateOpen(false)
           toast.success('평가가 추가되었습니다')
         }}
+      />
+
+      <TestRunDetailSheet
+        runId={selectedRunId}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        controlMap={controlMap}
       />
     </div>
   )
