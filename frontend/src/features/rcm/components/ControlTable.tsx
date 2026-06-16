@@ -45,7 +45,7 @@ const RISK_BADGE_VARIANT: Record<string, string> = {
   LR: 'bg-green-100 text-green-700 border-green-200',
 }
 
-type SortCol = 'code' | 'name' | 'frequency'
+type SortCol = 'code' | 'name' | 'frequency' | 'owner_name'
 
 function SortIcon({ col, params }: { col: SortCol; params: ControlSearchParams }) {
   if (params.sort_by !== col) return <ChevronsUpDown className="ml-1 h-3 w-3 opacity-40" />
@@ -136,7 +136,14 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
                 </span>
               </TableHead>
               <TableHead className="w-36">어서션</TableHead>
-              <TableHead className="w-24">담당자</TableHead>
+              <TableHead
+                className="w-24 cursor-pointer select-none"
+                onClick={() => toggleSort('owner_name')}
+              >
+                <span className="flex items-center">
+                  담당자 <SortIcon col="owner_name" params={params} />
+                </span>
+              </TableHead>
               <TableHead className="w-20"></TableHead>
             </TableRow>
           </TableHeader>
