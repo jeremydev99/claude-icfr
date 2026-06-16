@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { CheckCircle2, Circle, Loader2, Pencil, Trash2 } from 'lucide-react'
 import {
   Sheet,
@@ -108,6 +108,7 @@ export default function TestRunDetailSheet({ runId, open, onOpenChange, controlM
   const [editingStepId, setEditingStepId] = useState<string | null>(null)
   const [stepForm, setStepForm] = useState({ description: '', result: 'pass' as 'pass' | 'fail' })
   const [deleteStepId, setDeleteStepId] = useState<string | null>(null)
+  const composingRef = useRef(false)
 
   const ctrl = run ? controlMap?.[run.control_id] : undefined
   const nextTrans = run ? NEXT_TRANSITION[run.status] : null
@@ -174,7 +175,16 @@ export default function TestRunDetailSheet({ runId, open, onOpenChange, controlM
       <Input
         placeholder="단계 설명을 입력하세요"
         value={stepForm.description}
-        onChange={(e) => setStepForm((f) => ({ ...f, description: e.target.value }))}
+        onChange={(e) => {
+          if (!composingRef.current) {
+            setStepForm((f) => ({ ...f, description: e.target.value }))
+          }
+        }}
+        onCompositionStart={() => { composingRef.current = true }}
+        onCompositionEnd={(e) => {
+          composingRef.current = false
+          setStepForm((f) => ({ ...f, description: (e.currentTarget as HTMLInputElement).value }))
+        }}
         autoFocus
       />
       <div className="flex items-center gap-2">
