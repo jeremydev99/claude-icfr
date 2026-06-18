@@ -1,11 +1,13 @@
 import hashlib
+from urllib.parse import quote
 from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.deps import CurrentUser, get_db
-from app.minio_client import presigned_download_url, remove_object_safe, upload_object
+from app.minio_client import get_object_stream, remove_object_safe, upload_object
 from app.models.evidence import EvidenceFile, EvidenceLink
 from app.schemas.evidence import (
     EvidenceFileRead,
@@ -94,14 +96,26 @@ def get_file(file_id: UUID, user: CurrentUser = None, db: Session = Depends(get_
 
 
 @router.get("/files/{file_id}/download")
-def download_file(file_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+def download_file(file_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)):
     obj = db.query(EvidenceFile).filter(EvidenceFile.id == file_id, EvidenceFile.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="EvidenceFile not found")
     if not obj.minio_key:
-        raise HTTPException(status_code=409, detail="파일 본체가 없습니다 (레거시 메타 전용 행)")
-    url = presigned_download_url(obj.minio_key, expires_seconds=900)
-    return {"url": url, "expires_in": 900}
+        raise HTTPException(status_code=409, detail="파일 본체 없음 (레거시 메타)")
+
+    response = get_object_stream(obj.minio_key)
+
+    def iterfile():
+        try:
+            for chunk in response.stream(32 * 1024):
+                yield chunk
+        finally:
+            response.close()
+            response.release_conn()
+
+    encoded = quote(obj.filename)
+    headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{encoded}"}
+    return StreamingResponse(iterfile(), media_type=obj.mime_type, headers=headers)
 
 
 @router.patch("/files/{file_id}", response_model=EvidenceFileRead)
