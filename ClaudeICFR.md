@@ -1568,7 +1568,7 @@ cd claude-icfr
 | EUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | 개선계획 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + DesignAssessment + 4단계워크플로 + 이력 | 🔄 골조 | ✅ 75개 | DesignAssessment·RemediationStatusHistory 신규. ADR-0020 준수 |
-| 증빙 관리 | ✅ | ✅ | ✅ | 🔄 최소CRUD | 🔄 골조 | — | |
+| 증빙 관리 | ✅ | ✅ | ✅ | ✅ MinIO 실연동 + SHA256 컬럼 | ✅ 업로드·목록·다운로드(blob)·삭제 (d70c849) | — | evidenceApi.ts·useEvidence.ts·EvidenceTable·EvidenceUploadDialog·types 신규. 50MB 검증. 브랜치: feature/fe-evidence-module → main 머지 완료 |
 | 담당자/권한 | ✅ | ✅ | ✅ | 🔄 최소CRUD | 🔄 골조 | — | |
 | 메일발송 | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | Report | ✅ | — | — | — | 🔄 골조 | — | Phase 3 |
@@ -1629,6 +1629,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-06-18 / Regina + Claude** — Evidence 모듈 FE 완료: 증빙 파일 업로드·목록·다운로드(blob 스트림)·삭제. `evidenceApi.ts` 신규 (uploadEvidenceFile·fetchEvidenceList·downloadEvidenceFile·deleteEvidenceFile). `useEvidence.ts` 신규 (useEvidenceList·useUploadEvidenceFile·useDeleteEvidenceFile). `EvidenceTable.tsx` 신규 (목록·다운로드·삭제). `EvidenceUploadDialog.tsx` 신규 (50MB 검증·허용 확장자 검증). `types.ts` MAX_FILE_SIZE_BYTES·ALLOWED_MIME_TYPES·ALLOWED_EXTENSIONS 상수. BE: MinIO 실연동 + SHA256 컬럼 마이그레이션 반영. 빌드 통과. 커밋: d70c849. 브랜치: feature/fe-evidence-module → main 머지 완료.
 - **2026-06-16 / Regina + Claude** — Test 모듈 FE 2-B 완료: TestStep CRUD + TestRun 편집. `types.ts` TestStep·TestStepCreatePayload·TestStepUpdatePayload·TestRunUpdatePayload 추가. `testRunsApi.ts` updateTestRun·fetchTestSteps·createTestStep·updateTestStep·deleteTestStep 추가. `useTestRuns.ts` useUpdateTestRun·useTestSteps·useCreateTestStep·useUpdateTestStep·useDeleteTestStep 추가. `TestRunDetailSheet.tsx` 평가단계 섹션 신설(인라인 추가·편집·삭제·approved 잠금·AlertDialog 삭제확인) + 편집 버튼. `TestRunEditDialog.tsx` 신규(평가일·결과·샘플수·평가방법 편집). `StepInlineForm` 외부 독립 컴포넌트 분리 + onChange+onBlur 단순화. 빌드 통과. 커밋: 70ca2d0. 브랜치: feature/fe-test-step-2b → main 머지 완료.
 - **2026-06-16 / Regina + Claude** — Test 모듈 FE 2-A 완료: TestRun 상세 패널 + 워크플로 전이 + 이력 타임라인. `TestRunDetailSheet.tsx` 신규 (Sheet side="right", 기본정보·워크플로·이력 3섹션). `types.ts` UserBrief·TransitionRequest·TestStatusHistory 추가. `testRunsApi.ts` fetchTestRunDetail·fetchTestRunHistory·transitionTestRun 추가. `useTestRuns.ts` useTestRunDetail·useTestRunHistory·useTransitionTestRun 추가. `TestRunTable` 행 클릭 onRowClick 연결. `TestPage` selectedRunId·detailOpen state + DetailSheet 연결. 빌드 통과. 커밋: 061c65e. 브랜치: feature/fe-test-detail-2a → main 머지 완료.
 - **2026-06-16 / Regina + Claude** — RCM 담당자 컬럼 owner_name 정렬 추가. `types.ts` sort_by 유니온에 `'owner_name'` 추가. `ControlTable.tsx` SortCol 타입 확장 + 담당자 헤더 클릭 시 asc/desc 토글 연결 (기존 컬럼과 동일 패턴). 빌드 통과. 커밋: de81d52. 브랜치: feature/fe-rcm-owner-sort → main 머지 완료.
