@@ -116,6 +116,69 @@ export interface RiskItem {
   sub_process_id: string
 }
 
+// ── RAWC (ControlRiskAssessment) ──────────────────────────
+
+export type PriorYearEffectiveness = 'Effective' | 'Not_Effective' | 'N/A'
+export type OverallAssessment = 'Not_Higher' | 'Higher'
+
+export interface ControlRiskAssessment {
+  id: string
+  control_id: string
+  fiscal_year: number
+  frequency_score: number
+  nature_score: number
+  precision_score: number
+  dependency_score: number
+  automation_score: number
+  authority_score: number
+  review_score: number
+  prior_year_effectiveness: PriorYearEffectiveness
+  overall_assessment: OverallAssessment
+  assessor_id: string | null
+  assessment_date: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface RawcCreatePayload {
+  control_id: string
+  fiscal_year: number
+  frequency_score?: number
+  nature_score?: number
+  precision_score?: number
+  dependency_score?: number
+  automation_score?: number
+  authority_score?: number
+  review_score?: number
+  prior_year_effectiveness?: PriorYearEffectiveness
+  overall_assessment?: OverallAssessment
+  assessor_id?: string | null
+  assessment_date?: string | null
+}
+
+export type RawcUpdatePayload = Partial<Omit<RawcCreatePayload, 'control_id' | 'fiscal_year'>>
+
+export const RAWC_SCORE_FIELDS = [
+  { key: 'frequency_score', label: '빈도' },
+  { key: 'nature_score', label: '성격' },
+  { key: 'precision_score', label: '정밀도' },
+  { key: 'dependency_score', label: '의존성' },
+  { key: 'automation_score', label: '자동화' },
+  { key: 'authority_score', label: '권한' },
+  { key: 'review_score', label: '검토' },
+] as const
+
+export const PRIOR_YEAR_LABELS: Record<PriorYearEffectiveness, string> = {
+  'Effective': '유효',
+  'Not_Effective': '비유효',
+  'N/A': '해당없음',
+}
+
+export const OVERALL_ASSESSMENT_LABELS: Record<OverallAssessment, string> = {
+  'Not_Higher': '높지 않음',
+  'Higher': '높음',
+}
+
 // POST /controls 요청 페이로드 (서버 생성 필드 + JOIN 표시 필드 제외)
 export type ControlCreatePayload = Omit<Control,
   | 'id' | 'created_at' | 'updated_at'

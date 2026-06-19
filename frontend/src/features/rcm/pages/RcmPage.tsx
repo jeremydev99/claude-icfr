@@ -40,6 +40,7 @@ export default function RcmPage() {
   const [deleteTarget, setDeleteTarget] = useState<Control | null>(null)
 
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [fiscalYear] = useState(() => new Date().getFullYear())
 
   const { data, isLoading, isError, error, refetch } = useControls(params)
   const deleteMutation = useDeleteControl()
@@ -117,6 +118,7 @@ export default function RcmPage() {
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         onEditClick={handleEditClick}
+        fiscalYear={fiscalYear}
       />
 
       <ControlFormDialog
