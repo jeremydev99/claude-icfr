@@ -1,5 +1,4 @@
 import io
-from datetime import timedelta
 from minio import Minio
 from minio.error import S3Error
 
@@ -30,17 +29,9 @@ def upload_object(object_key: str, data_bytes: bytes, content_type: str) -> None
     )
 
 
-def presigned_download_url(object_key: str, expires_seconds: int = 900) -> str:
-    url = _client.presigned_get_object(
-        settings.minio_bucket,
-        object_key,
-        expires=timedelta(seconds=expires_seconds),
-    )
-    # 내부 endpoint(minio:9000)를 공개 endpoint로 치환
-    internal = f"http://{settings.minio_endpoint}"
-    if url.startswith(internal):
-        url = settings.minio_public_endpoint + url[len(internal):]
-    return url
+def get_object_stream(object_key: str):
+    """MinIO 객체 응답 반환. 호출측에서 stream 후 close/release_conn 책임."""
+    return _client.get_object(settings.minio_bucket, object_key)
 
 
 def remove_object_safe(object_key: str) -> None:
