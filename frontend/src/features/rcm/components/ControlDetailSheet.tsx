@@ -16,12 +16,14 @@ import {
   PD_LABELS,
   RISK_LEVEL_LABELS,
 } from '../types'
+import RawcSection from './RawcSection'
 
 interface Props {
   control: Control | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onEditClick?: (control: Control) => void
+  fiscalYear: number
 }
 
 const RISK_BADGE_CLASS: Record<string, string> = {
@@ -53,7 +55,7 @@ const ACTIVITIES: { key: keyof Control; label: string }[] = [
   { key: 'activity_supervision', label: '감독' },
 ]
 
-export default function ControlDetailSheet({ control, open, onOpenChange, onEditClick }: Props) {
+export default function ControlDetailSheet({ control, open, onOpenChange, onEditClick, fiscalYear }: Props) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="sm:max-w-xl overflow-y-auto">
@@ -162,6 +164,10 @@ export default function ControlDetailSheet({ control, open, onOpenChange, onEdit
               ) : (
                 <p className="text-sm text-muted-foreground py-2">정보 없음</p>
               )}
+
+              <SectionTitle>위험평가 (RAWC) — {fiscalYear}년</SectionTitle>
+              <Separator />
+              <RawcSection controlId={control.id} fiscalYear={fiscalYear} />
             </div>
           </>
         )}
