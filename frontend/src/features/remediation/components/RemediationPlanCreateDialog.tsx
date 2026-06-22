@@ -20,7 +20,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useCreatePlan } from '../api/useRemediationPlans'
+import { useDeficiencies } from '../api/useDeficiencies'
 import type { RemediationPriority } from '../types'
+import { useUsers } from '@/features/users/api/useUsers'
 
 interface Props {
   open: boolean
@@ -56,6 +58,13 @@ export default function RemediationPlanCreateDialog({ open, onOpenChange, onSucc
   const [form, setForm] = useState(defaultForm)
 
   const createMutation = useCreatePlan()
+  const { data: usersData } = useUsers({ limit: 100 })
+  const { data: deficienciesData } = useDeficiencies({ limit: 100 })
+
+  const activeUsers = (usersData?.items ?? []).filter((u) => u.is_active)
+  const openDeficiencies = (deficienciesData?.items ?? []).filter(
+    (d) => d.status === 'open' || d.status === 'in_progress'
+  )
 
   const handleOpenChange = (next: boolean) => {
     if (!next) setForm(defaultForm)
@@ -63,8 +72,8 @@ export default function RemediationPlanCreateDialog({ open, onOpenChange, onSucc
   }
 
   const handleSubmit = async () => {
-    if (!form.deficiency_id.trim()) { toast.error('미비점 ID를 입력하세요'); return }
-    if (!form.owner_id.trim()) { toast.error('담당자 ID를 입력하세요'); return }
+    if (!form.deficiency_id.trim()) { toast.error('미비점을 선택하세요'); return }
+    if (!form.owner_id.trim()) { toast.error('담당자를 선택하세요'); return }
     if (!form.target_date) { toast.error('목표일을 입력하세요'); return }
     if (!form.action_plan.trim()) { toast.error('개선 조치 내용을 입력하세요'); return }
 
@@ -84,34 +93,66 @@ export default function RemediationPlanCreateDialog({ open, onOpenChange, onSucc
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>개선계획 등록</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label htmlFor="deficiency_id">
-              미비점 ID <span className="text-destructive">*</span>
+            <Label>
+              미비점 <span className="text-destructive">*</span>
             </Label>
-            <Input
-              id="deficiency_id"
-              placeholder="UUID"
+            <Select
               value={form.deficiency_id}
-              onChange={(e) => setForm((f) => ({ ...f, deficiency_id: e.target.value }))}
-            />
+              onValueChange={(v) => setForm((f) => ({ ...f, deficiency_id: v }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="미비점 선택..." />
+              </SelectTrigger>
+              <SelectContent>
+                {openDeficiencies.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">
+                    미해결·처리중 미비점이 없습니다
+                  </div>
+                )}
+                {openDeficiencies.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    <span className="font-medium">{d.code}</span>
+                    <span className="ml-1 text-muted-foreground">
+                      — {d.description.length > 40 ? d.description.slice(0, 40) + '…' : d.description}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="owner_id">
-              담당자 ID <span className="text-destructive">*</span>
+            <Label>
+              담당자 <span className="text-destructive">*</span>
             </Label>
-            <Input
-              id="owner_id"
-              placeholder="UUID"
+            <Select
               value={form.owner_id}
-              onChange={(e) => setForm((f) => ({ ...f, owner_id: e.target.value }))}
-            />
+              onValueChange={(v) => setForm((f) => ({ ...f, owner_id: v }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="담당자 선택..." />
+              </SelectTrigger>
+              <SelectContent>
+                {activeUsers.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">
+                    활성 사용자가 없습니다
+                  </div>
+                )}
+                {activeUsers.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.display_name}
+                    <span className="ml-1 text-muted-foreground text-xs">({u.email})</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

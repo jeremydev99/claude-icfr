@@ -1,9 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { isAxiosError } from 'axios'
 import { toast } from 'sonner'
+import { ChevronsUpDown, X } from 'lucide-react'
+import ControlSelector from '@/features/test/components/ControlSelector'
+import type { Control } from '@/features/rcm/types'
 import {
   Dialog,
   DialogContent,
@@ -25,13 +28,17 @@ import {
 import { useCreateDeficiency, useUpdateDeficiency } from '../api/useDeficiencies'
 import type { Deficiency } from '../types'
 
+
 const schema = z.object({
   code: z.string().min(1).max(20),
   severity: z.enum(['low', 'medium', 'high']),
   description: z.string().min(1),
   status: z.enum(['open', 'in_progress', 'closed']).default('open'),
   fiscal_year: z.number().int().min(2000).max(2100).default(new Date().getFullYear()),
-  control_id: z.string().nullable().optional(),
+  control_id: z.preprocess(
+    (v) => (v === '' ? null : v),
+    z.string().nullable().optional()
+  ),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -60,6 +67,8 @@ function extractErrorMessage(err: unknown): string {
 
 export default function DeficiencyFormDialog({ open, onOpenChange, editTarget }: Props) {
   const isEdit = !!editTarget
+  const [controlSelectorOpen, setControlSelectorOpen] = useState(false)
+  const [selectedControl, setSelectedControl] = useState<Control | null>(null)
 
   const {
     register,
@@ -90,6 +99,7 @@ export default function DeficiencyFormDialog({ open, onOpenChange, editTarget }:
         fiscal_year: editTarget.fiscal_year,
         control_id: editTarget.control_id ?? null,
       })
+      setSelectedControl(null)
     } else if (open && !editTarget) {
       reset({
         code: '',
@@ -99,6 +109,7 @@ export default function DeficiencyFormDialog({ open, onOpenChange, editTarget }:
         fiscal_year: new Date().getFullYear(),
         control_id: null,
       })
+      setSelectedControl(null)
     }
   }, [open, editTarget, reset])
 
@@ -123,10 +134,12 @@ export default function DeficiencyFormDialog({ open, onOpenChange, editTarget }:
 
   const severity = watch('severity')
   const status = watch('status')
+  const controlId = watch('control_id')
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-3xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>{isEdit ? '미비점 편집' : '미비점 등록'}</DialogTitle>
         </DialogHeader>
@@ -192,13 +205,37 @@ export default function DeficiencyFormDialog({ open, onOpenChange, editTarget }:
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="control_id">통제 ID (선택)</Label>
-            <Input
-              id="control_id"
-              placeholder="UUID"
-              {...register('control_id')}
-              onChange={(e) => setValue('control_id', e.target.value || null)}
-            />
+            <Label>통제 (선택)</Label>
+            <div className="flex min-w-0 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="min-w-0 flex-1 justify-between font-normal"
+                onClick={() => setControlSelectorOpen(true)}
+              >
+                <span className="flex-1 min-w-0 truncate text-left">
+                  {selectedControl
+                    ? `${selectedControl.code} · ${selectedControl.name}`
+                    : controlId
+                    ? `ID: ${controlId.slice(0, 8)}…`
+                    : '통제 선택...'}
+                </span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+              {controlId && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setValue('control_id', null)
+                    setSelectedControl(null)
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
 
           <DialogFooter>
@@ -212,5 +249,15 @@ export default function DeficiencyFormDialog({ open, onOpenChange, editTarget }:
         </form>
       </DialogContent>
     </Dialog>
+
+    <ControlSelector
+      open={controlSelectorOpen}
+      onOpenChange={setControlSelectorOpen}
+      onSelect={(control) => {
+        setValue('control_id', control.id)
+        setSelectedControl(control)
+      }}
+    />
+    </>
   )
 }
