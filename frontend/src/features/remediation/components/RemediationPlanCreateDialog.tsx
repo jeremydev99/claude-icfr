@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { isAxiosError } from 'axios'
 import { toast } from 'sonner'
 import {
@@ -67,9 +67,14 @@ export default function RemediationPlanCreateDialog({ open, onOpenChange, onSucc
     (d) => d.status === 'open' || d.status === 'in_progress'
   )
 
+  useEffect(() => {
+    if (open) {
+      setForm({ ...defaultForm, deficiency_id: prefilledDeficiencyId ?? '' })
+    }
+  }, [open, prefilledDeficiencyId])
+
   const handleOpenChange = (next: boolean) => {
     if (!next) setForm(defaultForm)
-    else if (prefilledDeficiencyId) setForm((f) => ({ ...f, deficiency_id: prefilledDeficiencyId }))
     onOpenChange(next)
   }
 
