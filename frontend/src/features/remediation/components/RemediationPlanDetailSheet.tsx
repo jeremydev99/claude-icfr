@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { usePlanDetail, useTransitionPlan, usePlanHistory } from '../api/useRemediationPlans'
+import { useDeficiencies } from '../api/useDeficiencies'
+import { useUsers } from '@/features/users/api/useUsers'
 import {
   REMEDIATION_STATUS_LABELS,
   REMEDIATION_STATUS_BADGE_CLASS,
@@ -51,6 +53,22 @@ export default function RemediationPlanDetailSheet({ planId, open, onOpenChange 
   const { data: plan, isLoading } = usePlanDetail(planId)
   const { data: historyData } = usePlanHistory(planId)
   const transition = useTransitionPlan()
+
+  const { data: deficienciesData } = useDeficiencies({ limit: 200 })
+  const { data: usersData } = useUsers({ limit: 200 })
+
+  const deficiencyMap = Object.fromEntries(
+    (deficienciesData?.items ?? []).map((d) => [d.id, d])
+  )
+  const userMap = Object.fromEntries(
+    (usersData?.items ?? []).map((u) => [u.id, u])
+  )
+
+  const deficiencyLabel = (id: string) => deficiencyMap[id]?.code ?? id.slice(0, 8) + '...'
+  const ownerLabel = (id: string) => {
+    const u = userMap[id]
+    return u ? u.display_name : id.slice(0, 8) + '...'
+  }
 
   const nextTrans = plan ? NEXT_TRANSITION[plan.status] : null
 
@@ -95,12 +113,10 @@ export default function RemediationPlanDetailSheet({ planId, open, onOpenChange 
               {/* 섹션 1 — 기본 정보 */}
               <SectionTitle>기본 정보</SectionTitle>
               <Separator />
-              <InfoRow label="미비점 ID" value={
-                <span className="font-mono text-xs">{plan.deficiency_id.slice(0, 8)}...</span>
+              <InfoRow label="미비점" value={
+                <span className="font-mono text-sm">{deficiencyLabel(plan.deficiency_id)}</span>
               } />
-              <InfoRow label="담당자 ID" value={
-                <span className="font-mono text-xs">{plan.owner_id.slice(0, 8)}...</span>
-              } />
+              <InfoRow label="담당자" value={ownerLabel(plan.owner_id)} />
               <InfoRow label="목표일" value={plan.target_date?.slice(0, 10)} />
               <InfoRow label="개선 조치" value={
                 <span className="whitespace-pre-wrap">{plan.action_plan}</span>
@@ -158,7 +174,7 @@ export default function RemediationPlanDetailSheet({ planId, open, onOpenChange 
                           {REMEDIATION_STATUS_LABELS[h.to_status]}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {h.changed_by_id.slice(0, 8)}... · {h.changed_at.slice(0, 10)}
+                          {ownerLabel(h.changed_by_id)} · {h.changed_at.slice(0, 10)}
                         </div>
                         {h.reason && (
                           <div className="text-xs text-muted-foreground mt-0.5">{h.reason}</div>

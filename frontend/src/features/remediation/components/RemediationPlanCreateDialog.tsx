@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { isAxiosError } from 'axios'
 import { toast } from 'sonner'
 import {
@@ -28,6 +28,7 @@ interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
+  prefilledDeficiencyId?: string
 }
 
 function extractErrorMessage(err: unknown): string {
@@ -54,7 +55,7 @@ const defaultForm = {
   priority: 'Medium' as RemediationPriority,
 }
 
-export default function RemediationPlanCreateDialog({ open, onOpenChange, onSuccess }: Props) {
+export default function RemediationPlanCreateDialog({ open, onOpenChange, onSuccess, prefilledDeficiencyId }: Props) {
   const [form, setForm] = useState(defaultForm)
 
   const createMutation = useCreatePlan()
@@ -65,6 +66,12 @@ export default function RemediationPlanCreateDialog({ open, onOpenChange, onSucc
   const openDeficiencies = (deficienciesData?.items ?? []).filter(
     (d) => d.status === 'open' || d.status === 'in_progress'
   )
+
+  useEffect(() => {
+    if (open) {
+      setForm({ ...defaultForm, deficiency_id: prefilledDeficiencyId ?? '' })
+    }
+  }, [open, prefilledDeficiencyId])
 
   const handleOpenChange = (next: boolean) => {
     if (!next) setForm(defaultForm)
@@ -106,6 +113,7 @@ export default function RemediationPlanCreateDialog({ open, onOpenChange, onSucc
             <Select
               value={form.deficiency_id}
               onValueChange={(v) => setForm((f) => ({ ...f, deficiency_id: v }))}
+              disabled={!!prefilledDeficiencyId}
             >
               <SelectTrigger>
                 <SelectValue placeholder="미비점 선택..." />
@@ -148,7 +156,6 @@ export default function RemediationPlanCreateDialog({ open, onOpenChange, onSucc
                 {activeUsers.map((u) => (
                   <SelectItem key={u.id} value={u.id}>
                     {u.display_name}
-                    <span className="ml-1 text-muted-foreground text-xs">({u.email})</span>
                   </SelectItem>
                 ))}
               </SelectContent>
