@@ -15,21 +15,17 @@ import { useDeficiencies, useDeleteDeficiency } from '../api/useDeficiencies'
 import { usePlans } from '../api/useRemediationPlans'
 import DeficiencyTable from '../components/DeficiencyTable'
 import DeficiencyFormDialog from '../components/DeficiencyFormDialog'
-import RemediationPlanTable from '../components/RemediationPlanTable'
 import RemediationPlanCreateDialog from '../components/RemediationPlanCreateDialog'
 import RemediationPlanDetailSheet from '../components/RemediationPlanDetailSheet'
 import type { Deficiency } from '../types'
 
-type ActiveTab = 'deficiency' | 'plan'
-
 export default function RemediationPage() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('deficiency')
-
-  // ── Deficiency 상태 ──────────────────────────────────────
   const { data: deficiencyData, isLoading: defLoading, isError: defError, error: defErr } =
     useDeficiencies({ skip: 0, limit: 100 })
+  const { data: planData } = usePlans({ skip: 0, limit: 1000 })
   const deleteDeficiency = useDeleteDeficiency()
 
+  // ── 미비점 상태 ──────────────────────────────────────────
   const [defFormOpen, setDefFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Deficiency | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Deficiency | null>(null)
@@ -51,13 +47,22 @@ export default function RemediationPage() {
     }
   }
 
-  // ── RemediationPlan 상태 ─────────────────────────────────
-  const { data: planData, isLoading: planLoading, isError: planError, error: planErr } =
-    usePlans({ skip: 0, limit: 100 })
-
-  const [planCreateOpen, setPlanCreateOpen] = useState(false)
+  // ── 개선계획 상태 ────────────────────────────────────────
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const [planDetailOpen, setPlanDetailOpen] = useState(false)
+
+  const [planCreateOpen, setPlanCreateOpen] = useState(false)
+  const [prefilledDeficiencyId, setPrefilledDeficiencyId] = useState<string | undefined>()
+
+  const handlePlanClick = (planId: string) => {
+    setSelectedPlanId(planId)
+    setPlanDetailOpen(true)
+  }
+
+  const handleCreatePlanClick = (deficiencyId: string) => {
+    setPrefilledDeficiencyId(deficiencyId)
+    setPlanCreateOpen(true)
+  }
 
   return (
     <div className="p-6 space-y-4">
@@ -68,65 +73,27 @@ export default function RemediationPage() {
         </p>
       </div>
 
-      {/* 탭 토글 */}
-      <div className="flex items-center gap-1 border rounded-md p-1 w-fit">
+      <div className="flex justify-end">
         <Button
-          variant={activeTab === 'deficiency' ? 'default' : 'ghost'}
           size="sm"
-          onClick={() => setActiveTab('deficiency')}
+          onClick={() => { setEditTarget(null); setDefFormOpen(true) }}
         >
-          미비점
-        </Button>
-        <Button
-          variant={activeTab === 'plan' ? 'default' : 'ghost'}
-          size="sm"
-          onClick={() => setActiveTab('plan')}
-        >
-          개선계획
+          + 미비점 등록
         </Button>
       </div>
 
-      {/* 미비점 뷰 */}
-      {activeTab === 'deficiency' && (
-        <div className="space-y-3">
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              onClick={() => { setEditTarget(null); setDefFormOpen(true) }}
-            >
-              + 미비점 등록
-            </Button>
-          </div>
-          <DeficiencyTable
-            data={deficiencyData}
-            onAddClick={() => { setEditTarget(null); setDefFormOpen(true) }}
-            onEditClick={handleEditClick}
-            onDeleteClick={(item) => setDeleteTarget(item)}
-            isLoading={defLoading}
-            isError={defError}
-            error={defErr}
-          />
-        </div>
-      )}
-
-      {/* 개선계획 뷰 */}
-      {activeTab === 'plan' && (
-        <div className="space-y-3">
-          <div className="flex justify-end">
-            <Button size="sm" onClick={() => setPlanCreateOpen(true)}>
-              + 개선계획 등록
-            </Button>
-          </div>
-          <RemediationPlanTable
-            data={planData}
-            onAddClick={() => setPlanCreateOpen(true)}
-            onRowClick={(id) => { setSelectedPlanId(id); setPlanDetailOpen(true) }}
-            isLoading={planLoading}
-            isError={planError}
-            error={planErr}
-          />
-        </div>
-      )}
+      <DeficiencyTable
+        data={deficiencyData}
+        plans={planData?.items ?? []}
+        onAddClick={() => { setEditTarget(null); setDefFormOpen(true) }}
+        onEditClick={handleEditClick}
+        onDeleteClick={(item) => setDeleteTarget(item)}
+        onPlanClick={handlePlanClick}
+        onCreatePlanClick={handleCreatePlanClick}
+        isLoading={defLoading}
+        isError={defError}
+        error={defErr}
+      />
 
       {/* Dialogs / Sheets */}
       <DeficiencyFormDialog
@@ -156,9 +123,11 @@ export default function RemediationPage() {
 
       <RemediationPlanCreateDialog
         open={planCreateOpen}
-        onOpenChange={setPlanCreateOpen}
+        onOpenChange={(o) => { setPlanCreateOpen(o); if (!o) setPrefilledDeficiencyId(undefined) }}
+        prefilledDeficiencyId={prefilledDeficiencyId}
         onSuccess={() => {
           setPlanCreateOpen(false)
+          setPrefilledDeficiencyId(undefined)
           toast.success('개선계획이 등록되었습니다')
         }}
       />

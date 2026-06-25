@@ -9,19 +9,24 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import type { Deficiency, DeficiencyListResponse } from '../types'
+import type { Deficiency, DeficiencyListResponse, RemediationPlan } from '../types'
 import {
   SEVERITY_LABELS,
   SEVERITY_BADGE_CLASS,
   DEFICIENCY_STATUS_LABELS,
   DEFICIENCY_STATUS_BADGE_CLASS,
+  REMEDIATION_STATUS_LABELS,
+  REMEDIATION_STATUS_BADGE_CLASS,
 } from '../types'
 
 interface Props {
   data: DeficiencyListResponse | undefined
+  plans: RemediationPlan[]
   onAddClick: () => void
   onEditClick: (item: Deficiency) => void
   onDeleteClick: (item: Deficiency) => void
+  onPlanClick: (planId: string) => void
+  onCreatePlanClick: (deficiencyId: string) => void
   isLoading: boolean
   isError: boolean
   error: Error | null | unknown
@@ -29,13 +34,17 @@ interface Props {
 
 export default function DeficiencyTable({
   data,
+  plans,
   onAddClick,
   onEditClick,
   onDeleteClick,
+  onPlanClick,
+  onCreatePlanClick,
   isLoading,
   isError,
   error,
 }: Props) {
+  const planMap = Object.fromEntries(plans.map((p) => [p.deficiency_id, p]))
   const { items = [], total = 0 } = data ?? {}
 
   if (isLoading) {
@@ -82,6 +91,7 @@ export default function DeficiencyTable({
               <TableHead>설명</TableHead>
               <TableHead>상태</TableHead>
               <TableHead>회계연도</TableHead>
+              <TableHead>개선계획</TableHead>
               <TableHead className="w-20"></TableHead>
             </TableRow>
           </TableHeader>
@@ -101,6 +111,26 @@ export default function DeficiencyTable({
                   </Badge>
                 </TableCell>
                 <TableCell>{item.fiscal_year}</TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  {planMap[item.id] ? (
+                    <Badge
+                      variant="outline"
+                      className={`cursor-pointer ${REMEDIATION_STATUS_BADGE_CLASS[planMap[item.id].status]}`}
+                      onClick={() => onPlanClick(planMap[item.id].id)}
+                    >
+                      {REMEDIATION_STATUS_LABELS[planMap[item.id].status]}
+                    </Badge>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs px-2 text-muted-foreground hover:text-foreground"
+                      onClick={() => onCreatePlanClick(item.id)}
+                    >
+                      + 등록
+                    </Button>
+                  )}
+                </TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     <Button

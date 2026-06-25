@@ -28,6 +28,7 @@ interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
+  prefilledDeficiencyId?: string
 }
 
 function extractErrorMessage(err: unknown): string {
@@ -54,7 +55,7 @@ const defaultForm = {
   priority: 'Medium' as RemediationPriority,
 }
 
-export default function RemediationPlanCreateDialog({ open, onOpenChange, onSuccess }: Props) {
+export default function RemediationPlanCreateDialog({ open, onOpenChange, onSuccess, prefilledDeficiencyId }: Props) {
   const [form, setForm] = useState(defaultForm)
 
   const createMutation = useCreatePlan()
@@ -68,6 +69,7 @@ export default function RemediationPlanCreateDialog({ open, onOpenChange, onSucc
 
   const handleOpenChange = (next: boolean) => {
     if (!next) setForm(defaultForm)
+    else if (prefilledDeficiencyId) setForm((f) => ({ ...f, deficiency_id: prefilledDeficiencyId }))
     onOpenChange(next)
   }
 
@@ -106,6 +108,7 @@ export default function RemediationPlanCreateDialog({ open, onOpenChange, onSucc
             <Select
               value={form.deficiency_id}
               onValueChange={(v) => setForm((f) => ({ ...f, deficiency_id: v }))}
+              disabled={!!prefilledDeficiencyId}
             >
               <SelectTrigger>
                 <SelectValue placeholder="미비점 선택..." />
