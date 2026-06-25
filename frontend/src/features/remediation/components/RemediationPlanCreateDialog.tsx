@@ -156,7 +156,6 @@ export default function RemediationPlanCreateDialog({ open, onOpenChange, onSucc
                 {activeUsers.map((u) => (
                   <SelectItem key={u.id} value={u.id}>
                     {u.display_name}
-                    <span className="ml-1 text-muted-foreground text-xs">({u.email})</span>
                   </SelectItem>
                 ))}
               </SelectContent>
