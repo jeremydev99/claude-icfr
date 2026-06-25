@@ -1553,7 +1553,7 @@ cd claude-icfr
 | 7 | 로컬 환경 셋업 | ✅ 완료 | 2026-05-11 |
 | 8 | Claude Code 동작 확인 | ✅ 완료 | 2026-05-11 |
 | 9 | Phase 0 — Walking Skeleton 실행 | ✅ 완료 (작업1~6 모두 완료) | 2026-05-21 |
-| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (작업1 RCM + 작업3 Test + 작업4 Remediation 완료) | — |
+| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (RCM·Test·Remediation·증빙·담당자/권한 FE 완료. BE 사용자CRUD·비밀번호변경 미완) | — |
 | 11 | Phase 1.5 — A안 완성 | ⏳ 대기 | — |
 | 12 | Phase 2 — B안 완성 | ⏳ 대기 | — |
 | 13 | Phase 3 — C안 완성 | ⏳ 대기 | — |
@@ -1569,7 +1569,7 @@ cd claude-icfr
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | 개선계획 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + DesignAssessment + 4단계워크플로 + 이력 | ✅ 미비점 목록·등록·편집·삭제(클라이언트 가드) + 개선계획 목록·등록·상세·워크플로 전이(4단계)·이력 타임라인 + 통제/담당자 드롭다운 연동 (9436169) | ✅ 75개 | DesignAssessment·RemediationStatusHistory 신규. ADR-0020 준수. users fetchUsers/useUsers 신규(담당자 드롭다운용). 브랜치: feature/fe-remediation-module → main 머지 완료 |
 | 증빙 관리 | ✅ | ✅ | ✅ | ✅ MinIO 실연동 + SHA256 컬럼 | ✅ 업로드·목록·다운로드(blob)·삭제 (d70c849) | — | evidenceApi.ts·useEvidence.ts·EvidenceTable·EvidenceUploadDialog·types 신규. 50MB 검증. 브랜치: feature/fe-evidence-module → main 머지 완료 |
-| 담당자/권한 | ✅ | ✅ | ✅ | 🔄 최소CRUD | 🔄 골조 | — | |
+| 담당자/권한 | ✅ | ✅ | ✅ | 🔄 최소CRUD | ✅ 사용자 목록·상세(읽기전용) + 역할 목록·등록·편집·삭제 실 API (afc7a92) | — | types·usersApi·useUsers·userRolesApi·useUserRoles 신규. UserTable·UserDetailSheet·UserRoleTable·UserRoleFormDialog 신규. UsersPage 탭 토글. 사용자 CRUD·비밀번호변경은 BE 미구현으로 제외. 브랜치: feature/fe-users-module → main 머지 완료 |
 | 메일발송 | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | Report | ✅ | — | — | — | 🔄 골조 | — | Phase 3 |
 | Test | ✅ | — | ✅ | ✅ Phase1 풀확장 | 🔄 목록·추가·상세패널·워크플로전이·이력타임라인·TestStep CRUD·TestRun편집 (실 API) | ✅ | RAWC+워크플로+이력. FE: TestRunTable·SearchBar·ControlSelector·CreateDialog·TestRunDetailSheet·TestRunEditDialog 완료. TestStep 인라인 추가·편집·삭제 (approved 잠금). TestRun 평가일·결과·샘플수·평가방법 편집. StepInlineForm 외부 컴포넌트 분리. (커밋: 70ca2d0) |
@@ -1629,6 +1629,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-06-25 / Regina + Claude** — 담당자/권한 모듈 FE 완료. 사용자 목록·상세(읽기전용) + 역할(UserRole) CRUD 실 API 연결. types.ts·usersApi(fetchUserDetail추가)·useUsers(useUserDetail추가)·userRolesApi·useUserRoles 신규. UserTable·UserDetailSheet(기본정보+할당역할목록)·UserRoleTable·UserRoleFormDialog(사용자드롭다운+역할명Select) 신규. UsersPage 사용자/역할관리 탭 토글. 사용자 CRUD·비밀번호변경은 BE 미구현으로 이번 작업 제외. 빌드 통과. 커밋: afc7a92. 브랜치: feature/fe-users-module → main 머지 완료.
 - **2026-06-22 / Regina + Claude** — Remediation 모듈 FE 완료. 미비점(Deficiency): 목록·등록·편집·삭제(연결된 개선계획 있으면 클라이언트 가드 차단). 개선계획(RemediationPlan): 목록·등록(통제/담당자 드롭다운 연동)·상세·워크플로 전이(4단계)·이력 타임라인. users 모듈 fetchUsers/useUsers 신규(담당자 드롭다운용). DeficiencyFormDialog control_id 빈 문자열→null preprocess 버그 수정. flex truncate 레이아웃 정리. DialogContent max-w-3xl 통일. 빌드 통과. 커밋: 9436169. 브랜치: feature/fe-remediation-module → main 머지 완료.
 - **2026-06-19 / Regina + Claude** — RCM 통제 상세에 RAWC 위험평가 섹션 추가. `rcm/types.ts` ControlRiskAssessment·RawcCreatePayload·RawcUpdatePayload·RAWC_SCORE_FIELDS·PRIOR_YEAR_LABELS·OVERALL_ASSESSMENT_LABELS 추가. `rawcApi.ts` 신규 (fetchRawcByControl·createRawc·updateRawc). `useRawc.ts` 신규 (useRawcByControl·useCreateRawc·useUpdateRawc). `RawcSection.tsx` 신규 (조회/입력/편집 폼, segmented 1~3점 버튼, 전기효과성·종합평가 Select, assessor_id·평가일 자동 설정). `ControlDetailSheet` fiscalYear prop 추가 + 하단 위험평가 섹션 연결. `RcmPage` fiscalYear 상태(현재 연도) 추가. 빌드 통과. 커밋: fb73469. 브랜치: feature/fe-rawc-section → main 머지 완료.
 - **2026-06-18 / Regina + Claude** — Evidence 모듈 FE 완료: 증빙 파일 업로드·목록·다운로드(blob 스트림)·삭제. `evidenceApi.ts` 신규 (uploadEvidenceFile·fetchEvidenceList·downloadEvidenceFile·deleteEvidenceFile). `useEvidence.ts` 신규 (useEvidenceList·useUploadEvidenceFile·useDeleteEvidenceFile). `EvidenceTable.tsx` 신규 (목록·다운로드·삭제). `EvidenceUploadDialog.tsx` 신규 (50MB 검증·허용 확장자 검증). `types.ts` MAX_FILE_SIZE_BYTES·ALLOWED_MIME_TYPES·ALLOWED_EXTENSIONS 상수. BE: MinIO 실연동 + SHA256 컬럼 마이그레이션 반영. 빌드 통과. 커밋: d70c849. 브랜치: feature/fe-evidence-module → main 머지 완료.
