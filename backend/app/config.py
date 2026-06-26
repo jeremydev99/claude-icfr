@@ -32,7 +32,9 @@ class Settings(BaseSettings):
     # Phase 0 임시 Admin 계정
     admin_email: str = "admin@acme.example"
     admin_password: str = "admin123"
-    admin_display_name: str = "System Administrator"
+    # display_name 은 실명 용도 — 직책명("System Administrator") 금지.
+    # 운영 시 .env 의 ADMIN_DISPLAY_NAME 으로 실제 관리자 실명을 설정한다.
+    admin_display_name: str = "홍길동"
 
     # Upload
     max_upload_bytes: int = 52428800  # 50MB

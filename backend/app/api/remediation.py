@@ -78,6 +78,13 @@ def delete_deficiency(deficiency_id: UUID, user: CurrentUser = None, db: Session
     obj = db.query(Deficiency).filter(Deficiency.id == deficiency_id, Deficiency.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="Deficiency not found")
+    # soft delete라 FK 제약이 작동하지 않으므로, 활성 개선계획 존재 시 삭제 차단 (409)
+    active_plans = db.query(RemediationPlan).filter(
+        RemediationPlan.deficiency_id == deficiency_id,
+        RemediationPlan.is_deleted == False,  # noqa: E712
+    ).count()
+    if active_plans > 0:
+        raise HTTPException(status_code=409, detail="연결된 개선계획이 있어 삭제할 수 없습니다")
     obj.is_deleted = True
     db.commit()
 

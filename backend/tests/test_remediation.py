@@ -224,6 +224,29 @@ def test_remediation_status_history_auto_transition(client: TestClient) -> None:
     assert items[1]["reason"] == "개선 시작"
 
 
+def test_deficiency_delete_blocked_by_active_plan(client: TestClient) -> None:
+    """활성 개선계획이 연결된 미비점은 삭제 불가 (409)."""
+    h = _headers(client)
+    def_id, _ = _create_deficiency_and_plan(client, "FKGUARD")
+
+    resp = client.delete(f"/api/remediation/deficiencies/{def_id}", headers=h)
+    assert resp.status_code == 409
+
+
+def test_remediation_history_changed_by_realname(client: TestClient) -> None:
+    """history 응답에 changed_by(id+display_name 실명)가 내려온다 — test_module과 일관."""
+    h = _headers(client)
+    user_id = _current_user_id(client)
+    _, plan_id = _create_deficiency_and_plan(client, "HISTNAME")
+
+    resp = client.get(f"/api/remediation/plans/{plan_id}/history", headers=h)
+    assert resp.status_code == 200
+    item = resp.json()["items"][0]
+    assert item["changed_by_id"] == user_id          # 하위 호환 유지
+    assert item["changed_by"]["id"] == user_id       # join된 객체
+    assert item["changed_by"]["display_name"]        # 실명 비어있지 않음
+
+
 def test_approved_records_user(client: TestClient) -> None:
     """approved 전이 시 approved_by_id, approved_at 자동 기록."""
     h = _headers(client)

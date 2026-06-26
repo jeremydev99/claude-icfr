@@ -2,6 +2,8 @@ from uuid import UUID
 from datetime import date, datetime
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.schemas.user import UserBrief  # 공통 사용자 간략 스키마 (test_module과 일관화)
+
 
 # ── Deficiency ─────────────────────────────────────────────
 
@@ -44,7 +46,8 @@ class RemediationStatusHistoryRead(BaseModel):
     remediation_plan_id: UUID
     from_status: str | None = None
     to_status: str
-    changed_by_id: UUID
+    changed_by: UserBrief          # id + display_name(실명) — test_module과 동일 구조
+    changed_by_id: UUID            # FK 원본 (하위 호환)
     changed_at: datetime
     reason: str | None = None
     model_config = ConfigDict(from_attributes=True)

@@ -2,6 +2,8 @@ from uuid import UUID
 from datetime import date, datetime
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.schemas.user import UserBrief  # 공통 사용자 간략 스키마 (id+display_name)
+
 
 # ── ControlRiskAssessment (RAWC) ──────────────────────────
 
@@ -117,12 +119,7 @@ class TestStepRead(TestStepBase):
 
 
 # ── TestStatusHistory ─────────────────────────────────────
-
-class UserBrief(BaseModel):
-    """이력 응답용 사용자 간략 정보 (id + display_name)."""
-    id: UUID
-    display_name: str
-    model_config = ConfigDict(from_attributes=True)
+# UserBrief 는 app.schemas.user 로 공통화 (감사 일관화). 위에서 import.
 
 
 class TestStatusHistoryRead(BaseModel):

@@ -3,10 +3,10 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import verify_password, create_access_token, create_refresh_token, decode_token
+from app.core.security import verify_password, hash_password, create_access_token, create_refresh_token, decode_token
 from app.core.deps import get_current_user
 from app.models.user import User
-from app.schemas.auth import TokenResponse, RefreshRequest, RefreshResponse
+from app.schemas.auth import TokenResponse, RefreshRequest, RefreshResponse, ChangePasswordRequest
 from app.schemas.user import UserRead
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
@@ -66,3 +66,20 @@ def logout(current_user: User = Depends(get_current_user)) -> dict:
 @router.get("/me", response_model=UserRead)
 def me(current_user: User = Depends(get_current_user)) -> User:
     return current_user
+
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+def change_password(
+    body: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """본인 비밀번호 변경 — old_password 검증 후 변경."""
+    if not verify_password(body.old_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="현재 비밀번호가 올바르지 않습니다",
+        )
+    current_user.hashed_password = hash_password(body.new_password)
+    db.commit()
+    return {"detail": "비밀번호가 변경되었습니다"}
