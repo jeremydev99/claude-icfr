@@ -1,4 +1,4 @@
-import { Loader2 } from 'lucide-react'
+import { Loader2, KeyRound, Pencil, Trash2 } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -8,6 +8,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import type { User, UserListResponse } from '../types'
 
 interface Props {
@@ -16,9 +17,21 @@ interface Props {
   isError: boolean
   error: Error | null | unknown
   onRowClick: (user: User) => void
+  onEditClick: (user: User) => void
+  onDeleteClick: (user: User) => void
+  onResetPasswordClick: (user: User) => void
 }
 
-export default function UserTable({ data, isLoading, isError, error, onRowClick }: Props) {
+export default function UserTable({
+  data,
+  isLoading,
+  isError,
+  error,
+  onRowClick,
+  onEditClick,
+  onDeleteClick,
+  onResetPasswordClick,
+}: Props) {
   const { items = [], total = 0 } = data ?? {}
 
   if (isLoading) {
@@ -58,6 +71,7 @@ export default function UserTable({ data, isLoading, isError, error, onRowClick 
               <TableHead>역할</TableHead>
               <TableHead>상태</TableHead>
               <TableHead>등록일</TableHead>
+              <TableHead className="w-28"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -86,6 +100,37 @@ export default function UserTable({ data, isLoading, isError, error, onRowClick 
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {new Date(user.created_at).toLocaleDateString('ko-KR')}
+                </TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="편집"
+                      onClick={() => onEditClick(user)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="비밀번호 재설정"
+                      onClick={() => onResetPasswordClick(user)}
+                    >
+                      <KeyRound className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 hover:bg-red-50 hover:text-red-600"
+                      title="삭제"
+                      onClick={() => onDeleteClick(user)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

@@ -174,7 +174,7 @@ export default function RemediationPlanDetailSheet({ planId, open, onOpenChange 
                           {REMEDIATION_STATUS_LABELS[h.to_status]}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {ownerLabel(h.changed_by_id)} · {h.changed_at.slice(0, 10)}
+                          {h.changed_by?.display_name ?? h.changed_by_id.slice(0, 8)} · {h.changed_at.slice(0, 10)}
                         </div>
                         {h.reason && (
                           <div className="text-xs text-muted-foreground mt-0.5">{h.reason}</div>
