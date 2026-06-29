@@ -1553,7 +1553,7 @@ cd claude-icfr
 | 7 | 로컬 환경 셋업 | ✅ 완료 | 2026-05-11 |
 | 8 | Claude Code 동작 확인 | ✅ 완료 | 2026-05-11 |
 | 9 | Phase 0 — Walking Skeleton 실행 | ✅ 완료 (작업1~6 모두 완료) | 2026-05-21 |
-| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (RCM·Test·Remediation·증빙·담당자/권한 FE 완료. BE 사용자CRUD·비밀번호변경·감사 일관화 완료) | — |
+| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (RCM·Test·Remediation·증빙·담당자/권한 FE 완료. BE+FE 사용자CRUD·비번·감사 일관화 완료) | — |
 | 11 | Phase 1.5 — A안 완성 | ⏳ 대기 | — |
 | 12 | Phase 2 — B안 완성 | ⏳ 대기 | — |
 | 13 | Phase 3 — C안 완성 | ⏳ 대기 | — |
@@ -1569,7 +1569,7 @@ cd claude-icfr
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | 개선계획 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + DesignAssessment + 4단계워크플로 + 이력 + history changed_by(실명) join(test_module과 일관) + deficiency 삭제 FK가드(409) | ✅ 미비점+개선계획 단일 화면 통합 (탭 제거). 미비점 행에서 개선계획 상태 확인·바로 등록. 상세에서 미비점 code·담당자 display_name·이력 작성자 표시 (UUID 제거). prefilled deficiency_id useEffect 버그 수정 (11310dd) | ✅ 75개 | feature/fe-remediation-unify → main 머지 완료 |
 | 증빙 관리 | ✅ | ✅ | ✅ | ✅ MinIO 실연동 + SHA256 컬럼 | ✅ 업로드·목록·다운로드(blob)·삭제 (d70c849) | — | evidenceApi.ts·useEvidence.ts·EvidenceTable·EvidenceUploadDialog·types 신규. 50MB 검증. 브랜치: feature/fe-evidence-module → main 머지 완료 |
-| 담당자/권한 | ✅ | ✅ | ✅ | ✅ 사용자 CRUD(생성·수정·삭제, 관리자 가드) + 비밀번호 변경(본인)·리셋(관리자) + 역할 CRUD | ✅ 사용자 목록·상세(읽기전용) + 역할 목록·등록·편집·삭제 실 API (afc7a92) | ✅ 8개 | BE: create_user(email중복409·해시저장)·update_user·delete_user(본인·마지막관리자 가드)·reset-password / auth.change-password(old검증). require_admin 가드. UserCreate/UserUpdate 재사용(중복정의 없음). FE 사용자 CRUD·비번 화면은 미연결(BE 준비 완료, 후속). 브랜치: feature/fe-users-module → main 머지 완료 |
+| 담당자/권한 | ✅ | ✅ | ✅ | ✅ 사용자 CRUD(생성·수정·삭제, 관리자 가드) + 비밀번호 변경(본인)·리셋(관리자) + 역할 CRUD | ✅ 사용자 CRUD(등록·편집·삭제·비번리셋) + 역할 CRUD 실 API 연결. UserFormDialog·ResetPasswordDialog 신규. 409 에러 메시지(본인·마지막관리자·이메일중복) 직접 표시. deficiency 삭제 임시 클라이언트 가드 → BE 409 전달로 대체. remediation history changed_by UUID 우회 매핑 제거 → changed_by.display_name 직접 사용. (4b2f66a) | ✅ 8개 | BE: create_user(email중복409·해시저장)·update_user·delete_user(본인·마지막관리자 가드)·reset-password / auth.change-password(old검증). require_admin 가드. UserCreate/UserUpdate 재사용(중복정의 없음). 브랜치: feature/fe-users-module·feature/fe-user-crud-cleanup → main 머지 완료 |
 | 메일발송 | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | Report | ✅ | — | — | — | 🔄 골조 | — | Phase 3 |
 | Test | ✅ | — | ✅ | ✅ Phase1 풀확장 | 🔄 목록·추가·상세패널·워크플로전이·이력타임라인·TestStep CRUD·TestRun편집 (실 API) | ✅ | RAWC+워크플로+이력. FE: TestRunTable·SearchBar·ControlSelector·CreateDialog·TestRunDetailSheet·TestRunEditDialog 완료. TestStep 인라인 추가·편집·삭제 (approved 잠금). TestRun 평가일·결과·샘플수·평가방법 편집. StepInlineForm 외부 컴포넌트 분리. (커밋: 70ca2d0) |
@@ -1617,8 +1617,8 @@ cd claude-icfr
    - Test: 평가 계획 등록, 샘플, 결과 입력, 검토 워크플로
    - 개선계획: 심각도 3단계, 개선계획 서술형, 종결
    - 증빙: MinIO 실제 업로드, 검색
-   - ~~사용자/권한: 사용자 CRUD, 비밀번호 변경~~ ✅ BE 완료 (2026-06-26) — 사용자 CRUD·비번 변경/리셋·감사 일관화. FE 화면 연결은 후속.
-2. **후속(즉시 가능)**: 사용자 CRUD·비밀번호 변경 FE 화면 연결 (BE 준비 완료). remediation history `changed_by` 내려가므로 Regina 프론트 UUID→이름 우회 제거.
+   - ~~사용자/권한: 사용자 CRUD, 비밀번호 변경~~ ✅ BE+FE 완료 (2026-06-26) — 사용자 CRUD·비번 변경/리셋·감사 일관화 + FE CRUD 화면 연결. deficiency 삭제 가드·history 실명 우회 제거.
+2. **후속**: Test 모듈 FE 나머지 (bulk 삭제/편집 등) 또는 Phase 1.5 진입
 3. Phase 1.5 → 2 → 3 단계적 확장
 
 ### Claude에게 주는 다음 세션 지시
@@ -1630,6 +1630,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-06-29 / Regina + Claude** — 사용자 CRUD·비번 FE 연동 + 우회코드 제거 (feat: 4b2f66a). ①사용자 CRUD FE: `usersApi.ts` createUser·updateUser·deleteUser·resetUserPassword 추가. `useUsers.ts` useCreateUser·useUpdateUser·useDeleteUser·useResetPassword mutation 추가. `UserFormDialog.tsx` 신규(등록=email+password+display_name+role / 편집=display_name+role+is_active, email 비활성). `ResetPasswordDialog.tsx` 신규(new_password min 8자 클라이언트 검증). `UserTable.tsx` 편집·비번리셋·삭제 액션 컬럼 추가. `UsersPage.tsx` "+ 사용자 등록" 버튼 + 전체 핸들러(409 에러 메시지 직접 toast 표시) 연결. ②deficiency 삭제: 클라이언트 임시 가드 제거 → catch에서 `e.response.data.detail` 그대로 toast 표시(BE가 409 "연결된 개선계획이 있어 삭제할 수 없습니다" 반환). ③remediation history: `RemediationStatusHistory` 타입에 `changed_by: {id, display_name}` 추가. `RemediationPlanDetailSheet` 이력 작성자를 `ownerLabel(h.changed_by_id)` 우회 → `h.changed_by.display_name` 직접 사용. 빌드 통과. 브랜치: feature/fe-user-crud-cleanup → main 머지 완료.
 - **2026-06-26 / TrustBuilder + Claude** — 사용자 모듈 BE + 감사 일관화 (`ICFR_user_mgmt_1_20260615.md`). ①deficiency 삭제 FK가드: 활성 RemediationPlan 연결 시 409. ②사용자 CRUD: `create_user`(email중복409·`hash_password`저장)·`update_user`(display_name/role/is_active, 비번·email 제외)·`delete_user`(soft, 본인·마지막관리자 삭제 가드 409)·`reset-password`(관리자, old검증無) — 전부 `require_admin` 가드. 기존 `UserCreate`/`UserUpdate`(schemas/user.py) 재사용, 중복정의 없음. ③비번 변경: `POST /api/auth/change-password`(본인, old검증, min 8자). ④감사 일관화: `UserBrief`(id+display_name)를 `schemas/user.py`로 공통화(test_module 로컬정의 제거 후 import) + `RemediationStatusHistoryRead`에 `changed_by: UserBrief` join 추가(test_module과 동일 구조, `changed_by_id` 하위호환 유지) → Regina 프론트 UUID→이름 우회 제거 가능. ⑤seed 교정: `config.admin_display_name` 직책명→실명형식("홍길동", .env override), **`admin_password`="admin123" 불변 확인(git diff)**. ADR-0020 준수(추상화 0). pytest 82 전부 통과(+17). `docker compose up -d --build backend` 재빌드 + OpenAPI 신규 엔드포인트 등록 확인.
 - **2026-06-25 / Regina + Claude** — 개선계획 화면 UX 개선. 미비점·개선계획 탭 분리 → 단일 화면 통합 (DeficiencyTable에 개선계획 컬럼 추가). RemediationPlanCreateDialog prefilledDeficiencyId useEffect 버그 수정. RemediationPlanDetailSheet 미비점 UUID→code, 담당자/이력작성자 UUID→display_name 표시. 커밋: debb472(표시개선)·f8cc8bc(prefilled버그)·9bc8a32(화면통합). 브랜치: feature/fe-remediation-unify → main 머지 완료.
 - **2026-06-25 / Regina + Claude** — 담당자/권한 모듈 FE 완료. 사용자 목록·상세(읽기전용) + 역할(UserRole) CRUD 실 API 연결. types.ts·usersApi(fetchUserDetail추가)·useUsers(useUserDetail추가)·userRolesApi·useUserRoles 신규. UserTable·UserDetailSheet(기본정보+할당역할목록)·UserRoleTable·UserRoleFormDialog(사용자드롭다운+역할명Select) 신규. UsersPage 사용자/역할관리 탭 토글. 사용자 CRUD·비밀번호변경은 BE 미구현으로 이번 작업 제외. 빌드 통과. 커밋: afc7a92. 브랜치: feature/fe-users-module → main 머지 완료.
