@@ -30,6 +30,23 @@ export interface UserRoleListResponse {
   limit: number
 }
 
+export interface UserCreatePayload {
+  email: string
+  password: string
+  display_name: string
+  role: string
+}
+
+export interface UserUpdatePayload {
+  display_name?: string
+  role?: string
+  is_active?: boolean
+}
+
+export interface ResetPasswordPayload {
+  new_password: string
+}
+
 export interface UserRoleCreatePayload {
   user_id: string
   role_name: string
