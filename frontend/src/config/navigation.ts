@@ -93,6 +93,12 @@ export const navigation: NavGroup[] = [
         icon: Wrench,
         description: '미비점 등록·심각도 평가·개선계획·재테스트',
       },
+      {
+        label: '증빙 관리',
+        path: '/evidence',
+        icon: Paperclip,
+        description: '평가·테스트 증빙 파일 업로드·연결·보존',
+      },
     ],
   },
   {
@@ -103,12 +109,6 @@ export const navigation: NavGroup[] = [
         path: '/report',
         icon: FileText,
         description: '이사회 보고서·외부감사 PBC 패키지 작성·결재·배포',
-      },
-      {
-        label: '증빙 관리',
-        path: '/evidence',
-        icon: Paperclip,
-        description: '평가·테스트 증빙 파일 업로드·연결·보존',
       },
     ],
   },

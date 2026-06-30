@@ -77,7 +77,7 @@ export default function EvidenceTable({ files }: Props) {
             <TableHead>파일명</TableHead>
             <TableHead>크기</TableHead>
             <TableHead>업로드일</TableHead>
-            <TableHead className="text-right">액션</TableHead>
+            <TableHead className="w-40"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
