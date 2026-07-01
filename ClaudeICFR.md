@@ -1553,7 +1553,7 @@ cd claude-icfr
 | 7 | 로컬 환경 셋업 | ✅ 완료 | 2026-05-11 |
 | 8 | Claude Code 동작 확인 | ✅ 완료 | 2026-05-11 |
 | 9 | Phase 0 — Walking Skeleton 실행 | ✅ 완료 (작업1~6 모두 완료) | 2026-05-21 |
-| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (RCM·Test·Remediation·증빙·담당자/권한 FE 완료. BE+FE 사용자CRUD·비번·감사 일관화 완료. 공통 UI — 사이드바 디자인 개선·증빙 메뉴 평가 그룹 이동 완료) | — |
+| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (RCM·Test·Remediation·증빙·담당자/권한 FE 완료. BE+FE 사용자CRUD·비번·감사 일관화 완료. 공통 UI — 사이드바 디자인 개선·증빙 메뉴 평가 그룹 이동·UX 일관성 개선 완료) | — |
 | 11 | Phase 1.5 — A안 완성 | ⏳ 대기 | — |
 | 12 | Phase 2 — B안 완성 | ⏳ 대기 | — |
 | 13 | Phase 3 — C안 완성 | ⏳ 대기 | — |
@@ -1630,6 +1630,7 @@ cd claude-icfr
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-07-01 / Regina + Claude** — UX 일관성 개선 (전 모듈 표현 통일). ①`lib/utils.ts` `formatDate` 유틸 추가 (YYYY-MM-DD 슬라이스, null→'—'). ②날짜 형식 통일: TestRunTable·RemediationPlanTable 로컬 함수 제거 → `formatDate` 공통 사용. EvidenceTable `toLocaleDateString` 교체. UserTable·UserRoleTable `toLocaleDateString('ko-KR')` ("2024. 1. 15." 형식) → `formatDate`. 전 화면 YYYY-MM-DD 동일 출력. ③삭제 버튼 통일: RemediationPage·UsersPage(사용자·역할 2곳) `className="bg-red-600 hover:bg-red-700"` → `className="bg-destructive text-destructive-foreground hover:bg-destructive/90"` (CSS 변수 기반, 테마 변경 시 자동 반영). ④빈 목록 문구: UserTable "등록된 사용자가 없습니다." → 액션 안내 추가. ControlTable 검색 필터 유무로 분기 — 필터 없을 때 "등록된 통제가 없습니다. 통제 추가 버튼으로 첫 통제를 추가하세요." / 필터 있을 때 기존 "검색 결과가 없습니다" 유지. ⑤로딩 표현 통일: TestRunTable·DeficiencyTable·RemediationPlanTable·UserTable·UserRoleTable 아이콘만(h-6) → 아이콘(h-5)+텍스트. EvidencePage 텍스트만 → 아이콘+텍스트+`<div flex>`. 기능·API 변경 없음. 빌드 통과. 커밋: 06beaaa. 브랜치: feature/fe-ux-consistency → main 머지 완료.
 - **2026-06-30 / Regina + Claude** — 사이드바·레이아웃 디자인 개선. ①`index.css`: `--sidebar: 220 14% 92%` 토큰 추가 (본문 흰색과 구분되는 쿨 그레이). ②`tailwind.config.js`: `sidebar: 'hsl(var(--sidebar))'` 색상 등록. ③`AppLayout.tsx`: aside `bg-card` → `bg-sidebar`. active 메뉴 `bg-accent` → `bg-primary text-primary-foreground`(다크 네이비+흰 텍스트)로 현재 위치 강조. hover `hover:text-foreground`로 대비 강화. 아이콘 active/비활성 색 조건부 적용. 로고 영역에 서브타이틀("내부회계관리시스템") 추가. 그룹 간 `mb-3` 간격으로 묶음 시인성 향상. 기능·라우트 변경 없음. 빌드 통과. 커밋: 615b802. 브랜치: feature/fe-sidebar-redesign → main 머지 완료.
 - **2026-06-30 / Regina + Claude** — 증빙 관리 메뉴 이동 + 액션 헤더 통일. ①`navigation.ts`: 증빙 관리 항목을 "보고" 그룹에서 "평가" 그룹으로 이동(평가 그룹 순서: Test → 개선계획 → 증빙 관리). 보고 그룹에는 Report만 남음. ②`EvidenceTable.tsx`: 액션 컬럼 헤더 `"액션"` → 빈 `<TableHead className="w-40">` (RCM·Remediation·Users 테이블과 동일 패턴). 라우트·페이지·기능 변경 없음. 빌드 통과. 커밋: 8f79f2d. 브랜치: feature/fe-evidence-menu-move → main 머지 완료.
 - **2026-06-29 / Regina + Claude** — 사용자 CRUD·비번 FE 연동 + 우회코드 제거 (feat: 4b2f66a). ①사용자 CRUD FE: `usersApi.ts` createUser·updateUser·deleteUser·resetUserPassword 추가. `useUsers.ts` useCreateUser·useUpdateUser·useDeleteUser·useResetPassword mutation 추가. `UserFormDialog.tsx` 신규(등록=email+password+display_name+role / 편집=display_name+role+is_active, email 비활성). `ResetPasswordDialog.tsx` 신규(new_password min 8자 클라이언트 검증). `UserTable.tsx` 편집·비번리셋·삭제 액션 컬럼 추가. `UsersPage.tsx` "+ 사용자 등록" 버튼 + 전체 핸들러(409 에러 메시지 직접 toast 표시) 연결. ②deficiency 삭제: 클라이언트 임시 가드 제거 → catch에서 `e.response.data.detail` 그대로 toast 표시(BE가 409 "연결된 개선계획이 있어 삭제할 수 없습니다" 반환). ③remediation history: `RemediationStatusHistory` 타입에 `changed_by: {id, display_name}` 추가. `RemediationPlanDetailSheet` 이력 작성자를 `ownerLabel(h.changed_by_id)` 우회 → `h.changed_by.display_name` 직접 사용. 빌드 통과. 브랜치: feature/fe-user-crud-cleanup → main 머지 완료.
