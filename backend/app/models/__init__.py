@@ -1,4 +1,5 @@
-from app.models.base import Base, AuditedBase  # noqa: F401
+from app.models.base import Base, IdentityBase, AuditedBase, TenantMixin  # noqa: F401
+from app.models.tenant import Tenant, UserTenantAccess  # noqa: F401
 from app.models.user import User  # noqa: F401
 from app.models.user_mgmt import UserRole  # noqa: F401
 from app.models.rcm import Process, SubProcess, Risk, RiskCategory, Control, ControlAssertion  # noqa: F401

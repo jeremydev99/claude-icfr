@@ -1,12 +1,15 @@
 import httpx
 
+from app.core.tenant_context import DEFAULT_TENANT_ID
+
 
 class SeedContext:
     """시드 실행 컨텍스트 — HTTP 클라이언트, 인증 토큰, 공유 ID 레지스트리."""
 
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self, base_url: str = "http://localhost:8000", tenant_id: str | None = None):
         self.base_url = base_url.rstrip("/")
         self.token: str | None = None
+        self.tenant_id: str = tenant_id or str(DEFAULT_TENANT_ID)
         self.ids: dict = {}
 
     def login(self, email: str, password: str) -> None:
@@ -18,7 +21,7 @@ class SeedContext:
         self.token = resp.json()["access_token"]
 
     def _headers(self) -> dict:
-        return {"Authorization": f"Bearer {self.token}"}
+        return {"Authorization": f"Bearer {self.token}", "X-Tenant-Id": self.tenant_id}
 
     def get(self, path: str, params: dict | None = None) -> dict:
         resp = httpx.get(f"{self.base_url}{path}", headers=self._headers(), params=params)

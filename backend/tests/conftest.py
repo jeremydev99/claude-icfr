@@ -8,7 +8,11 @@ import app.models  # noqa: F401 — 모든 모델을 Base.metadata에 등록
 from app.models.base import Base
 from app.core.database import get_db
 from app.models.user import User
+from app.models.tenant import Tenant, UserTenantAccess
 from app.core.security import hash_password
+from app.core.tenant_context import (
+    DEFAULT_TENANT_ID, DEFAULT_TENANT_CODE, DEFAULT_TENANT_NAME,
+)
 
 SQLITE_URL = "sqlite:///./test.db"
 
@@ -25,9 +29,17 @@ def override_get_db():
 
 
 def _seed_admin(db):
-    """테스트 DB에 admin 계정을 생성 (없으면)."""
-    existing = db.query(User).filter(User.email == "admin@acme.example").first()
-    if not existing:
+    """테스트 DB에 기본 tenant + admin 계정 + 접근 권한을 생성 (없으면)."""
+    tenant = db.query(Tenant).filter(Tenant.id == DEFAULT_TENANT_ID).first()
+    if not tenant:
+        db.add(Tenant(
+            id=DEFAULT_TENANT_ID, name=DEFAULT_TENANT_NAME,
+            code=DEFAULT_TENANT_CODE, is_active=True,
+        ))
+        db.commit()
+
+    admin = db.query(User).filter(User.email == "admin@acme.example").first()
+    if not admin:
         admin = User(
             email="admin@acme.example",
             hashed_password=hash_password("admin123"),
@@ -36,6 +48,14 @@ def _seed_admin(db):
             is_active=True,
         )
         db.add(admin)
+        db.commit()
+
+    access = db.query(UserTenantAccess).filter(
+        UserTenantAccess.user_id == admin.id,
+        UserTenantAccess.tenant_id == DEFAULT_TENANT_ID,
+    ).first()
+    if not access:
+        db.add(UserTenantAccess(user_id=admin.id, tenant_id=DEFAULT_TENANT_ID, role="admin"))
         db.commit()
 
 

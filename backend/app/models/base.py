@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import UUID
 from uuid_utils import uuid7 as _uuid7_native
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import DateTime, String, Boolean, Integer, func
+from sqlalchemy import DateTime, String, Boolean, Integer, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 
@@ -43,6 +43,26 @@ class UUIDPrimaryKeyMixin:
     )
 
 
-class AuditedBase(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, VersionMixin):
-    """공통 감사 컬럼이 모두 포함된 베이스 — 모든 비즈니스 테이블이 이걸 상속."""
+class TenantMixin:
+    """멀티테넌시 — 회사(tenant) 격리 키 (ADR-0025).
+
+    이 믹스인을 상속한 모든 모델은 자동 격리 대상이 된다:
+    - 쓰기: before_flush 이벤트가 활성 tenant_id를 자동 stamp
+    - 읽기: do_orm_execute + with_loader_criteria(TenantMixin, ...) 가 자동 필터
+    (app/core/tenant_context.py)
+    """
+    tenant_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
+    )
+
+
+class IdentityBase(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, VersionMixin):
+    """tenant 비종속 전역 테이블용 베이스 — User / Tenant / UserTenantAccess 전용.
+
+    tenant_id 를 포함하지 않는다 (전역 계정·회사 정의·접근 매핑은 tenant에 귀속될 수 없음)."""
+    __abstract__ = True
+
+
+class AuditedBase(IdentityBase, TenantMixin):
+    """공통 감사 컬럼 + tenant_id 가 모두 포함된 베이스 — 모든 비즈니스 테이블이 이걸 상속."""
     __abstract__ = True

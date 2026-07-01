@@ -4,8 +4,10 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import CurrentUser, get_db, require_admin
 from app.core.security import hash_password
+from app.core.tenant_context import get_active_tenant
 from app.models.user import User
 from app.models.user_mgmt import UserRole
+from app.models.tenant import UserTenantAccess
 from app.schemas.user import UserCreate, UserUpdate, PasswordResetRequest
 from app.schemas.user_mgmt import UserRead, UserRoleCreate, UserRoleUpdate, UserRoleRead
 
@@ -57,6 +59,9 @@ def create_user(body: UserCreate, admin: User = Depends(require_admin), db: Sess
         role=body.role,
     )
     db.add(obj)
+    db.flush()  # obj.id 확보
+    # 신규 사용자에게 현재 활성 회사(tenant) 접근 권한 부여 — 없으면 로그인 불가
+    db.add(UserTenantAccess(user_id=obj.id, tenant_id=get_active_tenant(), role=body.role))
     db.commit()
     db.refresh(obj)
     return obj
