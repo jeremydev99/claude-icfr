@@ -1515,6 +1515,17 @@ cd claude-icfr
 - 같은 사고 재발 방지
 - 미래 작업 명세 작성 시 자동 점검 룰 정착
 
+### ADR-0026 (2026-06-26) — 멀티테넌시 1단계 구현 (tenant_id 전면 + 자동 격리)
+
+ADR-0025 근간 구조의 1단계 구현. 결정 사항:
+1. **TenantMixin → AuditedBase**: 전 비즈니스 18테이블에 `tenant_id` 자동. User/Tenant/UserTenantAccess는 tenant 비종속 `IdentityBase`(분리) → 라우터 무수정으로 일괄 적용.
+2. **User는 tenant 독립(전역 계정)**. 접근 권한의 유일한 진실 원천 = `UserTenantAccess`(user↔tenant 다대다 + role). 한 계정 다중 회사.
+3. **자동 격리 = ADR-0020 제로추상화의 명시적 예외**(누출 방지 우선). 수동 `.filter(tenant_id)` 금지. SQLAlchemy 이벤트: `before_flush`(쓰기 자동 stamp) + `do_orm_execute`+`with_loader_criteria(TenantMixin)`(읽기 자동 필터, 관계 전파). 활성 tenant는 요청 ContextVar.
+4. **활성 tenant 확보**: `get_current_user`를 async화해 `X-Tenant-Id` 검증 후 ContextVar 설정(이벤트루프 컨텍스트 → 동기 엔드포인트 전파). 헤더 없으면 단일권한 자동수렴(온프레), 무권한 403, 다중권한 400.
+5. **마이그레이션**: nullable 추가 → backfill → NOT NULL/FK/index(데이터 보존, ADR-0023). downgrade 왕복 검증. controls 95·evidence 4 보존 확인.
+6. **DEFAULT_TENANT_ID = `d0000000-...0001`**: hex 전부 숫자인 UUID는 SQLite "UUID"(NUMERIC affinity) 컬럼에서 정수 강제변환 → 테스트 깨짐. 영문자 포함 고정값 채택(Postgres 무관).
+- **미결(후속)**: `code` 등 글로벌 unique → tenant별 복합 unique 전환(현재 단일 tenant라 충돌 없음). tenant CRUD/온보딩 API. UserRole은 tenant 종속(회사별 역할)으로 결정.
+
 ### (다음 ADR은 여기에 추가)
 
 ---
@@ -1553,7 +1564,7 @@ cd claude-icfr
 | 7 | 로컬 환경 셋업 | ✅ 완료 | 2026-05-11 |
 | 8 | Claude Code 동작 확인 | ✅ 완료 | 2026-05-11 |
 | 9 | Phase 0 — Walking Skeleton 실행 | ✅ 완료 (작업1~6 모두 완료) | 2026-05-21 |
-| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (RCM·Test·Remediation·증빙·담당자/권한 FE 완료. BE+FE 사용자CRUD·비번·감사 일관화 완료. 공통 UI — 사이드바 디자인 개선·증빙 메뉴 평가 그룹 이동·UX 일관성 개선 완료) | — |
+| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (RCM·Test·Remediation·증빙·담당자/권한 FE 완료. BE+FE 사용자CRUD·비번·감사 일관화 완료. 공통 UI — 사이드바 디자인 개선·증빙 메뉴 평가 그룹 이동·UX 일관성 개선 완료. **멀티테넌시 근간(ADR-0025/0026) 1단계 완료** — tenant_id 전면·자동 격리) | — |
 | 11 | Phase 1.5 — A안 완성 | ⏳ 대기 | — |
 | 12 | Phase 2 — B안 완성 | ⏳ 대기 | — |
 | 13 | Phase 3 — C안 완성 | ⏳ 대기 | — |
@@ -1619,7 +1630,8 @@ cd claude-icfr
    - 증빙: MinIO 실제 업로드, 검색
    - ~~사용자/권한: 사용자 CRUD, 비밀번호 변경~~ ✅ BE+FE 완료 (2026-06-26) — 사용자 CRUD·비번 변경/리셋·감사 일관화 + FE CRUD 화면 연결. deficiency 삭제 가드·history 실명 우회 제거.
 2. **후속**: Test 모듈 FE 나머지 (bulk 삭제/편집 등) 또는 Phase 1.5 진입
-3. Phase 1.5 → 2 → 3 단계적 확장
+3. **멀티테넌시 후속 (ADR-0026 미결)**: ①`code` 등 글로벌 unique → `(tenant_id, code)` 복합 unique 전환(2번째 tenant 진입 전 필수). ②tenant 생성/온보딩 API + 회사 전환 UI. ③프론트엔드 `X-Tenant-Id` 헤더 주입(현재는 단일권한 자동수렴으로 동작).
+4. Phase 1.5 → 2 → 3 단계적 확장
 
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
@@ -1634,6 +1646,7 @@ cd claude-icfr
 - **2026-06-30 / Regina + Claude** — 사이드바·레이아웃 디자인 개선. ①`index.css`: `--sidebar: 220 14% 92%` 토큰 추가 (본문 흰색과 구분되는 쿨 그레이). ②`tailwind.config.js`: `sidebar: 'hsl(var(--sidebar))'` 색상 등록. ③`AppLayout.tsx`: aside `bg-card` → `bg-sidebar`. active 메뉴 `bg-accent` → `bg-primary text-primary-foreground`(다크 네이비+흰 텍스트)로 현재 위치 강조. hover `hover:text-foreground`로 대비 강화. 아이콘 active/비활성 색 조건부 적용. 로고 영역에 서브타이틀("내부회계관리시스템") 추가. 그룹 간 `mb-3` 간격으로 묶음 시인성 향상. 기능·라우트 변경 없음. 빌드 통과. 커밋: 615b802. 브랜치: feature/fe-sidebar-redesign → main 머지 완료.
 - **2026-06-30 / Regina + Claude** — 증빙 관리 메뉴 이동 + 액션 헤더 통일. ①`navigation.ts`: 증빙 관리 항목을 "보고" 그룹에서 "평가" 그룹으로 이동(평가 그룹 순서: Test → 개선계획 → 증빙 관리). 보고 그룹에는 Report만 남음. ②`EvidenceTable.tsx`: 액션 컬럼 헤더 `"액션"` → 빈 `<TableHead className="w-40">` (RCM·Remediation·Users 테이블과 동일 패턴). 라우트·페이지·기능 변경 없음. 빌드 통과. 커밋: 8f79f2d. 브랜치: feature/fe-evidence-menu-move → main 머지 완료.
 - **2026-06-29 / Regina + Claude** — 사용자 CRUD·비번 FE 연동 + 우회코드 제거 (feat: 4b2f66a). ①사용자 CRUD FE: `usersApi.ts` createUser·updateUser·deleteUser·resetUserPassword 추가. `useUsers.ts` useCreateUser·useUpdateUser·useDeleteUser·useResetPassword mutation 추가. `UserFormDialog.tsx` 신규(등록=email+password+display_name+role / 편집=display_name+role+is_active, email 비활성). `ResetPasswordDialog.tsx` 신규(new_password min 8자 클라이언트 검증). `UserTable.tsx` 편집·비번리셋·삭제 액션 컬럼 추가. `UsersPage.tsx` "+ 사용자 등록" 버튼 + 전체 핸들러(409 에러 메시지 직접 toast 표시) 연결. ②deficiency 삭제: 클라이언트 임시 가드 제거 → catch에서 `e.response.data.detail` 그대로 toast 표시(BE가 409 "연결된 개선계획이 있어 삭제할 수 없습니다" 반환). ③remediation history: `RemediationStatusHistory` 타입에 `changed_by: {id, display_name}` 추가. `RemediationPlanDetailSheet` 이력 작성자를 `ownerLabel(h.changed_by_id)` 우회 → `h.changed_by.display_name` 직접 사용. 빌드 통과. 브랜치: feature/fe-user-crud-cleanup → main 머지 완료.
+- **2026-06-26 / TrustBuilder + Claude** — **멀티테넌시 1단계** (`ICFR_tenant_1_20260615.md`, ADR-0025/0026). ①모델: `TenantMixin`→`AuditedBase`(비즈니스 18테이블 tenant_id 자동), `Tenant`·`UserTenantAccess` 신규, User/Tenant/매핑은 tenant 비종속 `IdentityBase`로 분리. ②자동 격리(ADR-0020 예외): `core/tenant_context.py` — `before_flush` 쓰기 자동 stamp + `do_orm_execute`+`with_loader_criteria(TenantMixin)` 읽기 자동 필터(수동 필터 0). 활성 tenant=요청 ContextVar. ③`get_current_user` async화 + `X-Tenant-Id` 검증(무권한 403·다중 400·단일 자동수렴) → ContextVar 설정으로 라우터 119곳 무수정 적용. `CurrentContext` 추가. ④마이그레이션(nullable→backfill→NOTNULL/FK/index): 실 Postgres 적용·**controls 95·evidence 4 보존 확인**, downgrade 왕복 안전 검증. ⑤bootstrap/conftest/seed tenant-aware(기본 tenant+admin 접근 보장), create_user가 활성 tenant 접근권한 부여. ⑥`DEFAULT_TENANT_ID=d0000000-...0001`(SQLite NUMERIC affinity 회피). pytest **84 통과**(+2: 격리·접근검증). `docker compose up -d --build backend` 재빌드 + 라이브 격리 E2E 확인(no-header 95건·wrong-tenant 403·right-tenant 95건). config.admin_password 불변. 후속: code 등 tenant별 복합 unique, tenant CRUD/온보딩 API.
 - **2026-06-26 / TrustBuilder + Claude** — 사용자 모듈 BE + 감사 일관화 (`ICFR_user_mgmt_1_20260615.md`). ①deficiency 삭제 FK가드: 활성 RemediationPlan 연결 시 409. ②사용자 CRUD: `create_user`(email중복409·`hash_password`저장)·`update_user`(display_name/role/is_active, 비번·email 제외)·`delete_user`(soft, 본인·마지막관리자 삭제 가드 409)·`reset-password`(관리자, old검증無) — 전부 `require_admin` 가드. 기존 `UserCreate`/`UserUpdate`(schemas/user.py) 재사용, 중복정의 없음. ③비번 변경: `POST /api/auth/change-password`(본인, old검증, min 8자). ④감사 일관화: `UserBrief`(id+display_name)를 `schemas/user.py`로 공통화(test_module 로컬정의 제거 후 import) + `RemediationStatusHistoryRead`에 `changed_by: UserBrief` join 추가(test_module과 동일 구조, `changed_by_id` 하위호환 유지) → Regina 프론트 UUID→이름 우회 제거 가능. ⑤seed 교정: `config.admin_display_name` 직책명→실명형식("홍길동", .env override), **`admin_password`="admin123" 불변 확인(git diff)**. ADR-0020 준수(추상화 0). pytest 82 전부 통과(+17). `docker compose up -d --build backend` 재빌드 + OpenAPI 신규 엔드포인트 등록 확인.
 - **2026-06-25 / Regina + Claude** — 개선계획 화면 UX 개선. 미비점·개선계획 탭 분리 → 단일 화면 통합 (DeficiencyTable에 개선계획 컬럼 추가). RemediationPlanCreateDialog prefilledDeficiencyId useEffect 버그 수정. RemediationPlanDetailSheet 미비점 UUID→code, 담당자/이력작성자 UUID→display_name 표시. 커밋: debb472(표시개선)·f8cc8bc(prefilled버그)·9bc8a32(화면통합). 브랜치: feature/fe-remediation-unify → main 머지 완료.
 - **2026-06-25 / Regina + Claude** — 담당자/권한 모듈 FE 완료. 사용자 목록·상세(읽기전용) + 역할(UserRole) CRUD 실 API 연결. types.ts·usersApi(fetchUserDetail추가)·useUsers(useUserDetail추가)·userRolesApi·useUserRoles 신규. UserTable·UserDetailSheet(기본정보+할당역할목록)·UserRoleTable·UserRoleFormDialog(사용자드롭다운+역할명Select) 신규. UsersPage 사용자/역할관리 탭 토글. 사용자 CRUD·비밀번호변경은 BE 미구현으로 이번 작업 제외. 빌드 통과. 커밋: afc7a92. 브랜치: feature/fe-users-module → main 머지 완료.
