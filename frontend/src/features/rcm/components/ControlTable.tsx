@@ -151,7 +151,9 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
             {items.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
-                  검색 결과가 없습니다
+                  {params.q || params.process_code || params.sub_process_code || params.risk_level || params.frequency || params.is_key_control !== undefined || params.auto_manual || params.preventive_detective || params.assertion || params.owner
+                    ? '검색 결과가 없습니다'
+                    : '등록된 통제가 없습니다. 통제 추가 버튼으로 첫 통제를 추가하세요.'}
                 </TableCell>
               </TableRow>
             ) : (

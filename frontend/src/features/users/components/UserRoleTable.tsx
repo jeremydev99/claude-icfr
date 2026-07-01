@@ -1,4 +1,5 @@
 import { Loader2, Pencil, Trash2 } from 'lucide-react'
+import { formatDate } from '@/lib/utils'
 import {
   Table,
   TableBody,
@@ -41,8 +42,9 @@ export default function UserRoleTable({
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center p-12 text-muted-foreground gap-2">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        불러오는 중...
       </div>
     )
   }
@@ -103,7 +105,7 @@ export default function UserRoleTable({
                     {item.scope ?? '—'}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {new Date(item.created_at).toLocaleDateString('ko-KR')}
+                    {formatDate(item.created_at)}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">

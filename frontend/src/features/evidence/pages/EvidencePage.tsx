@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useEvidenceFiles } from '../api/useEvidence'
 import EvidenceTable from '../components/EvidenceTable'
@@ -18,7 +19,10 @@ export default function EvidencePage() {
       </div>
 
       {isLoading && (
-        <p className="text-muted-foreground text-sm">불러오는 중...</p>
+        <div className="flex items-center justify-center p-12 text-muted-foreground gap-2">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          불러오는 중...
+        </div>
       )}
 
       {isError && (

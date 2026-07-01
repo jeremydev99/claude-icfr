@@ -111,7 +111,7 @@ export default function RemediationPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleDeleteConfirm}
               disabled={deleteDeficiency.isPending}
             >

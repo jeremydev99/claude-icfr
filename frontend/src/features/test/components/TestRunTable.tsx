@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react'
+import { formatDate } from '@/lib/utils'
 import {
   Table,
   TableBody,
@@ -37,10 +38,6 @@ interface Props {
   error: Error | null | unknown
 }
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—'
-  return dateStr.slice(0, 10)
-}
 
 export default function TestRunTable({
   data,
@@ -64,8 +61,9 @@ export default function TestRunTable({
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center p-12 text-muted-foreground gap-2">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        불러오는 중...
       </div>
     )
   }

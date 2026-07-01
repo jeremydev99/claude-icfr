@@ -18,6 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { formatDate } from '@/lib/utils'
 import { downloadEvidenceFile } from '../api/evidenceApi'
 import { useDeleteEvidenceFile } from '../api/useEvidence'
 import type { EvidenceFile } from '../types'
@@ -32,13 +33,6 @@ function formatSize(bytes: number): string {
   return `${bytes} B`
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-}
 
 export default function EvidenceTable({ files }: Props) {
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
