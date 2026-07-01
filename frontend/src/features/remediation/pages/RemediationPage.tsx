@@ -40,8 +40,9 @@ export default function RemediationPage() {
     try {
       await deleteDeficiency.mutateAsync(deleteTarget.id)
       toast.success('미비점이 삭제되었습니다')
-    } catch {
-      toast.error('삭제에 실패했습니다')
+    } catch (e) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(detail ?? '삭제에 실패했습니다')
     } finally {
       setDeleteTarget(null)
     }
@@ -110,7 +111,7 @@ export default function RemediationPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleDeleteConfirm}
               disabled={deleteDeficiency.isPending}
             >

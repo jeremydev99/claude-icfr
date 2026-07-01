@@ -106,6 +106,7 @@ export interface RemediationStatusHistory {
   remediation_plan_id: string
   from_status: RemediationStatus | null
   to_status: RemediationStatus
+  changed_by: { id: string; display_name: string }
   changed_by_id: string
   changed_at: string
   reason: string | null

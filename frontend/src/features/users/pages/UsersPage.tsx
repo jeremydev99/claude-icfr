@@ -11,15 +11,20 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { useUsers } from '../api/useUsers'
+import { useUsers, useDeleteUser } from '../api/useUsers'
 import { useUserRoles, useDeleteUserRole } from '../api/useUserRoles'
 import UserTable from '../components/UserTable'
 import UserDetailSheet from '../components/UserDetailSheet'
+import UserFormDialog from '../components/UserFormDialog'
+import ResetPasswordDialog from '../components/ResetPasswordDialog'
 import UserRoleTable from '../components/UserRoleTable'
 import UserRoleFormDialog from '../components/UserRoleFormDialog'
 import type { User, UserRole } from '../types'
 
 type ActiveTab = 'users' | 'roles'
+
+const getErrorDetail = (e: unknown) =>
+  (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
 
 export default function UsersPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('users')
@@ -28,12 +33,39 @@ export default function UsersPage() {
   const { data: userData, isLoading: userLoading, isError: userError, error: userErr } =
     useUsers({ skip: 0, limit: 200 })
 
+  const deleteUser = useDeleteUser()
+
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [userDetailOpen, setUserDetailOpen] = useState(false)
+
+  const [userFormOpen, setUserFormOpen] = useState(false)
+  const [editUserTarget, setEditUserTarget] = useState<User | null>(null)
+
+  const [deleteUserTarget, setDeleteUserTarget] = useState<User | null>(null)
+
+  const [resetPwdTarget, setResetPwdTarget] = useState<User | null>(null)
+  const [resetPwdOpen, setResetPwdOpen] = useState(false)
 
   const handleUserRowClick = (user: User) => {
     setSelectedUser(user)
     setUserDetailOpen(true)
+  }
+
+  const handleUserEditClick = (user: User) => {
+    setEditUserTarget(user)
+    setUserFormOpen(true)
+  }
+
+  const handleUserDeleteConfirm = async () => {
+    if (!deleteUserTarget) return
+    try {
+      await deleteUser.mutateAsync(deleteUserTarget.id)
+      toast.success('사용자가 삭제되었습니다')
+    } catch (e) {
+      toast.error(getErrorDetail(e) ?? '삭제에 실패했습니다')
+    } finally {
+      setDeleteUserTarget(null)
+    }
   }
 
   // ── 역할 상태 ────────────────────────────────────────────
@@ -42,23 +74,23 @@ export default function UsersPage() {
   const deleteRole = useDeleteUserRole()
 
   const [roleFormOpen, setRoleFormOpen] = useState(false)
-  const [editTarget, setEditTarget] = useState<UserRole | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<UserRole | null>(null)
+  const [editRoleTarget, setEditRoleTarget] = useState<UserRole | null>(null)
+  const [deleteRoleTarget, setDeleteRoleTarget] = useState<UserRole | null>(null)
 
-  const handleEditClick = (item: UserRole) => {
-    setEditTarget(item)
+  const handleRoleEditClick = (item: UserRole) => {
+    setEditRoleTarget(item)
     setRoleFormOpen(true)
   }
 
-  const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return
+  const handleRoleDeleteConfirm = async () => {
+    if (!deleteRoleTarget) return
     try {
-      await deleteRole.mutateAsync(deleteTarget.id)
+      await deleteRole.mutateAsync(deleteRoleTarget.id)
       toast.success('역할이 삭제되었습니다')
-    } catch {
-      toast.error('삭제에 실패했습니다')
+    } catch (e) {
+      toast.error(getErrorDetail(e) ?? '삭제에 실패했습니다')
     } finally {
-      setDeleteTarget(null)
+      setDeleteRoleTarget(null)
     }
   }
 
@@ -93,13 +125,26 @@ export default function UsersPage() {
 
       {/* 사용자 뷰 */}
       {activeTab === 'users' && (
-        <UserTable
-          data={userData}
-          isLoading={userLoading}
-          isError={userError}
-          error={userErr}
-          onRowClick={handleUserRowClick}
-        />
+        <div className="space-y-3">
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              onClick={() => { setEditUserTarget(null); setUserFormOpen(true) }}
+            >
+              + 사용자 등록
+            </Button>
+          </div>
+          <UserTable
+            data={userData}
+            isLoading={userLoading}
+            isError={userError}
+            error={userErr}
+            onRowClick={handleUserRowClick}
+            onEditClick={handleUserEditClick}
+            onDeleteClick={(u) => setDeleteUserTarget(u)}
+            onResetPasswordClick={(u) => { setResetPwdTarget(u); setResetPwdOpen(true) }}
+          />
+        </div>
       )}
 
       {/* 역할 관리 뷰 */}
@@ -108,7 +153,7 @@ export default function UsersPage() {
           <div className="flex justify-end">
             <Button
               size="sm"
-              onClick={() => { setEditTarget(null); setRoleFormOpen(true) }}
+              onClick={() => { setEditRoleTarget(null); setRoleFormOpen(true) }}
             >
               + 역할 등록
             </Button>
@@ -119,9 +164,9 @@ export default function UsersPage() {
             isLoading={roleLoading}
             isError={roleError}
             error={roleErr}
-            onAddClick={() => { setEditTarget(null); setRoleFormOpen(true) }}
-            onEditClick={handleEditClick}
-            onDeleteClick={(item) => setDeleteTarget(item)}
+            onAddClick={() => { setEditRoleTarget(null); setRoleFormOpen(true) }}
+            onEditClick={handleRoleEditClick}
+            onDeleteClick={(item) => setDeleteRoleTarget(item)}
           />
         </div>
       )}
@@ -133,27 +178,65 @@ export default function UsersPage() {
         onOpenChange={setUserDetailOpen}
       />
 
-      <UserRoleFormDialog
-        open={roleFormOpen}
-        onOpenChange={(o) => { setRoleFormOpen(o); if (!o) setEditTarget(null) }}
-        editTarget={editTarget}
+      <UserFormDialog
+        open={userFormOpen}
+        onOpenChange={(o) => { setUserFormOpen(o); if (!o) setEditUserTarget(null) }}
+        editTarget={editUserTarget}
+        onSuccess={() => toast.success(editUserTarget ? '사용자가 수정되었습니다' : '사용자가 등록되었습니다')}
       />
 
+      <ResetPasswordDialog
+        open={resetPwdOpen}
+        onOpenChange={setResetPwdOpen}
+        targetUser={resetPwdTarget}
+        onSuccess={() => toast.success('비밀번호가 재설정되었습니다')}
+      />
+
+      {/* 사용자 삭제 확인 */}
       <AlertDialog
-        open={!!deleteTarget}
-        onOpenChange={(o) => { if (!o) setDeleteTarget(null) }}
+        open={!!deleteUserTarget}
+        onOpenChange={(o) => { if (!o) setDeleteUserTarget(null) }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              역할을 삭제하시겠습니까?
+              사용자 [{deleteUserTarget?.display_name}]를 삭제하시겠습니까?
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
-              onClick={handleDeleteConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleUserDeleteConfirm}
+              disabled={deleteUser.isPending}
+            >
+              {deleteUser.isPending && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+              삭제
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <UserRoleFormDialog
+        open={roleFormOpen}
+        onOpenChange={(o) => { setRoleFormOpen(o); if (!o) setEditRoleTarget(null) }}
+        editTarget={editRoleTarget}
+      />
+
+      {/* 역할 삭제 확인 */}
+      <AlertDialog
+        open={!!deleteRoleTarget}
+        onOpenChange={(o) => { if (!o) setDeleteRoleTarget(null) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>역할을 삭제하시겠습니까?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleRoleDeleteConfirm}
               disabled={deleteRole.isPending}
             >
               {deleteRole.isPending && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
