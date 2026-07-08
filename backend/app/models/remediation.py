@@ -1,15 +1,19 @@
 from datetime import date, datetime, timezone
 from uuid import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Text, Date, DateTime, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import String, Text, Date, DateTime, ForeignKey, Integer, UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from app.models.base import AuditedBase
 
 
 class Deficiency(AuditedBase):
     __tablename__ = "deficiencies"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_deficiencies_tenant_code"),
+        Index("ix_deficiencies_code", "code"),
+    )
 
-    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
     test_run_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("test_runs.id"), nullable=True, index=True
     )

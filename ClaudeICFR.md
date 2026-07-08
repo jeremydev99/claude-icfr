@@ -1524,7 +1524,14 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 4. **활성 tenant 확보**: `get_current_user`를 async화해 `X-Tenant-Id` 검증 후 ContextVar 설정(이벤트루프 컨텍스트 → 동기 엔드포인트 전파). 헤더 없으면 단일권한 자동수렴(온프레), 무권한 403, 다중권한 400.
 5. **마이그레이션**: nullable 추가 → backfill → NOT NULL/FK/index(데이터 보존, ADR-0023). downgrade 왕복 검증. controls 95·evidence 4 보존 확인.
 6. **DEFAULT_TENANT_ID = `d0000000-...0001`**: hex 전부 숫자인 UUID는 SQLite "UUID"(NUMERIC affinity) 컬럼에서 정수 강제변환 → 테스트 깨짐. 영문자 포함 고정값 채택(Postgres 무관).
-- **미결(후속)**: `code` 등 글로벌 unique → tenant별 복합 unique 전환(현재 단일 tenant라 충돌 없음). tenant CRUD/온보딩 API. UserRole은 tenant 종속(회사별 역할)으로 결정.
+- **미결(후속)**: tenant CRUD/온보딩 API. UserRole은 tenant 종속(회사별 역할)으로 결정.
+
+**추가 결정 (2026-07-08)** — `(tenant_id, code)` 복합 unique 전환 완료:
+7. **대상 6개 테이블**: controls, deficiencies, processes, risk_categories, risks, sub_processes. 기존 글로벌 `ix_*_code` unique → `uq_<table>_tenant_code`(tenant_id+code 복합) + `ix_<table>_code`(code 단독 non-unique, 조회용) 분리.
+8. **users.email은 제외**: ADR-0025에 따라 User는 전역 계정(1 user = 여러 tenant)이라 email은 tenant 비종속 글로벌 unique 유지가 맞음.
+9. **데이터 보존**: 전환 전 6개 테이블 전부 tenant_id NULL 없음 확인 → 백필 불필요, 바로 인덱스 교체.
+10. **마이그레이션** `c3d4e5f6a7b8`(리비전, down_revision=`b1f2c3d4e5a6`). downgrade는 정직한 실패 허용(2번째 tenant 데이터가 code 중복 상태면 글로벌 unique 재생성 실패 — 의도된 동작).
+- 프롬프트: `prompts/ICFR_tenant_2_20260708.md`
 
 ### (다음 ADR은 여기에 추가)
 
@@ -1564,7 +1571,7 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 | 7 | 로컬 환경 셋업 | ✅ 완료 | 2026-05-11 |
 | 8 | Claude Code 동작 확인 | ✅ 완료 | 2026-05-11 |
 | 9 | Phase 0 — Walking Skeleton 실행 | ✅ 완료 (작업1~6 모두 완료) | 2026-05-21 |
-| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (RCM·Test·Remediation·증빙·담당자/권한 FE 완료. BE+FE 사용자CRUD·비번·감사 일관화 완료. 공통 UI — 사이드바 디자인 개선·증빙 메뉴 평가 그룹 이동·UX 일관성 개선 완료. **멀티테넌시 근간(ADR-0025/0026) 1단계 완료** — tenant_id 전면·자동 격리) | — |
+| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (RCM·Test·Remediation·증빙·담당자/권한 FE 완료. BE+FE 사용자CRUD·비번·감사 일관화 완료. 공통 UI — 사이드바 디자인 개선·증빙 메뉴 평가 그룹 이동·UX 일관성 개선 완료. **멀티테넌시 근간(ADR-0025/0026) 1단계 완료** — tenant_id 전면·자동 격리. **2단계 완료(2026-07-08)** — 6개 테이블 (tenant_id, code) 복합 unique 전환) | — |
 | 11 | Phase 1.5 — A안 완성 | ⏳ 대기 | — |
 | 12 | Phase 2 — B안 완성 | ⏳ 대기 | — |
 | 13 | Phase 3 — C안 완성 | ⏳ 대기 | — |
@@ -1630,7 +1637,7 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
    - 증빙: MinIO 실제 업로드, 검색
    - ~~사용자/권한: 사용자 CRUD, 비밀번호 변경~~ ✅ BE+FE 완료 (2026-06-26) — 사용자 CRUD·비번 변경/리셋·감사 일관화 + FE CRUD 화면 연결. deficiency 삭제 가드·history 실명 우회 제거.
 2. **후속**: Test 모듈 FE 나머지 (bulk 삭제/편집 등) 또는 Phase 1.5 진입
-3. **멀티테넌시 후속 (ADR-0026 미결)**: ①`code` 등 글로벌 unique → `(tenant_id, code)` 복합 unique 전환(2번째 tenant 진입 전 필수). ②tenant 생성/온보딩 API + 회사 전환 UI. ③프론트엔드 `X-Tenant-Id` 헤더 주입(현재는 단일권한 자동수렴으로 동작).
+3. **멀티테넌시 후속 (ADR-0026 미결)**: ~~①`code` 등 글로벌 unique → `(tenant_id, code)` 복합 unique 전환~~ ✅ 완료 (2026-07-08, ADR-0026 추가결정 참조). ②tenant 생성/온보딩 API + 회사 전환 UI. ③프론트엔드 `X-Tenant-Id` 헤더 주입(현재는 단일권한 자동수렴으로 동작).
 4. Phase 1.5 → 2 → 3 단계적 확장
 
 ### Claude에게 주는 다음 세션 지시
@@ -1642,6 +1649,7 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-07-08 / Regina + Claude** — **멀티테넌시 2단계**: `(tenant_id, code)` 복합 unique 전환 (`ICFR_tenant_2_20260708.md`, ADR-0026 추가결정). controls·deficiencies·processes·risk_categories·risks·sub_processes 6개 모델에서 `code` 컬럼 `unique=True` 제거 → `__table_args__`에 `UniqueConstraint(tenant_id, code)` + `Index(code)`(조회용 non-unique) 추가. `users.email`은 대상 아님(ADR-0025 전역 계정 유지). Alembic 마이그레이션 `c3d4e5f6a7b8`(down_revision=`b1f2c3d4e5a6`) — 기존 6개 테이블 tenant_id NULL 없어 백필 불필요, 바로 인덱스 교체. `docker compose build backend` 재빌드 필요(볼륨마운트 없음, 코드 빌드타임 고정). 인덱스 재조회로 `uq_<table>_tenant_code`(unique)+`ix_<table>_code`(non-unique) 6개 테이블 전부 확인. BE 헬스체크 OK, pytest 84 전부 통과. **스키마 변경 커밋 — push는 사용자 직접 수행 예정, 아직 미push.**
 - **2026-07-01 / Regina + Claude** — UX 일관성 개선 (전 모듈 표현 통일). ①`lib/utils.ts` `formatDate` 유틸 추가 (YYYY-MM-DD 슬라이스, null→'—'). ②날짜 형식 통일: TestRunTable·RemediationPlanTable 로컬 함수 제거 → `formatDate` 공통 사용. EvidenceTable `toLocaleDateString` 교체. UserTable·UserRoleTable `toLocaleDateString('ko-KR')` ("2024. 1. 15." 형식) → `formatDate`. 전 화면 YYYY-MM-DD 동일 출력. ③삭제 버튼 통일: RemediationPage·UsersPage(사용자·역할 2곳) `className="bg-red-600 hover:bg-red-700"` → `className="bg-destructive text-destructive-foreground hover:bg-destructive/90"` (CSS 변수 기반, 테마 변경 시 자동 반영). ④빈 목록 문구: UserTable "등록된 사용자가 없습니다." → 액션 안내 추가. ControlTable 검색 필터 유무로 분기 — 필터 없을 때 "등록된 통제가 없습니다. 통제 추가 버튼으로 첫 통제를 추가하세요." / 필터 있을 때 기존 "검색 결과가 없습니다" 유지. ⑤로딩 표현 통일: TestRunTable·DeficiencyTable·RemediationPlanTable·UserTable·UserRoleTable 아이콘만(h-6) → 아이콘(h-5)+텍스트. EvidencePage 텍스트만 → 아이콘+텍스트+`<div flex>`. 기능·API 변경 없음. 빌드 통과. 커밋: 06beaaa. 브랜치: feature/fe-ux-consistency → main 머지 완료.
 - **2026-06-30 / Regina + Claude** — 사이드바·레이아웃 디자인 개선. ①`index.css`: `--sidebar: 220 14% 92%` 토큰 추가 (본문 흰색과 구분되는 쿨 그레이). ②`tailwind.config.js`: `sidebar: 'hsl(var(--sidebar))'` 색상 등록. ③`AppLayout.tsx`: aside `bg-card` → `bg-sidebar`. active 메뉴 `bg-accent` → `bg-primary text-primary-foreground`(다크 네이비+흰 텍스트)로 현재 위치 강조. hover `hover:text-foreground`로 대비 강화. 아이콘 active/비활성 색 조건부 적용. 로고 영역에 서브타이틀("내부회계관리시스템") 추가. 그룹 간 `mb-3` 간격으로 묶음 시인성 향상. 기능·라우트 변경 없음. 빌드 통과. 커밋: 615b802. 브랜치: feature/fe-sidebar-redesign → main 머지 완료.
 - **2026-06-30 / Regina + Claude** — 증빙 관리 메뉴 이동 + 액션 헤더 통일. ①`navigation.ts`: 증빙 관리 항목을 "보고" 그룹에서 "평가" 그룹으로 이동(평가 그룹 순서: Test → 개선계획 → 증빙 관리). 보고 그룹에는 Report만 남음. ②`EvidenceTable.tsx`: 액션 컬럼 헤더 `"액션"` → 빈 `<TableHead className="w-40">` (RCM·Remediation·Users 테이블과 동일 패턴). 라우트·페이지·기능 변경 없음. 빌드 통과. 커밋: 8f79f2d. 브랜치: feature/fe-evidence-menu-move → main 머지 완료.

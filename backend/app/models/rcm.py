@@ -1,14 +1,18 @@
 from uuid import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Text, Boolean, ForeignKey
+from sqlalchemy import String, Text, Boolean, ForeignKey, UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from app.models.base import AuditedBase
 
 
 class Process(AuditedBase):
     __tablename__ = "processes"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_processes_tenant_code"),
+        Index("ix_processes_code", "code"),
+    )
 
-    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -18,8 +22,12 @@ class Process(AuditedBase):
 class SubProcess(AuditedBase):
     """하위프로세스. 예: EL-010 (통제환경), SD-010 (주문 및 거래관리)."""
     __tablename__ = "sub_processes"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_sub_processes_tenant_code"),
+        Index("ix_sub_processes_code", "code"),
+    )
 
-    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     process_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("processes.id"), nullable=False, index=True
@@ -32,8 +40,12 @@ class SubProcess(AuditedBase):
 class Risk(AuditedBase):
     """위험. K-ICFR 표준 — SubProcess에 1:N. 예: EL-010-10."""
     __tablename__ = "risks"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_risks_tenant_code"),
+        Index("ix_risks_code", "code"),
+    )
 
-    code: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(30), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     assessment_level: Mapped[str] = mapped_column(String(5), nullable=False, default="LR")
     # "LR" (Low), "MR" (Medium), "HR" (High), "SR" (Significant)
@@ -48,8 +60,12 @@ class Risk(AuditedBase):
 class RiskCategory(AuditedBase):
     """경영자 주장 분류 (Assertion). 예: E (Existence), C (Completeness)."""
     __tablename__ = "risk_categories"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_risk_categories_tenant_code"),
+        Index("ix_risk_categories_code", "code"),
+    )
 
-    code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(10), nullable=False)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -57,9 +73,13 @@ class RiskCategory(AuditedBase):
 class Control(AuditedBase):
     """통제 활동. Risk를 통해 Process 체인 추적. 예: EL-010-10-10."""
     __tablename__ = "controls"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_controls_tenant_code"),
+        Index("ix_controls_code", "code"),
+    )
 
     # 기본 식별자
-    code: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(30), nullable=False)
     name: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     risk_id: Mapped[UUID] = mapped_column(
