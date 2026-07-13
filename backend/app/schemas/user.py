@@ -15,6 +15,16 @@ class UserBrief(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TenantAccessRead(BaseModel):
+    """/me 응답용 — 접근 가능한 tenant + 해당 tenant에서의 역할 (UserTenantAccess.role)."""
+    id: UUID
+    name: str
+    code: str
+    role: str
+
+    model_config = {"from_attributes": True}
+
+
 class UserRead(BaseModel):
     id: UUID
     email: EmailStr
@@ -23,6 +33,8 @@ class UserRead(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    tenants: list[TenantAccessRead] = []
+    active_tenant_id: UUID | None = None
 
     model_config = {"from_attributes": True}
 

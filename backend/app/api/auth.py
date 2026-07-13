@@ -6,8 +6,9 @@ from app.core.database import get_db
 from app.core.security import verify_password, hash_password, create_access_token, create_refresh_token, decode_token
 from app.core.deps import get_current_user
 from app.models.user import User
+from app.models.tenant import Tenant, UserTenantAccess
 from app.schemas.auth import TokenResponse, RefreshRequest, RefreshResponse, ChangePasswordRequest
-from app.schemas.user import UserRead
+from app.schemas.user import UserRead, TenantAccessRead
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -64,8 +65,30 @@ def logout(current_user: User = Depends(get_current_user)) -> dict:
 
 
 @router.get("/me", response_model=UserRead)
-def me(current_user: User = Depends(get_current_user)) -> User:
-    return current_user
+def me(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserRead:
+    """내 정보 + 접근 가능한 tenant 목록. User는 전역 계정이므로 UserTenantAccess join으로 조회."""
+    rows = (
+        db.query(UserTenantAccess.role, Tenant)
+        .join(Tenant, UserTenantAccess.tenant_id == Tenant.id)
+        .filter(
+            UserTenantAccess.user_id == current_user.id,
+            UserTenantAccess.is_deleted == False,  # noqa: E712
+            Tenant.is_deleted == False,  # noqa: E712
+            Tenant.is_active == True,  # noqa: E712
+        )
+        .order_by(UserTenantAccess.created_at)
+        .all()
+    )
+    result = UserRead.model_validate(current_user)
+    result.tenants = [
+        TenantAccessRead(id=tenant.id, name=tenant.name, code=tenant.code, role=role)
+        for role, tenant in rows
+    ]
+    result.active_tenant_id = result.tenants[0].id if result.tenants else None
+    return result
 
 
 @router.post("/change-password", status_code=status.HTTP_200_OK)
