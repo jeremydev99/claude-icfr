@@ -6,12 +6,11 @@ import {
   deleteUserRole,
 } from './userRolesApi'
 import type { UserRoleCreatePayload, UserRoleUpdatePayload } from '../types'
-
-const QUERY_KEY = 'userRoles'
+import { queryKeys } from '@/lib/queryKeys'
 
 export function useUserRoles(params: { skip?: number; limit?: number } = {}) {
   return useQuery({
-    queryKey: [QUERY_KEY, params],
+    queryKey: queryKeys.users.roles(params),
     queryFn: () => fetchUserRoles(params),
     staleTime: 1000 * 60 * 5,
   })
@@ -21,7 +20,7 @@ export function useCreateUserRole() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (payload: UserRoleCreatePayload) => createUserRole(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [QUERY_KEY] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users.rolesAll() }),
   })
 }
 
@@ -30,7 +29,7 @@ export function useUpdateUserRole() {
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: UserRoleUpdatePayload }) =>
       updateUserRole(id, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [QUERY_KEY] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users.rolesAll() }),
   })
 }
 
@@ -38,6 +37,6 @@ export function useDeleteUserRole() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => deleteUserRole(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [QUERY_KEY] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users.rolesAll() }),
   })
 }
