@@ -10,10 +10,11 @@ import type {
   ControlListResponse,
   ControlUpdatePayload,
 } from '../types'
+import { queryKeys } from '@/lib/queryKeys'
 
 export function useControls(params: ControlSearchParams) {
   return useQuery<ControlListResponse>({
-    queryKey: ['controls', params],
+    queryKey: queryKeys.rcm.controls(params),
     queryFn: () => fetchControls(params),
     placeholderData: (previous) => previous,
     staleTime: 1000 * 30,
@@ -25,7 +26,7 @@ export function useCreateControl() {
   return useMutation({
     mutationFn: createControl,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['controls'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.rcm.controlsAll() })
     },
   })
 }
@@ -36,7 +37,7 @@ export function useUpdateControl() {
     mutationFn: ({ id, payload }: { id: string; payload: ControlUpdatePayload }) =>
       updateControlById(id, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['controls'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.rcm.controlsAll() })
     },
   })
 }
@@ -46,7 +47,7 @@ export function useDeleteControl() {
   return useMutation({
     mutationFn: deleteControl,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['controls'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.rcm.controlsAll() })
     },
   })
 }

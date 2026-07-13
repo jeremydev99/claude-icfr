@@ -6,10 +6,11 @@ import {
   deleteDeficiency,
 } from './deficiencyApi'
 import type { DeficiencyCreatePayload, DeficiencyUpdatePayload } from '../types'
+import { queryKeys } from '@/lib/queryKeys'
 
 export function useDeficiencies(params: { skip?: number; limit?: number } = {}) {
   return useQuery({
-    queryKey: ['deficiencies', params],
+    queryKey: queryKeys.remediation.deficiencies(params),
     queryFn: () => fetchDeficiencies(params),
     placeholderData: (prev) => prev,
     staleTime: 1000 * 30,
@@ -21,7 +22,7 @@ export function useCreateDeficiency() {
   return useMutation({
     mutationFn: (payload: DeficiencyCreatePayload) => createDeficiency(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deficiencies'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.remediation.deficienciesAll() })
     },
   })
 }
@@ -32,7 +33,7 @@ export function useUpdateDeficiency() {
     mutationFn: ({ id, payload }: { id: string; payload: DeficiencyUpdatePayload }) =>
       updateDeficiency({ id, payload }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deficiencies'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.remediation.deficienciesAll() })
     },
   })
 }
@@ -42,7 +43,7 @@ export function useDeleteDeficiency() {
   return useMutation({
     mutationFn: (id: string) => deleteDeficiency(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deficiencies'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.remediation.deficienciesAll() })
     },
   })
 }
