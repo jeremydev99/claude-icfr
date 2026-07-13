@@ -1571,7 +1571,7 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 | 7 | 로컬 환경 셋업 | ✅ 완료 | 2026-05-11 |
 | 8 | Claude Code 동작 확인 | ✅ 완료 | 2026-05-11 |
 | 9 | Phase 0 — Walking Skeleton 실행 | ✅ 완료 (작업1~6 모두 완료) | 2026-05-21 |
-| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (RCM·Test·Remediation·증빙·담당자/권한 FE 완료. BE+FE 사용자CRUD·비번·감사 일관화 완료. 공통 UI — 사이드바 디자인 개선·증빙 메뉴 평가 그룹 이동·UX 일관성 개선 완료. **멀티테넌시 근간(ADR-0025/0026) 1단계 완료** — tenant_id 전면·자동 격리. **2단계 완료(2026-07-08)** — 6개 테이블 (tenant_id, code) 복합 unique 전환) | — |
+| 10 | Phase 1 — A-1안 구현 | 🔄 진행중 (RCM·Test·Remediation·증빙·담당자/권한 FE 완료. BE+FE 사용자CRUD·비번·감사 일관화 완료. 공통 UI — 사이드바 디자인 개선·증빙 메뉴 평가 그룹 이동·UX 일관성 개선 완료. **멀티테넌시 근간(ADR-0025/0026) 1단계 완료** — tenant_id 전면·자동 격리. **2단계 완료(2026-07-08)** — 6개 테이블 (tenant_id, code) 복합 unique 전환. `/me` tenant 접근 정보 반환(2026-07-13)) | — |
 | 11 | Phase 1.5 — A안 완성 | ⏳ 대기 | — |
 | 12 | Phase 2 — B안 완성 | ⏳ 대기 | — |
 | 13 | Phase 3 — C안 완성 | ⏳ 대기 | — |
@@ -1637,7 +1637,7 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
    - 증빙: MinIO 실제 업로드, 검색
    - ~~사용자/권한: 사용자 CRUD, 비밀번호 변경~~ ✅ BE+FE 완료 (2026-06-26) — 사용자 CRUD·비번 변경/리셋·감사 일관화 + FE CRUD 화면 연결. deficiency 삭제 가드·history 실명 우회 제거.
 2. **후속**: Test 모듈 FE 나머지 (bulk 삭제/편집 등) 또는 Phase 1.5 진입
-3. **멀티테넌시 후속 (ADR-0026 미결)**: ~~①`code` 등 글로벌 unique → `(tenant_id, code)` 복합 unique 전환~~ ✅ 완료 (2026-07-08, ADR-0026 추가결정 참조). ②tenant 생성/온보딩 API + 회사 전환 UI. ③프론트엔드 `X-Tenant-Id` 헤더 주입(현재는 단일권한 자동수렴으로 동작).
+3. **멀티테넌시 후속 (ADR-0026 미결)**: ~~①`code` 등 글로벌 unique → `(tenant_id, code)` 복합 unique 전환~~ ✅ 완료 (2026-07-08, ADR-0026 추가결정 참조). ②tenant 생성/온보딩 API + 회사 전환 UI. ③프론트엔드 `X-Tenant-Id` 헤더 주입(현재는 단일권한 자동수렴으로 동작) — `/me`가 tenants·active_tenant_id 반환(2026-07-13)으로 회사 전환 UI 기반 마련.
 4. Phase 1.5 → 2 → 3 단계적 확장
 
 ### Claude에게 주는 다음 세션 지시
@@ -1649,6 +1649,7 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-07-13 / TrustBuilder + Claude** — `GET /api/auth/me` 응답에 tenant 접근 정보 추가 (멀티테넌시 후속 ③ 준비). `schemas/user.py`: `TenantAccessRead`(id·name·code·role) 신규 + `UserRead`에 `tenants: list[TenantAccessRead]`·`active_tenant_id: UUID|None` 추가 — 기존 필드 유지, `UserRead`(schemas/user.py)는 /me 전용이라 회귀 없음(user_mgmt는 별도 스키마). `api/auth.py` `/me`: `UserTenantAccess`⋈`Tenant` join(soft-delete·비활성 tenant 제외, `created_at` 순), `active_tenant_id`=첫 번째 tenant(단일이면 그 하나). User에 tenant_id 미추가(ADR-0025 전역 계정 유지). config.admin_password 불변. `docker compose up -d --build backend` 재빌드 + tester 계정 실호출로 tenants=[사이냅소프트/DEFAULT]·active_tenant_id 반환 확인, Swagger 200. 참고: 로컬 DB admin 계정 비밀번호가 .env 값(admin123)과 불일치해 tester(acme1234)로 검증.
 - **2026-07-08 / Regina + Claude** — **멀티테넌시 2단계**: `(tenant_id, code)` 복합 unique 전환 (`ICFR_tenant_2_20260708.md`, ADR-0026 추가결정). controls·deficiencies·processes·risk_categories·risks·sub_processes 6개 모델에서 `code` 컬럼 `unique=True` 제거 → `__table_args__`에 `UniqueConstraint(tenant_id, code)` + `Index(code)`(조회용 non-unique) 추가. `users.email`은 대상 아님(ADR-0025 전역 계정 유지). Alembic 마이그레이션 `c3d4e5f6a7b8`(down_revision=`b1f2c3d4e5a6`) — 기존 6개 테이블 tenant_id NULL 없어 백필 불필요, 바로 인덱스 교체. `docker compose build backend` 재빌드 필요(볼륨마운트 없음, 코드 빌드타임 고정). 인덱스 재조회로 `uq_<table>_tenant_code`(unique)+`ix_<table>_code`(non-unique) 6개 테이블 전부 확인. BE 헬스체크 OK, pytest 84 전부 통과. **스키마 변경 커밋 — push는 사용자 직접 수행 예정, 아직 미push.**
 - **2026-07-01 / Regina + Claude** — UX 일관성 개선 (전 모듈 표현 통일). ①`lib/utils.ts` `formatDate` 유틸 추가 (YYYY-MM-DD 슬라이스, null→'—'). ②날짜 형식 통일: TestRunTable·RemediationPlanTable 로컬 함수 제거 → `formatDate` 공통 사용. EvidenceTable `toLocaleDateString` 교체. UserTable·UserRoleTable `toLocaleDateString('ko-KR')` ("2024. 1. 15." 형식) → `formatDate`. 전 화면 YYYY-MM-DD 동일 출력. ③삭제 버튼 통일: RemediationPage·UsersPage(사용자·역할 2곳) `className="bg-red-600 hover:bg-red-700"` → `className="bg-destructive text-destructive-foreground hover:bg-destructive/90"` (CSS 변수 기반, 테마 변경 시 자동 반영). ④빈 목록 문구: UserTable "등록된 사용자가 없습니다." → 액션 안내 추가. ControlTable 검색 필터 유무로 분기 — 필터 없을 때 "등록된 통제가 없습니다. 통제 추가 버튼으로 첫 통제를 추가하세요." / 필터 있을 때 기존 "검색 결과가 없습니다" 유지. ⑤로딩 표현 통일: TestRunTable·DeficiencyTable·RemediationPlanTable·UserTable·UserRoleTable 아이콘만(h-6) → 아이콘(h-5)+텍스트. EvidencePage 텍스트만 → 아이콘+텍스트+`<div flex>`. 기능·API 변경 없음. 빌드 통과. 커밋: 06beaaa. 브랜치: feature/fe-ux-consistency → main 머지 완료.
 - **2026-06-30 / Regina + Claude** — 사이드바·레이아웃 디자인 개선. ①`index.css`: `--sidebar: 220 14% 92%` 토큰 추가 (본문 흰색과 구분되는 쿨 그레이). ②`tailwind.config.js`: `sidebar: 'hsl(var(--sidebar))'` 색상 등록. ③`AppLayout.tsx`: aside `bg-card` → `bg-sidebar`. active 메뉴 `bg-accent` → `bg-primary text-primary-foreground`(다크 네이비+흰 텍스트)로 현재 위치 강조. hover `hover:text-foreground`로 대비 강화. 아이콘 active/비활성 색 조건부 적용. 로고 영역에 서브타이틀("내부회계관리시스템") 추가. 그룹 간 `mb-3` 간격으로 묶음 시인성 향상. 기능·라우트 변경 없음. 빌드 통과. 커밋: 615b802. 브랜치: feature/fe-sidebar-redesign → main 머지 완료.
