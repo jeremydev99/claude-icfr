@@ -3,6 +3,7 @@ import axios from 'axios'
 import { fetchEvidenceFiles, uploadEvidenceFile, deleteEvidenceFile } from './evidenceApi'
 import type { EvidenceFileSearchParams } from '../types'
 import { queryKeys } from '@/lib/queryKeys'
+import { useActiveTenantId } from '@/features/auth/store'
 
 function resolveUploadError(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -14,8 +15,9 @@ function resolveUploadError(error: unknown): string {
 }
 
 export function useEvidenceFiles(params: EvidenceFileSearchParams = {}) {
+  const tenantId = useActiveTenantId()
   return useQuery({
-    queryKey: queryKeys.evidence.files(params),
+    queryKey: queryKeys.evidence.files(tenantId, params),
     queryFn: () => fetchEvidenceFiles(params),
     placeholderData: (previous) => previous,
     staleTime: 1000 * 30,
@@ -24,10 +26,11 @@ export function useEvidenceFiles(params: EvidenceFileSearchParams = {}) {
 
 export function useUploadEvidenceFile() {
   const queryClient = useQueryClient()
+  const tenantId = useActiveTenantId()
   return useMutation({
     mutationFn: uploadEvidenceFile,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.evidence.filesAll() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.evidence.filesAll(tenantId) })
     },
     meta: { resolveUploadError },
   })
@@ -35,10 +38,11 @@ export function useUploadEvidenceFile() {
 
 export function useDeleteEvidenceFile() {
   const queryClient = useQueryClient()
+  const tenantId = useActiveTenantId()
   return useMutation({
     mutationFn: deleteEvidenceFile,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.evidence.filesAll() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.evidence.filesAll(tenantId) })
     },
   })
 }
