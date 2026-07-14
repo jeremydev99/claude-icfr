@@ -13,6 +13,7 @@ import {
 import { fetchProcesses, fetchSubProcesses, fetchRisksBySubProcessId } from '../../api/controlsApi'
 import type { ControlFormData } from '../ControlFormDialog'
 import { queryKeys } from '@/lib/queryKeys'
+import { useActiveTenantId } from '@/features/auth/store'
 
 function FieldError({ name }: { name: string }) {
   const { formState: { errors } } = useFormContext<ControlFormData>()
@@ -29,10 +30,11 @@ export default function BasicInfoTab({ isEditMode }: Props) {
   const { register, control, watch, setValue } = useFormContext<ControlFormData>()
   const selectedProcessCode = watch('process_code')
   const selectedSubProcessCode = watch('sub_process_code')
+  const tenantId = useActiveTenantId()
 
   // ── 1. 프로세스 목록 ──────────────────────────────────────
   const { data: processesData, isLoading: processesLoading } = useQuery({
-    queryKey: queryKeys.rcm.processes(),
+    queryKey: queryKeys.rcm.processes(tenantId),
     queryFn: fetchProcesses,
     staleTime: 1000 * 60 * 10,
     enabled: !isEditMode,
@@ -42,7 +44,7 @@ export default function BasicInfoTab({ isEditMode }: Props) {
 
   // ── 2. 세부 프로세스 목록 (process_id 서버 필터) ──────────
   const { data: subProcessesData, isLoading: subProcessesLoading } = useQuery({
-    queryKey: queryKeys.rcm.subProcesses(selectedProcess?.id),
+    queryKey: queryKeys.rcm.subProcesses(tenantId, selectedProcess?.id),
     queryFn: () => fetchSubProcesses(selectedProcess!.id),
     enabled: !!selectedProcess?.id && !isEditMode,
     staleTime: 1000 * 60 * 10,
@@ -52,7 +54,7 @@ export default function BasicInfoTab({ isEditMode }: Props) {
 
   // ── 3. 위험 목록 (sub_process_id 서버 필터) ───────────────
   const { data: risksData, isLoading: risksLoading } = useQuery({
-    queryKey: queryKeys.rcm.risks(selectedSubProcess?.id),
+    queryKey: queryKeys.rcm.risks(tenantId, selectedSubProcess?.id),
     queryFn: () => fetchRisksBySubProcessId(selectedSubProcess!.id),
     enabled: !!selectedSubProcess?.id && !isEditMode,
     staleTime: 1000 * 60 * 10,

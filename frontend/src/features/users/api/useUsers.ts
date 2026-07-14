@@ -2,18 +2,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchUsers, fetchUserDetail, createUser, updateUser, deleteUser, resetUserPassword } from './usersApi'
 import type { UserCreatePayload, UserUpdatePayload, ResetPasswordPayload } from '../types'
 import { queryKeys } from '@/lib/queryKeys'
+import { useActiveTenantId } from '@/features/auth/store'
 
 export function useUsers(params: { skip?: number; limit?: number } = {}) {
+  const tenantId = useActiveTenantId()
   return useQuery({
-    queryKey: queryKeys.users.list(params),
+    queryKey: queryKeys.users.list(tenantId, params),
     queryFn: () => fetchUsers(params),
     staleTime: 1000 * 60 * 5,
   })
 }
 
 export function useUserDetail(id: string | null) {
+  const tenantId = useActiveTenantId()
   return useQuery({
-    queryKey: queryKeys.users.detail(id),
+    queryKey: queryKeys.users.detail(tenantId, id),
     queryFn: () => fetchUserDetail(id!),
     enabled: !!id,
     staleTime: 1000 * 60 * 5,
@@ -22,25 +25,28 @@ export function useUserDetail(id: string | null) {
 
 export function useCreateUser() {
   const qc = useQueryClient()
+  const tenantId = useActiveTenantId()
   return useMutation({
     mutationFn: (body: UserCreatePayload) => createUser(body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users.all() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users.all(tenantId) }),
   })
 }
 
 export function useUpdateUser() {
   const qc = useQueryClient()
+  const tenantId = useActiveTenantId()
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UserUpdatePayload }) => updateUser(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users.all() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users.all(tenantId) }),
   })
 }
 
 export function useDeleteUser() {
   const qc = useQueryClient()
+  const tenantId = useActiveTenantId()
   return useMutation({
     mutationFn: (id: string) => deleteUser(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users.all() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users.all(tenantId) }),
   })
 }
 

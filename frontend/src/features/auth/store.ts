@@ -1,10 +1,19 @@
 import { create } from 'zustand'
 
+export interface TenantSummary {
+  id: string
+  name: string
+  code: string
+  role: string
+}
+
 export interface UserProfile {
   id: string
   email: string
   display_name: string
   role: string
+  tenants: TenantSummary[]
+  active_tenant_id: string | null
 }
 
 interface AuthState {
@@ -32,3 +41,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ accessToken: null, refreshToken: null, user: null })
   },
 }))
+
+// 활성 tenant는 오직 /me 응답(user.active_tenant_id)에서만 파생한다 — 별도 저장소 없음.
+export function useActiveTenantId(): string | null {
+  return useAuthStore((s) => s.user?.active_tenant_id ?? null)
+}

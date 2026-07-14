@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useAuthStore } from '@/features/auth/store'
 
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
@@ -8,6 +9,21 @@ apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+// tenant 확정 전(로그인/토큰갱신/최초 /me) 요청은 제외 — 헤더가 붙어도 무해하지만 명시적으로 뺀다.
+const TENANT_HEADER_EXCLUDED_PATHS = ['/auth/login', '/auth/refresh', '/auth/me']
+
+apiClient.interceptors.request.use((config) => {
+  const url = config.url ?? ''
+  const isExcluded = TENANT_HEADER_EXCLUDED_PATHS.some((path) => url.includes(path))
+  if (isExcluded) return config
+
+  const tenantId = useAuthStore.getState().user?.active_tenant_id ?? null
+  if (tenantId) {
+    config.headers['X-Tenant-Id'] = tenantId
   }
   return config
 })
