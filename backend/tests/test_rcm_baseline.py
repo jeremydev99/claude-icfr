@@ -1,9 +1,12 @@
-"""RCM baseline/instance 병합 테스트 (ADR-0027, 2-A-1).
+"""RCM baseline/instance 병합 테스트 (ADR-0027, 2-A-1 + 2-B-1).
 
 resolve_controls 의 4 action(adopt/exclude/override/add) + 혼합 case + tenant 격리 검증.
-서비스 레벨 직접 검증 (API 전환은 2-A-3)."""
+서비스 레벨 직접 검증 (API 전환은 2-A-3).
+2-B-1: baseline 상위 계층 FK 체인 조인 + 전역성(tenant 컨텍스트 무관) 검증."""
 from app.models.tenant import Tenant
-from app.models.rcm_baseline import BaselineControl, ControlInstance
+from app.models.rcm_baseline import (
+    BaselineProcess, BaselineSubProcess, BaselineRisk, BaselineControl, ControlInstance,
+)
 from app.services.control_resolver import resolve_controls, CONTROL_FIELDS
 from app.core.tenant_context import set_active_tenant, reset_active_tenant, DEFAULT_TENANT_ID
 from tests.conftest import TestingSessionLocal
@@ -159,6 +162,82 @@ def test_resolve_tenant_isolation(app):
         assert "BL-ISO-1" in rows_d
         assert "CI-ISO-B" not in rows_d
         reset_active_tenant(tok)
+    finally:
+        set_active_tenant(None)
+        db.close()
+
+
+# ── 2-B-1: baseline 상위 계층 ──────────────────────────────────────────
+
+
+def _make_baseline_chain(db, suffix):
+    """baseline_processes→sub_processes→risks→controls 4단 체인 생성."""
+    p = BaselineProcess(code=f"BP-{suffix}", name="표준 프로세스")
+    db.add(p)
+    db.flush()
+    sp = BaselineSubProcess(code=f"BSP-{suffix}", name="표준 하위프로세스", process_id=p.id)
+    db.add(sp)
+    db.flush()
+    r = BaselineRisk(code=f"BR-{suffix}", description="표준 위험", sub_process_id=sp.id)
+    db.add(r)
+    db.flush()
+    c = BaselineControl(code=f"BC-{suffix}", name="표준 통제", risk_id=r.id)
+    db.add(c)
+    db.commit()
+    return p, sp, r, c
+
+
+def test_baseline_fk_chain_join(app):
+    """baseline_control → risk → sub_process → process 관계 경로로 code 를 조회한다."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        p, sp, r, c = _make_baseline_chain(db, "CHAIN1")
+
+        found = db.query(BaselineControl).filter(BaselineControl.code == "BC-CHAIN1").one()
+        assert found.risk.code == "BR-CHAIN1"
+        assert found.risk.sub_process.code == "BSP-CHAIN1"
+        assert found.risk.sub_process.process.code == "BP-CHAIN1"
+
+        # 조인 쿼리로도 같은 체인이 성립 (2-A-3 검색 필터가 쓸 경로)
+        row = (
+            db.query(BaselineControl.code, BaselineProcess.code)
+            .join(BaselineRisk, BaselineControl.risk_id == BaselineRisk.id)
+            .join(BaselineSubProcess, BaselineRisk.sub_process_id == BaselineSubProcess.id)
+            .join(BaselineProcess, BaselineSubProcess.process_id == BaselineProcess.id)
+            .filter(BaselineControl.code == "BC-CHAIN1")
+            .one()
+        )
+        assert row == ("BC-CHAIN1", "BP-CHAIN1")
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_baseline_hierarchy_is_global(app):
+    """baseline 계층은 전역 — tenant 컨텍스트가 무엇이든(없든) 동일하게 조회된다."""
+    db = TestingSessionLocal()
+    try:
+        tok = set_active_tenant(DEFAULT_TENANT_ID)
+        _make_baseline_chain(db, "GLOB1")
+        reset_active_tenant(tok)
+
+        tenant_b = db.query(Tenant).filter(Tenant.code == "TENANT_BL_G").first()
+        if not tenant_b:
+            tenant_b = Tenant(name="회사B-global", code="TENANT_BL_G", is_active=True)
+            db.add(tenant_b)
+            db.commit()
+
+        # 다른 tenant 컨텍스트에서도 체인 전체가 보인다
+        tok = set_active_tenant(tenant_b.id)
+        assert db.query(BaselineProcess).filter(BaselineProcess.code == "BP-GLOB1").count() == 1
+        assert db.query(BaselineSubProcess).filter(BaselineSubProcess.code == "BSP-GLOB1").count() == 1
+        assert db.query(BaselineRisk).filter(BaselineRisk.code == "BR-GLOB1").count() == 1
+        assert db.query(BaselineControl).filter(BaselineControl.code == "BC-GLOB1").count() == 1
+        reset_active_tenant(tok)
+
+        # tenant 컨텍스트가 아예 없어도 조회된다
+        assert db.query(BaselineRisk).filter(BaselineRisk.code == "BR-GLOB1").count() == 1
     finally:
         set_active_tenant(None)
         db.close()

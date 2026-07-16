@@ -1,18 +1,24 @@
-"""RCM baseline/instance 모델 (ADR-0027, 2-A-1).
+"""RCM baseline/instance 모델 (ADR-0027, 2-A-1 + 2-B-1).
 
 - BaselineControl: 전역 표준 통제(basic-perfect의 그릇). tenant 비종속 → IdentityBase.
 - ControlInstance: 회사별 결정(adopt/exclude/override/add). AuditedBase → tenant_id 자동.
   override 필드는 baseline 전 필드의 nullable 미러링 — NULL=baseline 따름, 값=override.
   (ADR-0027 필드 diff 방식 — JSON 아님. 정렬·검색·타입안전 유지)
+- 2-B-1 상위 계층: BaselineProcess/BaselineSubProcess/BaselineRisk/BaselineRiskCategory —
+  전부 전역(IdentityBase)이라 baseline_controls→baseline_risks→baseline_sub_processes→
+  baseline_processes FK 체인이 tenant 필터에 걸리지 않는다.
 
-기존 controls 테이블은 미변경. 이관은 2-A-2, 조회 전환은 2-A-3.
+기존 processes/sub_processes/risks/risk_categories/controls 테이블은 미변경(병행 구축).
+이관은 2-A-2, 조회 전환은 2-A-3.
 
-risk_id 결정(명세 §1 위임사항):
-- baseline.risk_id 는 FK 없는 nullable UUID — 전역 테이블이 tenant 종속 risks 를
-  FK 참조하면 격리 위반(다른 tenant 맥락에서 자동필터에 걸려 참조가 깨짐). 2-B에서
-  baseline_risks 신설 시 FK 전환.
+risk_id 결정:
+- baseline.risk_id 는 FK→baseline_risks.id nullable — 2-A-1의 "2-B에서 FK 전환" 위임 이행.
+  nullable 은 이관(2-A-2) 전까지 유지, 이관 후 NOT NULL 검토.
 - instance.risk_id 는 FK→risks.id nullable — instance 는 tenant 종속이라 자기 tenant 의
-  risk 참조가 정합.
+  risk 참조가 정합. baseline risk / instance risk 이중 참조 설계는 2-B-2에서.
+
+RiskCategory(어서션)는 baseline만 두고 instance 미도입 — 제도 고정 개념(회계감사기준),
+회사별 목록 변형 case 희박. 필요 시 후속에서 instance 테이블만 추가하면 됨.
 """
 from uuid import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -20,6 +26,66 @@ from sqlalchemy import String, Text, Boolean, ForeignKey, UniqueConstraint, Inde
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from app.models.base import IdentityBase, AuditedBase
+
+
+class BaselineProcess(IdentityBase):
+    """표준 프로세스 (전역). Process 미러링."""
+    __tablename__ = "baseline_processes"
+
+    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    sub_processes: Mapped[list["BaselineSubProcess"]] = relationship(
+        "BaselineSubProcess", back_populates="process"
+    )
+
+
+class BaselineSubProcess(IdentityBase):
+    """표준 하위프로세스 (전역). SubProcess 미러링."""
+    __tablename__ = "baseline_sub_processes"
+
+    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    process_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("baseline_processes.id"), nullable=False, index=True
+    )
+
+    process: Mapped["BaselineProcess"] = relationship(
+        "BaselineProcess", back_populates="sub_processes"
+    )
+    risks: Mapped[list["BaselineRisk"]] = relationship(
+        "BaselineRisk", back_populates="sub_process"
+    )
+
+
+class BaselineRisk(IdentityBase):
+    """표준 위험 (전역). Risk 미러링."""
+    __tablename__ = "baseline_risks"
+
+    code: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    assessment_level: Mapped[str] = mapped_column(String(5), nullable=False, default="LR")
+    # "LR" (Low), "MR" (Medium), "HR" (High), "SR" (Significant)
+    sub_process_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("baseline_sub_processes.id"), nullable=False, index=True
+    )
+
+    sub_process: Mapped["BaselineSubProcess"] = relationship(
+        "BaselineSubProcess", back_populates="risks"
+    )
+    controls: Mapped[list["BaselineControl"]] = relationship(
+        "BaselineControl", back_populates="risk"
+    )
+
+
+class BaselineRiskCategory(IdentityBase):
+    """표준 경영자 주장 분류 (전역, Assertion). RiskCategory 미러링. baseline-only — 상단 docstring 참조."""
+    __tablename__ = "baseline_risk_categories"
+
+    code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(50), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class BaselineControl(IdentityBase):
@@ -30,8 +96,9 @@ class BaselineControl(IdentityBase):
     code: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    risk_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
-    # FK 없음 — 상단 docstring 의 risk_id 결정 참조 (2-B baseline_risks 에서 FK 전환)
+    risk_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("baseline_risks.id"), nullable=True, index=True
+    )
 
     # 그룹 2: 담당자·목적
     objective: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -57,6 +124,9 @@ class BaselineControl(IdentityBase):
     related_systems: Mapped[str | None] = mapped_column(Text, nullable=True)
     euc_description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    risk: Mapped["BaselineRisk | None"] = relationship(
+        "BaselineRisk", back_populates="controls"
+    )
     instances: Mapped[list["ControlInstance"]] = relationship(
         "ControlInstance", back_populates="baseline_control"
     )
