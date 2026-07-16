@@ -132,6 +132,9 @@ class BaselineControl(IdentityBase):
     instances: Mapped[list["ControlInstance"]] = relationship(
         "ControlInstance", back_populates="baseline_control"
     )
+    assertions: Mapped[list["BaselineControlAssertion"]] = relationship(
+        "BaselineControlAssertion", back_populates="baseline_control"
+    )
 
 
 class ProcessInstance(AuditedBase):
@@ -309,3 +312,79 @@ class ControlInstance(AuditedBase):
     baseline_control: Mapped["BaselineControl | None"] = relationship(
         "BaselineControl", back_populates="instances"
     )
+
+
+class BaselineControlAssertion(IdentityBase):
+    """표준 통제 ↔ 표준 어서션 N:M junction (전역). 기존 ControlAssertion 미러링.
+
+    어서션 쪽은 단일 FK — RiskCategory 는 baseline-only(2-B-1 결정)이므로
+    baseline_risk_categories 참조면 충분."""
+    __tablename__ = "baseline_control_assertions"
+    __table_args__ = (
+        UniqueConstraint(
+            "baseline_control_id", "baseline_risk_category_id",
+            name="uq_baseline_control_assertions_control_category",
+        ),
+    )
+
+    baseline_control_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("baseline_controls.id"), nullable=False, index=True
+    )
+    baseline_risk_category_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("baseline_risk_categories.id"), nullable=False, index=True
+    )
+
+    baseline_control: Mapped["BaselineControl"] = relationship(
+        "BaselineControl", back_populates="assertions"
+    )
+    baseline_risk_category: Mapped["BaselineRiskCategory"] = relationship("BaselineRiskCategory")
+
+
+class ControlAssertionInstance(AuditedBase):
+    """회사별 어서션 연결 결정. junction 은 필드가 없으므로 action 은 2개뿐:
+
+    - add:    baseline 에 없던 연결을 추가 (add 통제의 어서션은 전부 add 행)
+    - remove: baseline 연결을 이 회사가 끊음
+
+    baseline 연결에 remove 없음 = 암묵 채택 (resolver 가 그대로 포함, 2-B-4).
+
+    대상 통제는 이중 nullable FK — 정합 규칙은 SubProcessInstance 와 동일:
+    override 된 통제의 정체성은 baseline → control_baseline_id 사용,
+    control_instance_id 는 add 한 통제에만. 둘 다 non-NULL 은 check 로 차단.
+
+    주의: NULL 이 포함된 복합 unique 는 Postgres 에서 중복을 막지 못하므로
+    (NULL != NULL), 실질 중복 차단은 애플리케이션 레벨 검증도 함께 둔다.
+    """
+    __tablename__ = "control_assertion_instances"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "control_baseline_id", "baseline_risk_category_id",
+            name="uq_control_assertion_instances_tenant_baseline_rc",
+        ),
+        UniqueConstraint(
+            "tenant_id", "control_instance_id", "baseline_risk_category_id",
+            name="uq_control_assertion_instances_tenant_instance_rc",
+        ),
+        CheckConstraint(
+            "NOT (control_baseline_id IS NOT NULL AND control_instance_id IS NOT NULL)",
+            name="ck_control_assertion_instances_single_parent",
+        ),
+    )
+
+    action: Mapped[str] = mapped_column(String(10), nullable=False)
+    # "add" | "remove"
+
+    # ── 대상 통제 (이중 nullable FK) ──
+    control_baseline_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("baseline_controls.id"), nullable=True, index=True
+    )
+    control_instance_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("control_instances.id"), nullable=True, index=True
+    )
+
+    # ── 어서션 (단일 FK — baseline-only) ──
+    baseline_risk_category_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("baseline_risk_categories.id"), nullable=False, index=True
+    )
+
+    baseline_risk_category: Mapped["BaselineRiskCategory"] = relationship("BaselineRiskCategory")

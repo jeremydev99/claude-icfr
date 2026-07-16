@@ -6,6 +6,7 @@ from app.models.rcm import Process, SubProcess, Risk, RiskCategory, Control, Con
 from app.models.rcm_baseline import (  # noqa: F401
     BaselineProcess, BaselineSubProcess, BaselineRisk, BaselineRiskCategory,
     BaselineControl, ProcessInstance, SubProcessInstance, RiskInstance, ControlInstance,
+    BaselineControlAssertion, ControlAssertionInstance,
 )
 from app.models.test_module import ControlRiskAssessment, TestRun, TestStep, TestStatusHistory  # noqa: F401
 from app.models.remediation import Deficiency, RemediationPlan, DesignAssessment, RemediationStatusHistory  # noqa: F401

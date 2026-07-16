@@ -9,8 +9,9 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models.tenant import Tenant
 from app.models.rcm_baseline import (
-    BaselineProcess, BaselineSubProcess, BaselineRisk, BaselineControl,
+    BaselineProcess, BaselineSubProcess, BaselineRisk, BaselineRiskCategory, BaselineControl,
     ProcessInstance, SubProcessInstance, RiskInstance, ControlInstance,
+    BaselineControlAssertion, ControlAssertionInstance,
 )
 from app.services.control_resolver import resolve_controls, CONTROL_FIELDS
 from app.core.tenant_context import set_active_tenant, reset_active_tenant, DEFAULT_TENANT_ID
@@ -393,6 +394,149 @@ def test_instance_hierarchy_tenant_isolation(app):
 
         tok = set_active_tenant(DEFAULT_TENANT_ID)
         assert db.query(ProcessInstance).filter(ProcessInstance.code == "PI-ISO-B").count() == 0
+        reset_active_tenant(tok)
+    finally:
+        set_active_tenant(None)
+        db.close()
+
+
+# ── 2-B-3: 어서션 junction baseline/overlay ────────────────────────────
+
+
+def _make_category(db, code, name="어서션"):
+    cat = db.query(BaselineRiskCategory).filter(BaselineRiskCategory.code == code).first()
+    if not cat:
+        cat = BaselineRiskCategory(code=code, name=name)
+        db.add(cat)
+        db.commit()
+    return cat
+
+
+def test_assertion_baseline_junction_and_dup_block(app):
+    """표준 연결이 생성되고, 같은 (통제, 어서션) 중복 연결은 unique 가 차단한다."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        b = _make_baseline(db, "BL-AST-1")
+        cat = _make_category(db, "AST-E")
+        db.add(BaselineControlAssertion(baseline_control_id=b.id, baseline_risk_category_id=cat.id))
+        db.commit()
+
+        found = db.query(BaselineControl).filter(BaselineControl.code == "BL-AST-1").one()
+        assert [a.baseline_risk_category.code for a in found.assertions] == ["AST-E"]
+
+        db.add(BaselineControlAssertion(baseline_control_id=b.id, baseline_risk_category_id=cat.id))
+        with pytest.raises(IntegrityError):
+            db.commit()
+        db.rollback()
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_assertion_instance_add_remove(app):
+    """baseline 통제에 대한 add/remove 결정 행이 각각 생성된다."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        b = _make_baseline(db, "BL-AST-2")
+        cat_e = _make_category(db, "AST2-E")
+        cat_c = _make_category(db, "AST2-C")
+        # 표준 연결: E. 회사 결정: E 를 remove, C 를 add.
+        db.add_all([
+            BaselineControlAssertion(baseline_control_id=b.id, baseline_risk_category_id=cat_e.id),
+            ControlAssertionInstance(action="remove", control_baseline_id=b.id, baseline_risk_category_id=cat_e.id),
+            ControlAssertionInstance(action="add", control_baseline_id=b.id, baseline_risk_category_id=cat_c.id),
+        ])
+        db.commit()
+
+        rows = db.query(ControlAssertionInstance).filter(
+            ControlAssertionInstance.control_baseline_id == b.id).all()
+        assert {(r.action, r.baseline_risk_category.code) for r in rows} == {
+            ("remove", "AST2-E"), ("add", "AST2-C"),
+        }
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_assertion_instance_add_control_target(app):
+    """회사가 add 한 통제(control_instance_id 참조)의 어서션 연결도 정상 생성된다."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        ci = ControlInstance(action="add", code="CI-AST-1", name="회사 통제")
+        cat = _make_category(db, "AST3-V")
+        db.add(ci)
+        db.flush()
+        db.add(ControlAssertionInstance(
+            action="add", control_instance_id=ci.id, baseline_risk_category_id=cat.id,
+        ))
+        db.commit()
+
+        row = db.query(ControlAssertionInstance).filter(
+            ControlAssertionInstance.control_instance_id == ci.id).one()
+        assert row.action == "add" and row.control_baseline_id is None
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_assertion_instance_dual_fk_check_violation(app):
+    """대상 통제 이중 FK 를 둘 다 채우면 CheckConstraint 가 차단한다."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        b = _make_baseline(db, "BL-AST-4")
+        ci = ControlInstance(action="add", code="CI-AST-4", name="회사 통제")
+        cat = _make_category(db, "AST4-R")
+        db.add(ci)
+        db.flush()
+        db.add(ControlAssertionInstance(
+            action="add", control_baseline_id=b.id, control_instance_id=ci.id,
+            baseline_risk_category_id=cat.id,
+        ))
+        with pytest.raises(IntegrityError):
+            db.commit()
+        db.rollback()
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_assertion_instance_tenant_isolation(app):
+    """tenant B 의 어서션 결정은 기본 tenant 조회에 보이지 않는다 (baseline 연결은 전역)."""
+    db = TestingSessionLocal()
+    try:
+        tenant_b = db.query(Tenant).filter(Tenant.code == "TENANT_AST_B").first()
+        if not tenant_b:
+            tenant_b = Tenant(name="회사B-assertion", code="TENANT_AST_B", is_active=True)
+            db.add(tenant_b)
+            db.commit()
+
+        tok = set_active_tenant(DEFAULT_TENANT_ID)
+        b = _make_baseline(db, "BL-AST-5")
+        cat = _make_category(db, "AST5-P")
+        db.add(BaselineControlAssertion(baseline_control_id=b.id, baseline_risk_category_id=cat.id))
+        db.commit()
+        reset_active_tenant(tok)
+
+        # tenant B 가 표준 연결을 remove
+        tok = set_active_tenant(tenant_b.id)
+        db.add(ControlAssertionInstance(
+            action="remove", control_baseline_id=b.id, baseline_risk_category_id=cat.id,
+        ))
+        db.commit()
+        assert db.query(ControlAssertionInstance).filter(
+            ControlAssertionInstance.control_baseline_id == b.id).count() == 1
+        reset_active_tenant(tok)
+
+        # 기본 tenant: B 의 remove 결정이 안 보이고, 전역 baseline 연결은 보인다
+        tok = set_active_tenant(DEFAULT_TENANT_ID)
+        assert db.query(ControlAssertionInstance).filter(
+            ControlAssertionInstance.control_baseline_id == b.id).count() == 0
+        assert db.query(BaselineControlAssertion).filter(
+            BaselineControlAssertion.baseline_control_id == b.id).count() == 1
         reset_active_tenant(tok)
     finally:
         set_active_tenant(None)
