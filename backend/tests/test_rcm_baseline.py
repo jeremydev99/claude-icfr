@@ -1,11 +1,16 @@
-"""RCM baseline/instance 병합 테스트 (ADR-0027, 2-A-1 + 2-B-1).
+"""RCM baseline/instance 병합 테스트 (ADR-0027, 2-A-1 + 2-B-1 + 2-B-2).
 
 resolve_controls 의 4 action(adopt/exclude/override/add) + 혼합 case + tenant 격리 검증.
 서비스 레벨 직접 검증 (API 전환은 2-A-3).
-2-B-1: baseline 상위 계층 FK 체인 조인 + 전역성(tenant 컨텍스트 무관) 검증."""
+2-B-1: baseline 상위 계층 FK 체인 조인 + 전역성(tenant 컨텍스트 무관) 검증.
+2-B-2: instance 상위 계층 — 4 action 데이터 규칙, 이중 FK check, 상위 참조, tenant 격리."""
+import pytest
+from sqlalchemy.exc import IntegrityError
+
 from app.models.tenant import Tenant
 from app.models.rcm_baseline import (
-    BaselineProcess, BaselineSubProcess, BaselineRisk, BaselineControl, ControlInstance,
+    BaselineProcess, BaselineSubProcess, BaselineRisk, BaselineControl,
+    ProcessInstance, SubProcessInstance, RiskInstance, ControlInstance,
 )
 from app.services.control_resolver import resolve_controls, CONTROL_FIELDS
 from app.core.tenant_context import set_active_tenant, reset_active_tenant, DEFAULT_TENANT_ID
@@ -238,6 +243,157 @@ def test_baseline_hierarchy_is_global(app):
 
         # tenant 컨텍스트가 아예 없어도 조회된다
         assert db.query(BaselineRisk).filter(BaselineRisk.code == "BR-GLOB1").count() == 1
+    finally:
+        set_active_tenant(None)
+        db.close()
+
+
+# ── 2-B-2: instance 상위 계층 ──────────────────────────────────────────
+
+
+def test_instance_four_actions_per_layer(app):
+    """3개 instance 계층 각각에서 4 action 데이터 규칙대로 행이 생성된다."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        p, sp, r, _ = _make_baseline_chain(db, "ACT1")
+        p2, sp2, r2, _ = _make_baseline_chain(db, "ACT2")
+        p3, sp3, r3, _ = _make_baseline_chain(db, "ACT3")
+
+        db.add_all([
+            # process 계층: adopt / exclude / override / add
+            ProcessInstance(baseline_process_id=p.id, action="adopt"),
+            ProcessInstance(baseline_process_id=p2.id, action="exclude"),
+            ProcessInstance(baseline_process_id=p3.id, action="override", name="회사별 프로세스명"),
+            ProcessInstance(baseline_process_id=None, action="add", code="PI-ADD-1", name="회사 고유 프로세스"),
+            # sub_process 계층
+            SubProcessInstance(baseline_sub_process_id=sp.id, action="adopt"),
+            SubProcessInstance(baseline_sub_process_id=sp2.id, action="exclude"),
+            SubProcessInstance(baseline_sub_process_id=sp3.id, action="override", name="회사별 하위명"),
+            # risk 계층
+            RiskInstance(baseline_risk_id=r.id, action="adopt"),
+            RiskInstance(baseline_risk_id=r2.id, action="exclude"),
+            RiskInstance(baseline_risk_id=r3.id, action="override", assessment_level="HR"),
+        ])
+        db.commit()
+
+        assert db.query(ProcessInstance).filter(ProcessInstance.code == "PI-ADD-1").one().action == "add"
+        ovr = db.query(ProcessInstance).filter(ProcessInstance.baseline_process_id == p3.id).one()
+        assert ovr.name == "회사별 프로세스명" and ovr.code is None  # 변경 필드만 값
+        assert db.query(RiskInstance).filter(RiskInstance.baseline_risk_id == r3.id).one().assessment_level == "HR"
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_instance_parent_refs(app):
+    """baseline 상위 참조와 instance 상위 참조가 각각 정상 동작한다."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        p, sp, r, _ = _make_baseline_chain(db, "PREF1")
+
+        # add sub_process — baseline 상위(process) 밑
+        sp_under_baseline = SubProcessInstance(
+            action="add", code="SPI-B-1", name="baseline 상위 밑 추가",
+            process_baseline_id=p.id,
+        )
+        # add process → 그 밑에 add sub_process (instance 상위)
+        pi = ProcessInstance(baseline_process_id=None, action="add", code="PI-PREF-1", name="회사 프로세스")
+        db.add_all([sp_under_baseline, pi])
+        db.flush()
+        sp_under_instance = SubProcessInstance(
+            action="add", code="SPI-I-1", name="instance 상위 밑 추가",
+            process_instance_id=pi.id,
+        )
+        db.add(sp_under_instance)
+        db.flush()
+        # risk 계층도 동일 — instance 상위(sub_process) 밑 + control 의 이중 FK
+        ri = RiskInstance(
+            action="add", code="RI-I-1", description="회사 위험",
+            sub_process_instance_id=sp_under_instance.id,
+        )
+        db.add(ri)
+        db.flush()
+        db.add_all([
+            ControlInstance(action="add", code="CI-B-1", name="baseline risk 밑", risk_baseline_id=r.id),
+            ControlInstance(action="add", code="CI-I-1", name="instance risk 밑", risk_instance_id=ri.id),
+        ])
+        db.commit()
+
+        assert db.query(SubProcessInstance).filter(
+            SubProcessInstance.code == "SPI-B-1").one().process_baseline_id == p.id
+        assert db.query(SubProcessInstance).filter(
+            SubProcessInstance.code == "SPI-I-1").one().process_instance_id == pi.id
+        assert db.query(ControlInstance).filter(
+            ControlInstance.code == "CI-B-1").one().risk_baseline_id == r.id
+        assert db.query(ControlInstance).filter(
+            ControlInstance.code == "CI-I-1").one().risk_instance_id == ri.id
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+@pytest.mark.parametrize("layer", ["sub_process", "risk", "control"])
+def test_instance_dual_fk_check_violation(app, layer):
+    """이중 FK 를 둘 다 채우면 CheckConstraint 가 차단한다."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        p, sp, r, _ = _make_baseline_chain(db, f"CHK-{layer.upper()}")
+        pi = ProcessInstance(baseline_process_id=None, action="add", code=f"PI-CHK-{layer}", name="x")
+        db.add(pi)
+        db.flush()
+        spi = SubProcessInstance(action="add", code=f"SPI-CHK-{layer}", name="x", process_instance_id=pi.id)
+        db.add(spi)
+        db.flush()
+        ri = RiskInstance(action="add", code=f"RI-CHK-{layer}", description="x", sub_process_instance_id=spi.id)
+        db.add(ri)
+        db.flush()
+
+        if layer == "sub_process":
+            bad = SubProcessInstance(
+                action="add", code="SPI-BAD", name="x",
+                process_baseline_id=p.id, process_instance_id=pi.id,
+            )
+        elif layer == "risk":
+            bad = RiskInstance(
+                action="add", code="RI-BAD", description="x",
+                sub_process_baseline_id=sp.id, sub_process_instance_id=spi.id,
+            )
+        else:
+            bad = ControlInstance(
+                action="add", code="CI-BAD", name="x",
+                risk_baseline_id=r.id, risk_instance_id=ri.id,
+            )
+        db.add(bad)
+        with pytest.raises(IntegrityError):
+            db.commit()
+        db.rollback()
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_instance_hierarchy_tenant_isolation(app):
+    """tenant B 의 상위 계층 instance 는 기본 tenant 조회에 보이지 않는다."""
+    db = TestingSessionLocal()
+    try:
+        tenant_b = db.query(Tenant).filter(Tenant.code == "TENANT_HI_B").first()
+        if not tenant_b:
+            tenant_b = Tenant(name="회사B-hierarchy", code="TENANT_HI_B", is_active=True)
+            db.add(tenant_b)
+            db.commit()
+
+        tok = set_active_tenant(tenant_b.id)
+        db.add(ProcessInstance(baseline_process_id=None, action="add", code="PI-ISO-B", name="B사 프로세스"))
+        db.commit()
+        assert db.query(ProcessInstance).filter(ProcessInstance.code == "PI-ISO-B").count() == 1
+        reset_active_tenant(tok)
+
+        tok = set_active_tenant(DEFAULT_TENANT_ID)
+        assert db.query(ProcessInstance).filter(ProcessInstance.code == "PI-ISO-B").count() == 0
+        reset_active_tenant(tok)
     finally:
         set_active_tenant(None)
         db.close()

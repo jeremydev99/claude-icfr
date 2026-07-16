@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models.rcm_baseline import BaselineControl, ControlInstance
 
-# Control 응답과 동일한 형태를 만들기 위한 병합 대상 필드 (기존 ControlBase 와 1:1).
+# Control 응답과 동일한 형태를 만들기 위한 응답 키 (기존 ControlBase 와 1:1).
 CONTROL_FIELDS = [
     "code", "name", "description", "risk_id",
     "objective", "owner_name",
@@ -19,6 +19,10 @@ CONTROL_FIELDS = [
     "activity_master_data", "activity_reconciliation", "activity_supervision",
     "related_accounts", "frequency", "ipe_relevant", "related_systems", "euc_description",
 ]
+
+# 병합(미러링) 필드 — risk_id 는 2-B-2 이중 FK(risk_baseline_id/risk_instance_id) 전환으로
+# instance 에 없어 별도 처리. instance 상위 참조의 최종 resolve 는 2-B-4 에서.
+_MERGE_FIELDS = [f for f in CONTROL_FIELDS if f != "risk_id"]
 
 
 def resolve_controls(db: Session) -> list[dict]:
@@ -57,15 +61,18 @@ def resolve_controls(db: Session) -> list[dict]:
         row["created_at"] = base.created_at
         row["updated_at"] = base.updated_at
         if inst is not None and inst.action == "override":
-            for f in CONTROL_FIELDS:
+            for f in _MERGE_FIELDS:
                 value = getattr(inst, f)
                 if value is not None:  # NULL=baseline 따름 (False 는 유효한 override)
                     row[f] = value
+            if inst.risk_baseline_id is not None:  # 상위(risk)를 baseline 쪽으로 바꾼 경우
+                row["risk_id"] = inst.risk_baseline_id
         result.append(row)
 
     for inst in instances:
         if inst.baseline_control_id is None and inst.action == "add":
-            row = {f: getattr(inst, f) for f in CONTROL_FIELDS}
+            row = {f: getattr(inst, f) for f in _MERGE_FIELDS}
+            row["risk_id"] = inst.risk_baseline_id  # instance 상위 참조 resolve 는 2-B-4
             row["id"] = inst.id
             row["created_at"] = inst.created_at
             row["updated_at"] = inst.updated_at

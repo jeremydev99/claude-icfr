@@ -14,15 +14,17 @@
 risk_id 결정:
 - baseline.risk_id 는 FK→baseline_risks.id nullable — 2-A-1의 "2-B에서 FK 전환" 위임 이행.
   nullable 은 이관(2-A-2) 전까지 유지, 이관 후 NOT NULL 검토.
-- instance.risk_id 는 FK→risks.id nullable — instance 는 tenant 종속이라 자기 tenant 의
-  risk 참조가 정합. baseline risk / instance risk 이중 참조 설계는 2-B-2에서.
+- instance 의 상위 참조는 이중 nullable FK (2-B-2) — <상위>_baseline_id(baseline 상위 밑)
+  / <상위>_instance_id(회사가 add 한 상위 밑). 둘 다 NULL=baseline 상위 따름,
+  둘 다 non-NULL 은 CheckConstraint 로 차단. override 된 상위의 정체성은 여전히 baseline
+  이므로 baseline_id 쪽을 쓴다. ControlInstance.risk_id(FK→risks)도 같은 방식으로 전환됨.
 
 RiskCategory(어서션)는 baseline만 두고 instance 미도입 — 제도 고정 개념(회계감사기준),
 회사별 목록 변형 case 희박. 필요 시 후속에서 instance 테이블만 추가하면 됨.
 """
 from uuid import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Text, Boolean, ForeignKey, UniqueConstraint, Index
+from sqlalchemy import String, Text, Boolean, ForeignKey, UniqueConstraint, Index, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from app.models.base import IdentityBase, AuditedBase
@@ -132,13 +134,125 @@ class BaselineControl(IdentityBase):
     )
 
 
+class ProcessInstance(AuditedBase):
+    """회사별 프로세스 결정 (최상위 계층 — 상위 참조 없음). action 별 데이터 규칙:
+
+    - adopt:    baseline_process_id 채움, 미러링 필드 전부 NULL
+    - exclude:  baseline_process_id 채움, 나머지 NULL (제외 표시)
+    - override: baseline_process_id 채움, 변경 필드만 값 채움
+    - add:      baseline_process_id NULL, 자체 필드 채움
+    """
+    __tablename__ = "process_instances"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_process_instances_tenant_code"),
+        UniqueConstraint("tenant_id", "baseline_process_id", name="uq_process_instances_tenant_baseline"),
+        Index("ix_process_instances_code", "code"),
+    )
+
+    baseline_process_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("baseline_processes.id"), nullable=True, index=True
+    )
+    action: Mapped[str] = mapped_column(String(10), nullable=False)
+    # "adopt" | "exclude" | "override" | "add"
+
+    # ── baseline_processes 필드의 nullable 미러링 (NULL=baseline 따름) ──
+    code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    baseline_process: Mapped["BaselineProcess | None"] = relationship("BaselineProcess")
+
+
+class SubProcessInstance(AuditedBase):
+    """회사별 하위프로세스 결정. action 별 데이터 규칙:
+
+    - adopt:    baseline_sub_process_id 채움, 미러링 필드 전부 NULL, 상위 참조 NULL
+    - exclude:  baseline_sub_process_id 채움, 나머지 NULL (제외 표시)
+    - override: baseline_sub_process_id 채움, 변경 필드만 값. 상위를 바꿨으면 상위 참조 하나 채움
+    - add:      baseline_sub_process_id NULL, 자체 필드 채움, 상위 참조 하나 필수(앱 레벨 검증)
+
+    상위 참조(이중 nullable FK) 정합 규칙:
+    - override 된 상위의 정체성은 여전히 baseline → process_baseline_id 사용.
+      process_instance_id 는 회사가 add 한 상위 밑에서만 사용.
+    - 둘 다 NULL = baseline 의 상위를 그대로 따름.
+    - 둘 다 non-NULL 금지 — CheckConstraint 로 차단.
+    """
+    __tablename__ = "sub_process_instances"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_sub_process_instances_tenant_code"),
+        UniqueConstraint("tenant_id", "baseline_sub_process_id", name="uq_sub_process_instances_tenant_baseline"),
+        Index("ix_sub_process_instances_code", "code"),
+        CheckConstraint(
+            "NOT (process_baseline_id IS NOT NULL AND process_instance_id IS NOT NULL)",
+            name="ck_sub_process_instances_single_parent",
+        ),
+    )
+
+    baseline_sub_process_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("baseline_sub_processes.id"), nullable=True, index=True
+    )
+    action: Mapped[str] = mapped_column(String(10), nullable=False)
+
+    # ── baseline_sub_processes 필드의 nullable 미러링 ──
+    code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    # ── 상위 참조 (이중 nullable FK — 상단 docstring 정합 규칙 참조) ──
+    process_baseline_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("baseline_processes.id"), nullable=True, index=True
+    )
+    process_instance_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("process_instances.id"), nullable=True, index=True
+    )
+
+    baseline_sub_process: Mapped["BaselineSubProcess | None"] = relationship("BaselineSubProcess")
+
+
+class RiskInstance(AuditedBase):
+    """회사별 위험 결정. action 별 데이터 규칙·상위 참조 정합 규칙은 SubProcessInstance 와 동일
+    (상위 = sub_process)."""
+    __tablename__ = "risk_instances"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_risk_instances_tenant_code"),
+        UniqueConstraint("tenant_id", "baseline_risk_id", name="uq_risk_instances_tenant_baseline"),
+        Index("ix_risk_instances_code", "code"),
+        CheckConstraint(
+            "NOT (sub_process_baseline_id IS NOT NULL AND sub_process_instance_id IS NOT NULL)",
+            name="ck_risk_instances_single_parent",
+        ),
+    )
+
+    baseline_risk_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("baseline_risks.id"), nullable=True, index=True
+    )
+    action: Mapped[str] = mapped_column(String(10), nullable=False)
+
+    # ── baseline_risks 필드의 nullable 미러링 ──
+    code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assessment_level: Mapped[str | None] = mapped_column(String(5), nullable=True)
+
+    # ── 상위 참조 (이중 nullable FK) ──
+    sub_process_baseline_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("baseline_sub_processes.id"), nullable=True, index=True
+    )
+    sub_process_instance_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("sub_process_instances.id"), nullable=True, index=True
+    )
+
+    baseline_risk: Mapped["BaselineRisk | None"] = relationship("BaselineRisk")
+
+
 class ControlInstance(AuditedBase):
     """회사별 통제 결정. action 별 데이터 규칙:
 
     - adopt:    baseline_control_id 채움, override 필드 전부 NULL
     - exclude:  baseline_control_id 채움, override 필드 전부 NULL (제외 표시)
-    - override: baseline_control_id 채움, 변경 필드만 값 채움
-    - add:      baseline_control_id NULL, 자체 필드 전부 채움
+    - override: baseline_control_id 채움, 변경 필드만 값 채움. 상위(risk)를 바꿨으면 상위 참조 하나 채움
+    - add:      baseline_control_id NULL, 자체 필드 전부 채움, 상위 참조 하나 필수(앱 레벨 검증)
+
+    상위 참조(risk_baseline_id/risk_instance_id) 정합 규칙은 SubProcessInstance 와 동일.
+    (2-B-2 에서 risk_id(FK→risks) 를 이중 FK 로 전환 — 계층 참조 방식 통일)
     """
     __tablename__ = "control_instances"
     __table_args__ = (
@@ -147,6 +261,10 @@ class ControlInstance(AuditedBase):
         # 한 tenant 가 같은 baseline 에 두 개의 결정을 갖는 모순 차단 (NULL=add 는 다수 허용).
         UniqueConstraint("tenant_id", "baseline_control_id", name="uq_control_instances_tenant_baseline"),
         Index("ix_control_instances_code", "code"),
+        CheckConstraint(
+            "NOT (risk_baseline_id IS NOT NULL AND risk_instance_id IS NOT NULL)",
+            name="ck_control_instances_single_parent",
+        ),
     )
 
     baseline_control_id: Mapped[UUID | None] = mapped_column(
@@ -159,8 +277,13 @@ class ControlInstance(AuditedBase):
     code: Mapped[str | None] = mapped_column(String(30), nullable=True)
     name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    risk_id: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("risks.id"), nullable=True, index=True
+
+    # ── 상위 참조 (이중 nullable FK — 2-B-2 에서 risk_id(FK→risks) 대체) ──
+    risk_baseline_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("baseline_risks.id"), nullable=True, index=True
+    )
+    risk_instance_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("risk_instances.id"), nullable=True, index=True
     )
 
     objective: Mapped[str | None] = mapped_column(Text, nullable=True)
