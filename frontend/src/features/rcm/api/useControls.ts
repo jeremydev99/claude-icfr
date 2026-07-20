@@ -10,14 +10,17 @@ import type {
   ControlListResponse,
   ControlUpdatePayload,
 } from '../types'
+import type { ControlListResponseDto } from './dto'
+import { toControlList } from './controlsAdapter'
 import { queryKeys } from '@/lib/queryKeys'
 import { useActiveTenantId } from '@/features/auth/store'
 
 export function useControls(params: ControlSearchParams) {
   const tenantId = useActiveTenantId()
-  return useQuery<ControlListResponse>({
+  return useQuery<ControlListResponseDto, Error, ControlListResponse>({
     queryKey: queryKeys.rcm.controls(tenantId, params),
     queryFn: () => fetchControls(params),
+    select: toControlList,
     placeholderData: (previous) => previous,
     staleTime: 1000 * 30,
   })
