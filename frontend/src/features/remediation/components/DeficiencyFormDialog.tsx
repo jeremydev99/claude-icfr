@@ -10,6 +10,7 @@ import type { Control } from '@/features/rcm/types'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -142,6 +143,9 @@ export default function DeficiencyFormDialog({ open, onOpenChange, editTarget }:
       <DialogContent className="max-w-3xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>{isEdit ? '미비점 편집' : '미비점 등록'}</DialogTitle>
+          <DialogDescription>
+            {isEdit ? '미비점 정보를 수정합니다.' : '새 미비점을 등록합니다.'} 필수 항목을 모두 입력해 주세요.
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-2">

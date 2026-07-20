@@ -108,7 +108,7 @@ export default function EvidenceTable({ files }: Props) {
             <AlertDialogTitle>파일 삭제 확인</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2">
-                <p>정말 이 파일을 삭제하시겠습니까?</p>
+                <p>선택한 파일을 삭제합니다.</p>
                 {deleteTarget && (
                   <p className="font-medium text-foreground">{deleteTarget.filename}</p>
                 )}

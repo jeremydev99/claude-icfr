@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -57,6 +58,7 @@ export default function ResetPasswordDialog({ open, onOpenChange, targetUser, on
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>비밀번호 재설정</DialogTitle>
+          <DialogDescription>대상 사용자의 비밀번호를 새로 설정합니다.</DialogDescription>
         </DialogHeader>
         {targetUser && (
           <p className="text-sm text-muted-foreground -mt-1">

@@ -7,6 +7,7 @@ import { isAxiosError } from 'axios'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -262,6 +263,9 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
       <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-6 pt-6 pb-3">
           <DialogTitle>{mode === 'create' ? '통제 추가' : '통제 편집'}</DialogTitle>
+          <DialogDescription>
+            {mode === 'create' ? '새 통제를 등록합니다.' : '통제 정보를 수정합니다.'} 필수 항목을 모두 입력해 주세요.
+          </DialogDescription>
         </DialogHeader>
 
         <FormProvider {...methods}>

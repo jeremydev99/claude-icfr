@@ -17,6 +17,7 @@ function extractErrorMessage(err: unknown): string {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -145,6 +146,7 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-6 pt-6 pb-3">
           <DialogTitle>RCM Excel 업로드</DialogTitle>
+          <DialogDescription>RCM 통제 목록을 Excel 파일로 일괄 업로드합니다.</DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 pb-2 space-y-4">

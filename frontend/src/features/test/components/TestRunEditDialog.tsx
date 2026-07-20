@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -80,6 +81,7 @@ export default function TestRunEditDialog({ run, open, onOpenChange }: Props) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>평가 편집</DialogTitle>
+          <DialogDescription>평가 정보를 수정합니다. 필수 항목을 모두 입력해 주세요.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
