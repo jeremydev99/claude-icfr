@@ -1,14 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchRawcByControl, createRawc, updateRawc } from './rawcApi'
-import type { RawcCreatePayload, RawcUpdatePayload } from '../types'
+import type { RawcCreatePayload, RawcUpdatePayload, ControlRiskAssessment } from '../types'
+import type { RawcListResponseDto } from './dto'
+import { toRawcList } from './rawcAdapter'
 import { queryKeys } from '@/lib/queryKeys'
 import { useActiveTenantId } from '@/features/auth/store'
 
 export function useRawcByControl(controlId: string | null, fiscalYear: number) {
   const tenantId = useActiveTenantId()
-  return useQuery({
+  return useQuery<RawcListResponseDto, Error, { items: ControlRiskAssessment[]; total: number }>({
     queryKey: queryKeys.rcm.rawc(tenantId, controlId, fiscalYear),
     queryFn: () => fetchRawcByControl(controlId!, fiscalYear),
+    select: toRawcList,
     enabled: !!controlId,
     staleTime: 1000 * 30,
   })

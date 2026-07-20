@@ -1,3 +1,4 @@
+// 프론트 도메인 타입. 컴포넌트가 소비한다.
 export type AssertionCode = 'E' | 'C' | 'R' | 'V' | 'P' | 'O' | 'M'
 export type RiskLevel = 'LR' | 'MR' | 'HR' | 'SR'
 export type Frequency = 'O' | 'D' | 'W' | 'M' | 'Q' | 'A'
