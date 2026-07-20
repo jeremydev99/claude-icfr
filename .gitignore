@@ -88,3 +88,7 @@ docs/*.pdf
 docs/*.docx
 docs/*.pptx
 docs/*.xlsx
+
+# ===== 개인 컨텍스트 / 임시 파일 =====
+Regina_ClaudeContext.md
+prompts/_*.txt
