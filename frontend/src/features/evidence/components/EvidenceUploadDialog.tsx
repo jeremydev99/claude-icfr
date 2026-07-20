@@ -5,6 +5,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -89,6 +90,9 @@ export default function EvidenceUploadDialog({ open, onOpenChange }: Props) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>증빙 파일 업로드</DialogTitle>
+          <DialogDescription>
+            증빙 파일을 업로드합니다. 허용된 형식과 용량 제한을 확인해 주세요.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 py-2">

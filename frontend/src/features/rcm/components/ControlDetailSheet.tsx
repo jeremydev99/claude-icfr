@@ -2,6 +2,7 @@ import { CheckCircle2, Circle, Star } from 'lucide-react'
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -66,6 +67,7 @@ export default function ControlDetailSheet({ control, open, onOpenChange, onEdit
                 <div className="space-y-0.5 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <SheetTitle className="text-xl font-bold">{control.code}</SheetTitle>
+                    <SheetDescription className="sr-only">선택한 통제의 상세 정보를 확인합니다.</SheetDescription>
                     {control.is_key_control && (
                       <span className="inline-flex items-center gap-0.5 text-amber-600 text-xs font-medium">
                         <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
