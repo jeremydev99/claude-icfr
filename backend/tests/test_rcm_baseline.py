@@ -541,3 +541,39 @@ def test_assertion_instance_tenant_isolation(app):
     finally:
         set_active_tenant(None)
         db.close()
+
+
+# ── 2-B-3.5: baseline_version 컬럼 ─────────────────────────────────────
+
+
+def test_baseline_version_defaults_to_one(app):
+    """baseline 5테이블 행 생성 시 baseline_version 이 1 로 기본 설정된다 (현재 baseline=v1)."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        p, sp, r, c = _make_baseline_chain(db, "VER1")
+        cat = _make_category(db, "VER-E")
+        for obj in (p, sp, r, cat, c):
+            db.refresh(obj)
+            assert obj.baseline_version == 1
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_baseline_version_explicit(app):
+    """개정 트랙 대비 — 바뀐 행만 baseline_version 을 명시적으로 올릴 수 있다 (행 단위)."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        p = BaselineProcess(code="BP-VER2", name="개정 프로세스", baseline_version=3)
+        c = BaselineControl(code="BC-VER2", name="개정 통제", baseline_version=2)
+        db.add_all([p, c])
+        db.commit()
+        db.refresh(p)
+        db.refresh(c)
+        assert p.baseline_version == 3
+        assert c.baseline_version == 2
+    finally:
+        reset_active_tenant(tok)
+        db.close()

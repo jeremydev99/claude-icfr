@@ -21,10 +21,23 @@ risk_id 결정:
 
 RiskCategory(어서션)는 baseline만 두고 instance 미도입 — 제도 고정 개념(회계감사기준),
 회사별 목록 변형 case 희박. 필요 시 후속에서 instance 테이블만 추가하면 됨.
+
+2-B-3.5 — baseline_version + 삭제 의미론 규약:
+- baseline_version(Integer, default=1): baseline 콘텐츠 개정 회차. baseline 5테이블
+  (processes/sub_processes/risks/risk_categories/controls)에 **행 단위**로 둔다.
+  법령 개정은 부분 개정이므로 전역 버전이 아닌 행 단위여야 개정된 행을 쓰는 tenant만
+  영향받는다. 개정 트랙에서 바뀐 행만 값을 올린다. instance 는 미도입(개정 트랙 미결).
+  **VersionMixin.row_version(낙관적 잠금용 행 버전)과 다른 개념** — 이름이 겹치지 않으므로 그대로 사용.
+- 삭제 의미론(전 계층 공통 규약, 계층별 분기 금지):
+  · tenant 는 baseline 행을 물리 삭제할 수 없다(전역 표준). tenant 의 "삭제"는
+    exclude instance 생성으로 표현한다(원본 보존). ControlAssertionInstance 는 remove action.
+  · tenant 가 자기 add 항목을 삭제 → 해당 instance 를 soft delete(SoftDeleteMixin.is_deleted).
+  · resolver(2-B-4)는 exclude/remove 를 결과에서 제외하고, add 의 soft delete 도 제외한다.
+  · 실제 CRUD 수행은 2-A-4, resolver 반영은 2-B-4. 본 단계는 규약 문서화 + 컬럼까지.
 """
 from uuid import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Text, Boolean, ForeignKey, UniqueConstraint, Index, CheckConstraint
+from sqlalchemy import String, Text, Boolean, Integer, ForeignKey, UniqueConstraint, Index, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from app.models.base import IdentityBase, AuditedBase
@@ -37,6 +50,8 @@ class BaselineProcess(IdentityBase):
     code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # baseline 콘텐츠 개정 회차 (row_version 낙관적 잠금과 별개 개념 — 모듈 docstring 참조)
+    baseline_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     sub_processes: Mapped[list["BaselineSubProcess"]] = relationship(
         "BaselineSubProcess", back_populates="process"
@@ -52,6 +67,8 @@ class BaselineSubProcess(IdentityBase):
     process_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("baseline_processes.id"), nullable=False, index=True
     )
+    # baseline 콘텐츠 개정 회차 (row_version 낙관적 잠금과 별개 개념 — 모듈 docstring 참조)
+    baseline_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     process: Mapped["BaselineProcess"] = relationship(
         "BaselineProcess", back_populates="sub_processes"
@@ -72,6 +89,8 @@ class BaselineRisk(IdentityBase):
     sub_process_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("baseline_sub_processes.id"), nullable=False, index=True
     )
+    # baseline 콘텐츠 개정 회차 (row_version 낙관적 잠금과 별개 개념 — 모듈 docstring 참조)
+    baseline_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     sub_process: Mapped["BaselineSubProcess"] = relationship(
         "BaselineSubProcess", back_populates="risks"
@@ -88,6 +107,8 @@ class BaselineRiskCategory(IdentityBase):
     code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # baseline 콘텐츠 개정 회차 (row_version 낙관적 잠금과 별개 개념 — 모듈 docstring 참조)
+    baseline_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
 
 class BaselineControl(IdentityBase):
@@ -125,6 +146,9 @@ class BaselineControl(IdentityBase):
     ipe_relevant: Mapped[str] = mapped_column(String(5), nullable=False, default="N/A")
     related_systems: Mapped[str | None] = mapped_column(Text, nullable=True)
     euc_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # baseline 콘텐츠 개정 회차 (row_version 낙관적 잠금과 별개 개념 — 모듈 docstring 참조)
+    baseline_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     risk: Mapped["BaselineRisk | None"] = relationship(
         "BaselineRisk", back_populates="controls"
