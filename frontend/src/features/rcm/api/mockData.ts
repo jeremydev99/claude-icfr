@@ -1,6 +1,6 @@
-import type { Control } from '../types'
+import type { ControlDto } from './dto'
 
-export const mockControls: Control[] = [
+export const mockControls: ControlDto[] = [
   {
     id: '01901234-0000-7000-8000-000000000001',
     code: 'O2C-AR-C001',

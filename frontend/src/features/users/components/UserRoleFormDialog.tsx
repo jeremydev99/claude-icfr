@@ -7,6 +7,7 @@ import { isAxiosError } from 'axios'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -116,6 +117,9 @@ export default function UserRoleFormDialog({ open, onOpenChange, editTarget }: P
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{isEdit ? '역할 편집' : '역할 등록'}</DialogTitle>
+          <DialogDescription>
+            {isEdit ? '역할 정보를 수정합니다.' : '새 역할을 등록합니다.'} 필수 항목을 모두 입력해 주세요.
+          </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>

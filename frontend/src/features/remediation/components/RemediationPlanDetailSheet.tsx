@@ -2,6 +2,7 @@ import { Loader2 } from 'lucide-react'
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -98,6 +99,7 @@ export default function RemediationPlanDetailSheet({ planId, open, onOpenChange 
                 <div className="space-y-0.5 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <SheetTitle className="text-xl font-bold">개선계획 상세</SheetTitle>
+                    <SheetDescription className="sr-only">선택한 개선계획의 상세 정보를 확인합니다.</SheetDescription>
                     <Badge variant="outline" className={REMEDIATION_STATUS_BADGE_CLASS[plan.status]}>
                       {REMEDIATION_STATUS_LABELS[plan.status]}
                     </Badge>

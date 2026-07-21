@@ -6,6 +6,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
+  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -202,6 +203,9 @@ export default function UsersPage() {
             <AlertDialogTitle>
               사용자 [{deleteUserTarget?.display_name}]를 삭제하시겠습니까?
             </AlertDialogTitle>
+            <AlertDialogDescription>
+              선택한 사용자를 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>
@@ -231,6 +235,9 @@ export default function UsersPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>역할을 삭제하시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription>
+              선택한 역할을 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>

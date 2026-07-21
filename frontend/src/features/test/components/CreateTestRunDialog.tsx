@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -83,6 +84,7 @@ export default function CreateTestRunDialog({ open, onOpenChange, defaultFiscalY
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>평가 추가</DialogTitle>
+            <DialogDescription>새 평가를 등록합니다. 필수 항목을 모두 입력해 주세요.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">

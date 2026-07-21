@@ -3,6 +3,7 @@ import { CheckCircle2, Circle, Loader2, Pencil, Trash2 } from 'lucide-react'
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -22,6 +23,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
+  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -232,6 +234,7 @@ export default function TestRunDetailSheet({ runId, open, onOpenChange, controlM
                       <SheetTitle className="text-xl font-bold">
                         {ctrl?.code ?? run.control_id.slice(0, 8) + '...'}
                       </SheetTitle>
+                      <SheetDescription className="sr-only">선택한 평가의 상세 정보를 확인합니다.</SheetDescription>
                       <Badge variant="outline" className={STATUS_BADGE_CLASS[run.status]}>
                         {STATUS_LABELS[run.status]}
                       </Badge>
@@ -426,6 +429,9 @@ export default function TestRunDetailSheet({ runId, open, onOpenChange, controlM
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>이 단계를 삭제하시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription>
+              선택한 단계를 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>

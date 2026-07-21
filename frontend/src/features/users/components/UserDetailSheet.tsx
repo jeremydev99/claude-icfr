@@ -2,6 +2,7 @@ import { Loader2 } from 'lucide-react'
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -47,6 +48,7 @@ export default function UserDetailSheet({ userId, open, onOpenChange }: Props) {
       <SheetContent side="right" className="w-[420px] sm:max-w-[420px] overflow-y-auto">
         <SheetHeader className="mb-4">
           <SheetTitle>사용자 상세</SheetTitle>
+          <SheetDescription className="sr-only">선택한 사용자의 상세 정보를 확인합니다.</SheetDescription>
         </SheetHeader>
 
         {isLoading && (

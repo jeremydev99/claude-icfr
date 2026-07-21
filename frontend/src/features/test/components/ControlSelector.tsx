@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -47,6 +48,7 @@ export default function ControlSelector({ open, onOpenChange, onSelect }: Props)
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>통제 선택</DialogTitle>
+          <DialogDescription className="sr-only">평가를 등록할 통제를 검색하여 선택합니다.</DialogDescription>
         </DialogHeader>
 
         <Input

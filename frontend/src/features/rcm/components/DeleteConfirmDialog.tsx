@@ -26,7 +26,7 @@ export default function DeleteConfirmDialog({ open, control, onOpenChange, onCon
           <AlertDialogTitle>통제 삭제 확인</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-2">
-              <p>정말 이 통제를 삭제하시겠습니까?</p>
+              <p>선택한 통제를 삭제합니다.</p>
               {control && (
                 <p className="font-medium text-foreground">
                   {control.code} — {control.name}

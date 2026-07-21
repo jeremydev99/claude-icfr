@@ -5,6 +5,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
+  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -107,6 +108,9 @@ export default function RemediationPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>미비점 [{deleteTarget?.code}]을 삭제하시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription>
+              선택한 미비점을 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>

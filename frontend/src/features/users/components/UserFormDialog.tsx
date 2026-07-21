@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -90,6 +91,9 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEdit ? '사용자 편집' : '사용자 등록'}</DialogTitle>
+          <DialogDescription>
+            {isEdit ? '사용자 정보를 수정합니다.' : '새 사용자를 등록합니다.'} 필수 항목을 모두 입력해 주세요.
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           {!isEdit && (
