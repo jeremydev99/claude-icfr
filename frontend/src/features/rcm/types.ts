@@ -1,4 +1,6 @@
 // 프론트 도메인 타입. 컴포넌트가 소비한다.
+import type { SourceEnvelope } from './api/sourceEnvelope'
+
 export type AssertionCode = 'E' | 'C' | 'R' | 'V' | 'P' | 'O' | 'M'
 export type RiskLevel = 'LR' | 'MR' | 'HR' | 'SR'
 export type Frequency = 'O' | 'D' | 'W' | 'M' | 'Q' | 'A'
@@ -32,6 +34,7 @@ export interface Control {
   sub_process_code: string | null
   risk_level: RiskLevel | null
   created_at: string
+  envelope?: SourceEnvelope
 }
 
 export interface ControlSearchParams {
@@ -100,6 +103,7 @@ export interface ProcessItem {
   id: string
   code: string
   name: string
+  envelope?: SourceEnvelope
 }
 
 export interface SubProcessItem {
@@ -107,6 +111,7 @@ export interface SubProcessItem {
   code: string
   name: string
   process_id: string
+  envelope?: SourceEnvelope
 }
 
 export interface RiskItem {
@@ -115,6 +120,7 @@ export interface RiskItem {
   description: string
   assessment_level: RiskLevel
   sub_process_id: string
+  envelope?: SourceEnvelope
 }
 
 // ── RAWC (ControlRiskAssessment) ──────────────────────────
