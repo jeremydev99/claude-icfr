@@ -5,10 +5,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import JSONResponse
 from openpyxl import load_workbook
-from sqlalchemy import or_
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.services.excel_parser import find_rcm_sheet
+from app.services.control_resolver import resolve_controls
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser
@@ -265,82 +265,53 @@ def search_controls(
     user: CurrentUser = None,
     db: Session = Depends(get_db),
 ) -> dict:
-    """풀 검색·필터 — 단일 함수, 추상화 없음 (ADR-0020 원칙)."""
-    query = db.query(Control).filter(Control.is_deleted == False)  # noqa: E712
+    """풀 검색·필터 — resolve_controls(baseline−exclude+override+add) 위의 메모리 처리 (ADR-0027, 2-A-3).
 
-    if q:
-        query = query.filter(
-            or_(
-                Control.code.ilike(f"%{q}%"),
-                Control.name.ilike(f"%{q}%"),
-                Control.description.ilike(f"%{q}%"),
-                Control.owner_name.ilike(f"%{q}%"),
-            )
-        )
-    if owner:
-        query = query.filter(Control.owner_name.ilike(f"%{owner}%"))
-    if frequency:
-        query = query.filter(Control.frequency == frequency)
-    if is_key_control is not None:
-        query = query.filter(Control.is_key_control == is_key_control)
-    if auto_manual:
-        query = query.filter(Control.auto_manual == auto_manual)
-    if preventive_detective:
-        query = query.filter(Control.preventive_detective == preventive_detective)
+    기존 SQL 조인/WHERE/ORDER BY 를 resolve_controls 결과 dict 위 필터·정렬로 재구현.
+    관계 필드(process_code/sub_process_code/risk_level/assertions)·source envelope 는
+    resolver 가 이미 채워 반환하므로 여기서 조인하지 않는다.
+    """
+    rows = resolve_controls(db)  # 활성 tenant 자동 격리, 관계 필드·envelope 포함
 
-    if risk_level or sub_process_code or process_code:
-        query = query.join(Risk, Control.risk_id == Risk.id).filter(Risk.is_deleted == False)  # noqa: E712
-        if risk_level:
-            query = query.filter(Risk.assessment_level == risk_level)
-        if sub_process_code or process_code:
-            query = query.join(SubProcess, Risk.sub_process_id == SubProcess.id).filter(SubProcess.is_deleted == False)  # noqa: E712
-            if sub_process_code:
-                query = query.filter(SubProcess.code == sub_process_code)
-            if process_code:
-                query = query.join(Process, SubProcess.process_id == Process.id).filter(
-                    Process.is_deleted == False, Process.code == process_code  # noqa: E712
-                )
+    def _has(text: str | None, needle: str) -> bool:
+        return text is not None and needle.lower() in text.lower()
 
-    if assertion:
-        rc = db.query(RiskCategory).filter(RiskCategory.code == assertion, RiskCategory.is_deleted == False).first()  # noqa: E712
-        if rc:
-            assertion_ids = db.query(ControlAssertion.control_id).filter(
-                ControlAssertion.risk_category_id == rc.id,
-                ControlAssertion.is_deleted == False,  # noqa: E712
-            )
-            query = query.filter(Control.id.in_(assertion_ids))
+    filtered = []
+    for r in rows:
+        if q and not (_has(r["code"], q) or _has(r["name"], q)
+                      or _has(r["description"], q) or _has(r["owner_name"], q)):
+            continue
+        if owner and not _has(r["owner_name"], owner):
+            continue
+        if frequency and r["frequency"] != frequency:
+            continue
+        if is_key_control is not None and r["is_key_control"] != is_key_control:
+            continue
+        if auto_manual and r["auto_manual"] != auto_manual:
+            continue
+        if preventive_detective and r["preventive_detective"] != preventive_detective:
+            continue
+        if risk_level and r["risk_level"] != risk_level:
+            continue
+        if sub_process_code and r["sub_process_code"] != sub_process_code:
+            continue
+        if process_code and r["process_code"] != process_code:
+            continue
+        if assertion and assertion not in r["assertions"]:
+            continue
+        filtered.append(r)
 
     valid_sort = {"code", "name", "frequency", "created_at", "owner_name"}
-    sort_col = getattr(Control, sort_by if sort_by in valid_sort else "code")
-    query = query.order_by(sort_col.desc() if sort_order == "desc" else sort_col.asc())
-
-    total = query.count()
-    items = (
-        query.options(
-            selectinload(Control.risk)
-                .selectinload(Risk.sub_process)
-                .selectinload(SubProcess.process),
-            selectinload(Control.assertions)
-                .selectinload(ControlAssertion.risk_category),
-        )
-        .offset(skip).limit(limit).all()
+    key = sort_by if sort_by in valid_sort else "code"
+    # None 안전 정렬 — (있음/없음, 값) 튜플로 None 을 뒤로. datetime/str 혼용 없음(키별 동일 타입).
+    filtered.sort(
+        key=lambda r: (r.get(key) is None, r.get(key)),
+        reverse=(sort_order == "desc"),
     )
 
-    items_out = []
-    for c in items:
-        out = ControlSearchOut(**ControlRead.model_validate(c).model_dump())
-        if c.risk:
-            out.risk_level = c.risk.assessment_level
-            if c.risk.sub_process:
-                out.sub_process_code = c.risk.sub_process.code
-                if c.risk.sub_process.process:
-                    out.process_code = c.risk.sub_process.process.code
-        out.assertions = [
-            a.risk_category.code
-            for a in c.assertions
-            if not a.is_deleted and a.risk_category
-        ]
-        items_out.append(out)
+    total = len(filtered)
+    page = filtered[skip: skip + limit]
+    items_out = [ControlSearchOut(**r) for r in page]
 
     return {
         "items": items_out,
@@ -417,11 +388,16 @@ def create_control(body: ControlCreate, user: CurrentUser = None, db: Session = 
 
 
 @router.get("/controls/{control_id}", response_model=ControlRead)
-def get_control(control_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> Control:
-    obj = db.query(Control).filter(Control.id == control_id, Control.is_deleted == False).first()  # noqa: E712
-    if not obj:
-        raise HTTPException(status_code=404, detail="Control not found")
-    return obj
+def get_control(control_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """상세 — resolve_controls 결과에서 정체성 id 매칭 (ADR-0027, 2-A-3).
+
+    목록(search)과 id 체계 일치 — 프론트가 목록에서 받은 id 를 그대로 사용.
+    단건을 위해 전체 resolve 하는 것은 비효율이나 95~수백 규모에서 무방(구조 정합성 우선).
+    """
+    for r in resolve_controls(db):
+        if r["id"] == control_id:
+            return r  # ControlRead 로 검증 — 관계 필드 등 초과 키는 무시, envelope 포함
+    raise HTTPException(status_code=404, detail="Control not found")
 
 
 @router.patch("/controls/{control_id}", response_model=ControlRead)

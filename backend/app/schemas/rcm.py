@@ -144,6 +144,12 @@ class ControlRead(ControlBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
+    # source envelope (ADR-0027, 2-A-3) — resolve_controls 유래 항목의 정체성 메타.
+    # flat 유지(중첩 wrapper 금지) — Regina FE 가 flat 계약(sourceEnvelope.ts)으로 준비 완료.
+    # 기본값은 legacy 조회(GET /controls)의 model_validate 호환용(그쪽은 값 없음).
+    source: str | None = None            # "baseline"(adopt/override) | "tenant"(add)
+    baseline_id: UUID | None = None      # baseline 유래면 그 id, add면 None
+    is_overridden: bool = False          # override instance 적용 시 True
     model_config = ConfigDict(from_attributes=True)
 
 
