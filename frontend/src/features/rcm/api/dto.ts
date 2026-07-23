@@ -8,6 +8,7 @@ import type {
   PriorYearEffectiveness,
   OverallAssessment,
 } from '../types'
+import type { SourceEnvelope } from './sourceEnvelope'
 
 export interface ControlDto {
   id: string
@@ -36,6 +37,10 @@ export interface ControlDto {
   sub_process_code: string | null
   risk_level: RiskLevel | null
   created_at: string
+  // source envelope(flat) — 2-A-3 조회 전환 전까지 전송 안 됨, 전부 optional.
+  source?: SourceEnvelope['source']
+  baseline_id?: string | null
+  is_overridden?: boolean
 }
 
 export interface ControlListResponseDto {
@@ -50,6 +55,9 @@ export interface ProcessItemDto {
   id: string
   code: string
   name: string
+  source?: SourceEnvelope['source']
+  baseline_id?: string | null
+  is_overridden?: boolean
 }
 
 export interface SubProcessItemDto {
@@ -57,6 +65,9 @@ export interface SubProcessItemDto {
   code: string
   name: string
   process_id: string
+  source?: SourceEnvelope['source']
+  baseline_id?: string | null
+  is_overridden?: boolean
 }
 
 export interface RiskItemDto {
@@ -65,6 +76,9 @@ export interface RiskItemDto {
   description: string
   assessment_level: RiskLevel
   sub_process_id: string
+  source?: SourceEnvelope['source']
+  baseline_id?: string | null
+  is_overridden?: boolean
 }
 
 // ── RAWC (ControlRiskAssessment) ──────────────────────────
