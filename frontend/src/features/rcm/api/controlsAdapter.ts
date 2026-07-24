@@ -1,7 +1,8 @@
 // ADR-0027 2-B 착륙 지점.
-// source envelope 규약 확정(2-A-3 미도래) — 백엔드(d325705, control_resolver.py)는 source/baseline_id/
-// is_overridden을 flat 필드로 응답에 얹인다. 이 어댑터가 flat DTO 필드를 도메인 SourceEnvelope(nested)로
-// 조립한다(buildSourceEnvelope). 실 API 연결은 2-A-3 이후.
+// source envelope 규약 확정 + 2-A-3 조회 전환 완료 — 백엔드(control_resolver.py)는 source/baseline_id/
+// is_overridden을 flat 필드로 응답에 얹는다. 이 어댑터가 flat DTO 필드를 도메인 SourceEnvelope(nested)로
+// 조립한다. control은 required(buildSourceEnvelope, 부재 시 명시적 실패) — process/sub_process/risk는
+// 아직 legacy 목록 API라 envelope가 없으므로 optional(buildOptionalSourceEnvelope, 부재 시 undefined)로 처리.
 import type { Control, ControlListResponse, ProcessItem, SubProcessItem, RiskItem } from '../types'
 import type {
   ControlDto,
@@ -10,7 +11,7 @@ import type {
   SubProcessItemDto,
   RiskItemDto,
 } from './dto'
-import { buildSourceEnvelope } from './sourceEnvelope'
+import { buildSourceEnvelope, buildOptionalSourceEnvelope } from './sourceEnvelope'
 
 export function toControl(dto: ControlDto): Control {
   return {
@@ -60,7 +61,7 @@ export function toProcessItems(dto: { items: ProcessItemDto[] }): { items: Proce
       id: item.id,
       code: item.code,
       name: item.name,
-      envelope: buildSourceEnvelope(item),
+      envelope: buildOptionalSourceEnvelope(item),
     })),
   }
 }
@@ -72,7 +73,7 @@ export function toSubProcessItems(dto: { items: SubProcessItemDto[] }): { items:
       code: item.code,
       name: item.name,
       process_id: item.process_id,
-      envelope: buildSourceEnvelope(item),
+      envelope: buildOptionalSourceEnvelope(item),
     })),
   }
 }
@@ -85,7 +86,7 @@ export function toRiskItems(dto: { items: RiskItemDto[] }): { items: RiskItem[] 
       description: item.description,
       assessment_level: item.assessment_level,
       sub_process_id: item.sub_process_id,
-      envelope: buildSourceEnvelope(item),
+      envelope: buildOptionalSourceEnvelope(item),
     })),
   }
 }
