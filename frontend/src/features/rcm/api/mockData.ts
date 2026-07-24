@@ -28,6 +28,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'O2C-AR',
     risk_level: 'HR',
     created_at: '2026-05-01T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000002',
@@ -56,6 +59,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'O2C-REV',
     risk_level: 'SR',
     created_at: '2026-05-01T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000003',
@@ -84,6 +90,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'O2C-REV',
     risk_level: 'HR',
     created_at: '2026-05-01T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000004',
@@ -112,6 +121,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'O2C-CR',
     risk_level: 'MR',
     created_at: '2026-05-01T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000005',
@@ -140,6 +152,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'P2P-AP',
     risk_level: 'HR',
     created_at: '2026-05-02T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000006',
@@ -168,6 +183,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'P2P-PO',
     risk_level: 'HR',
     created_at: '2026-05-02T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000007',
@@ -196,6 +214,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'P2P-PO',
     risk_level: 'MR',
     created_at: '2026-05-02T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000008',
@@ -224,6 +245,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'P2P-PAY',
     risk_level: 'SR',
     created_at: '2026-05-02T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000009',
@@ -252,6 +276,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'R2R-GL',
     risk_level: 'SR',
     created_at: '2026-05-03T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000010',
@@ -280,6 +307,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'R2R-GL',
     risk_level: 'MR',
     created_at: '2026-05-03T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000011',
@@ -308,6 +338,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'R2R-CLOSE',
     risk_level: 'HR',
     created_at: '2026-05-03T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000012',
@@ -336,6 +369,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'R2R-CLOSE',
     risk_level: 'SR',
     created_at: '2026-05-03T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000013',
@@ -364,6 +400,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'HR-PAY',
     risk_level: 'HR',
     created_at: '2026-05-04T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000014',
@@ -392,6 +431,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'HR-PAY',
     risk_level: 'SR',
     created_at: '2026-05-04T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000015',
@@ -420,6 +462,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'HR-TERM',
     risk_level: 'HR',
     created_at: '2026-05-04T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000016',
@@ -448,6 +493,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'ITG-ACC',
     risk_level: 'HR',
     created_at: '2026-05-05T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000017',
@@ -476,6 +524,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'ITG-ACC',
     risk_level: 'HR',
     created_at: '2026-05-05T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000018',
@@ -504,6 +555,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'ITG-CHG',
     risk_level: 'SR',
     created_at: '2026-05-05T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000019',
@@ -532,6 +586,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'ITG-BCP',
     risk_level: 'MR',
     created_at: '2026-05-05T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000020',
@@ -560,6 +617,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'O2C-INV',
     risk_level: 'HR',
     created_at: '2026-05-06T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000021',
@@ -588,6 +648,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'O2C-INV',
     risk_level: 'LR',
     created_at: '2026-05-06T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000022',
@@ -616,6 +679,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'P2P-INV',
     risk_level: 'MR',
     created_at: '2026-05-06T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000023',
@@ -644,6 +710,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'R2R-FA',
     risk_level: 'MR',
     created_at: '2026-05-07T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000024',
@@ -672,6 +741,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'R2R-FA',
     risk_level: 'LR',
     created_at: '2026-05-07T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000025',
@@ -700,6 +772,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'HR-REC',
     risk_level: 'LR',
     created_at: '2026-05-07T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000026',
@@ -728,6 +803,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'ITG-SEC',
     risk_level: 'HR',
     created_at: '2026-05-08T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000027',
@@ -756,6 +834,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'O2C-COL',
     risk_level: 'MR',
     created_at: '2026-05-08T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000028',
@@ -784,6 +865,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'P2P-VEND',
     risk_level: 'SR',
     created_at: '2026-05-08T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000029',
@@ -812,6 +896,9 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'R2R-TAX',
     risk_level: 'HR',
     created_at: '2026-05-09T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
   {
     id: '01901234-0000-7000-8000-000000000030',
@@ -840,5 +927,8 @@ export const mockControls: ControlDto[] = [
     sub_process_code: 'ITG-DR',
     risk_level: 'LR',
     created_at: '2026-05-09T00:00:00Z',
+    source: 'baseline',
+    baseline_id: null,
+    is_overridden: false,
   },
 ]

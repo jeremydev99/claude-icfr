@@ -23,6 +23,8 @@ import {
   PD_LABELS,
   RISK_LEVEL_LABELS,
 } from '../types'
+import SourceBadge from './SourceBadge'
+import { RCM_MUTATION_LOCKED, RCM_MUTATION_LOCKED_MESSAGE } from '../rcmMutationLock'
 
 interface Props {
   data: ControlListResponse | undefined
@@ -94,11 +96,22 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
   return (
     <div className="space-y-2">
       <div className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={onUploadClick}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onUploadClick}
+          disabled={RCM_MUTATION_LOCKED}
+          title={RCM_MUTATION_LOCKED ? RCM_MUTATION_LOCKED_MESSAGE : undefined}
+        >
           <Upload className="h-4 w-4 mr-1.5" />
           Excel 업로드
         </Button>
-        <Button size="sm" onClick={onAddClick}>
+        <Button
+          size="sm"
+          onClick={onAddClick}
+          disabled={RCM_MUTATION_LOCKED}
+          title={RCM_MUTATION_LOCKED ? RCM_MUTATION_LOCKED_MESSAGE : undefined}
+        >
           + 통제 추가
         </Button>
       </div>
@@ -160,7 +173,10 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
               items.map((ctrl: Control) => (
                 <TableRow key={ctrl.id} className="group hover:bg-muted/30 cursor-pointer" onClick={() => onSelect?.(ctrl)}>
                   <TableCell className="font-mono text-xs font-medium text-blue-600 whitespace-nowrap hover:underline cursor-pointer">
-                    {ctrl.code}
+                    <div className="flex items-center gap-1.5">
+                      {ctrl.code}
+                      {ctrl.envelope && <SourceBadge envelope={ctrl.envelope} />}
+                    </div>
                   </TableCell>
                   <TableCell className="text-sm">{ctrl.name}</TableCell>
                   <TableCell>
@@ -215,7 +231,8 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
                         size="icon"
                         className="h-7 w-7"
                         onClick={() => onEdit?.(ctrl)}
-                        title="편집"
+                        disabled={RCM_MUTATION_LOCKED}
+                        title={RCM_MUTATION_LOCKED ? RCM_MUTATION_LOCKED_MESSAGE : '편집'}
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
@@ -224,7 +241,8 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
                         size="icon"
                         className="h-7 w-7 hover:bg-red-50 hover:text-red-600"
                         onClick={() => onDelete?.(ctrl)}
-                        title="삭제"
+                        disabled={RCM_MUTATION_LOCKED}
+                        title={RCM_MUTATION_LOCKED ? RCM_MUTATION_LOCKED_MESSAGE : '삭제'}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
