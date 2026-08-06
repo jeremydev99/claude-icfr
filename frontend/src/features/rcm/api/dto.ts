@@ -37,10 +37,11 @@ export interface ControlDto {
   sub_process_code: string | null
   risk_level: RiskLevel | null
   created_at: string
-  // source envelope(flat) — 2-A-3 조회 전환 전까지 전송 안 됨, 전부 optional.
-  source?: SourceEnvelope['source']
-  baseline_id?: string | null
-  is_overridden?: boolean
+  // source envelope(flat) — 2-A-3 조회 전환 완료(search/detail 모두 resolve_controls 경유), required.
+  // baseline_id는 필드 존재는 required 이나 값 자체는 nullable(add 항목은 baseline_id=null).
+  source: SourceEnvelope['source']
+  baseline_id: string | null
+  is_overridden: boolean
 }
 
 export interface ControlListResponseDto {
