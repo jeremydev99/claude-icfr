@@ -18,6 +18,10 @@ COPY app/ ./app/
 COPY alembic/ ./alembic/
 COPY alembic.ini .
 COPY tests/ ./tests/
+# seeds/ = 엑셀 단일 원천 + baseline 시드 스크립트, scripts/ = 1회성 이관 스크립트.
+# 둘 다 기동 시 자동 실행되지 않고 마스터가 exec 로 명시 실행한다.
+COPY seeds/ ./seeds/
+COPY scripts/ ./scripts/
 
 EXPOSE 8000
 

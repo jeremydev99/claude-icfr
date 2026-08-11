@@ -142,6 +142,9 @@ class ControlUpdate(BaseModel):
 
 class ControlRead(ControlBase):
     id: UUID
+    # resolve_controls 는 risk 없는 통제(risk_id NULL — 이관 전/미매핑)를 낼 수 있으므로
+    # 읽기에서는 nullable (ControlCreate 는 ControlBase 상속으로 required 유지). ADR-0027 2-A-4-1.
+    risk_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
     # source envelope (ADR-0027, 2-A-3) — resolve_controls 유래 항목의 정체성 메타.

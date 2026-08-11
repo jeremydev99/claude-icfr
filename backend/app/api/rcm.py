@@ -15,6 +15,9 @@ from app.core.deps import CurrentUser
 from app.models.rcm import (
     Control, ControlAssertion, Process, Risk, RiskCategory, SubProcess,
 )
+from app.models.rcm_baseline import (
+    BaselineControl, BaselineRisk, ControlInstance, RiskInstance,
+)
 from app.schemas.rcm import (
     BulkDeleteRequest, BulkUpdateRequest, ClearAllRequest,
     ControlAssertionCreate, ControlAssertionRead,
@@ -378,13 +381,51 @@ def list_controls(skip: int = 0, limit: int = 100, user: CurrentUser = None, db:
     return {"items": [ControlRead.model_validate(i) for i in items], "total": total, "skip": skip, "limit": limit}
 
 
+# PATCH override diff 대상 = ControlUpdate 필드(코드·risk_id 제외한 미러링 필드).
+_OVERRIDE_FIELDS = list(ControlUpdate.model_fields.keys())
+
+
+def _resolve_risk_parent(db: Session, risk_id: UUID | None) -> tuple[UUID | None, UUID | None]:
+    """요청 risk_id → (risk_baseline_id, risk_instance_id). 2-B-2 이중 FK 규칙.
+
+    baseline_risks 에 있으면 baseline 쪽, risk_instances 에 있으면 instance 쪽.
+    어느 쪽도 아니면 (None, None) — 상위 없이 생성(cascade 에서 risk_id NULL 은 유지).
+    둘 다 non-NULL 은 불가(check) 이므로 배타적으로 하나만 반환.
+    """
+    if risk_id is None:
+        return None, None
+    if db.query(BaselineRisk).filter(BaselineRisk.id == risk_id).first() is not None:
+        return risk_id, None
+    if db.query(RiskInstance).filter(RiskInstance.id == risk_id).first() is not None:
+        return None, risk_id
+    return None, None
+
+
+def _resolved_or_404(db: Session, control_id: UUID) -> dict:
+    for r in resolve_controls(db):
+        if r["id"] == control_id:
+            return r
+    raise HTTPException(status_code=404, detail="Control not found")
+
+
 @router.post("/controls", status_code=status.HTTP_201_CREATED, response_model=ControlRead)
-def create_control(body: ControlCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> Control:
-    obj = Control(**body.model_dump())
-    db.add(obj)
+def create_control(body: ControlCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """add instance 생성 (ADR-0027, 2-A-4-1). 회사 고유 통제 = ControlInstance(action="add").
+
+    tenant_id 는 before_flush 자동 stamp(ADR-0026, 수동 지정 금지).
+    상위 risk 참조는 이중 FK 규칙으로 baseline/instance 중 하나에 매핑.
+    """
+    data = body.model_dump()
+    risk_id = data.pop("risk_id")
+    rb, ri = _resolve_risk_parent(db, risk_id)
+    inst = ControlInstance(
+        action="add", baseline_control_id=None,
+        risk_baseline_id=rb, risk_instance_id=ri,
+        **data,
+    )
+    db.add(inst)
     db.commit()
-    db.refresh(obj)
-    return obj
+    return _resolved_or_404(db, inst.id)
 
 
 @router.get("/controls/{control_id}", response_model=ControlRead)
@@ -401,23 +442,83 @@ def get_control(control_id: UUID, user: CurrentUser = None, db: Session = Depend
 
 
 @router.patch("/controls/{control_id}", response_model=ControlRead)
-def update_control(control_id: UUID, body: ControlUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> Control:
-    obj = db.query(Control).filter(Control.id == control_id, Control.is_deleted == False).first()  # noqa: E712
-    if not obj:
+def update_control(control_id: UUID, body: ControlUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """대상 정체성에 따라 분기 (ADR-0027, 2-A-4-1).
+
+    - baseline 유래 → override instance 생성/갱신 (바뀐 필드만 저장, 필드 diff).
+      요청 값이 baseline 과 같으면 NULL(=baseline 따름), 다르면 값 저장.
+      모든 override 필드가 NULL 이면 action 을 adopt 로 전환(instance 는 남김 — 검토 흔적).
+    - 회사 add → instance 직접 수정 (baseline 없어 diff 불필요).
+    False/0/"" 는 유효 값 — `is None` 으로만 미전송 판별(falsy 판정 금지).
+    """
+    changes = body.model_dump(exclude_unset=True)
+
+    baseline = db.query(BaselineControl).filter(BaselineControl.id == control_id).first()
+    if baseline is not None:
+        inst = db.query(ControlInstance).filter(
+            ControlInstance.baseline_control_id == control_id
+        ).first()  # (tenant_id, baseline_control_id) unique → 최대 1건
+        if inst is None:
+            inst = ControlInstance(baseline_control_id=control_id, action="override")
+            db.add(inst)
+        elif inst.action in ("adopt", "exclude"):
+            inst.action = "override"
+        for f in _OVERRIDE_FIELDS:
+            if f in changes:  # 전송된 필드만 (None 도 전송이면 diff 대상)
+                base_val = getattr(baseline, f)
+                req_val = changes[f]
+                setattr(inst, f, None if req_val == base_val else req_val)
+        if all(getattr(inst, f) is None for f in _OVERRIDE_FIELDS):
+            inst.action = "adopt"  # 전부 baseline 과 동일 → 되돌림 (instance 는 남김)
+        db.commit()
+        return _resolved_or_404(db, control_id)
+
+    inst = db.query(ControlInstance).filter(
+        ControlInstance.id == control_id,
+        ControlInstance.action == "add",
+        ControlInstance.is_deleted == False,  # noqa: E712
+    ).first()
+    if inst is None:
         raise HTTPException(status_code=404, detail="Control not found")
-    for f, v in body.model_dump(exclude_none=True).items():
-        setattr(obj, f, v)
+    for f, v in changes.items():
+        setattr(inst, f, v)
     db.commit()
-    db.refresh(obj)
-    return obj
+    return _resolved_or_404(db, control_id)
 
 
 @router.delete("/controls/{control_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_control(control_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
-    obj = db.query(Control).filter(Control.id == control_id, Control.is_deleted == False).first()  # noqa: E712
-    if not obj:
+    """대상 정체성에 따라 분기 (ADR-0027, 2-A-4-1, 2-B-3.5 삭제 규약).
+
+    - baseline 유래 → exclude instance 생성/전환 (원본 baseline_controls 절대 불변, hide).
+    - 회사 add → instance soft delete.
+    """
+    baseline = db.query(BaselineControl).filter(BaselineControl.id == control_id).first()
+    if baseline is not None:
+        inst = db.query(ControlInstance).filter(
+            ControlInstance.baseline_control_id == control_id
+        ).first()
+        if inst is None:
+            inst = ControlInstance(baseline_control_id=control_id, action="exclude")
+            db.add(inst)
+        else:
+            inst.action = "exclude"
+            for f in _OVERRIDE_FIELDS:  # override 필드 정리
+                setattr(inst, f, None)
+            inst.code = None
+            inst.risk_baseline_id = None
+            inst.risk_instance_id = None
+        db.commit()
+        return
+
+    inst = db.query(ControlInstance).filter(
+        ControlInstance.id == control_id,
+        ControlInstance.action == "add",
+        ControlInstance.is_deleted == False,  # noqa: E712
+    ).first()
+    if inst is None:
         raise HTTPException(status_code=404, detail="Control not found")
-    obj.is_deleted = True
+    inst.is_deleted = True
     db.commit()
 
 
