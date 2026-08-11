@@ -1660,7 +1660,11 @@ DB 이관(2-A-2 재실행)은 백엔드(TrustBuilder) 소관 — 본 세션(Regi
 
 **확인 대기 신규 (협업자 회신 전까지 확정 서술 금지)**:
 ~~5. baseline/instance 데이터 백필 migration이 별도 예정 스텝인지~~ ✅ **해소 (2026-08-11)** — 별도 migration이 아니라 `seeds/seed_baseline.py --reset`(2026-08-06 구축, 13.3 참조) 실행으로 해결. Regina 로컬에서 모듈 실행(`python -m seeds.seed_baseline --reset`) + DB 직접 카운트 쿼리 교차검증 완료 — baseline_controls 93 등 엑셀 파싱 수와 전부 일치, instance 5테이블 0(암묵 adopt), legacy `controls` 98 불변. 항목 1-a로 반영 완료. **항목 1-b·2·3·4(라이브 API·UI 검증)는 여전히 미완** — 다음 세션에서 새 기준값(93 기반) 재산정 후 확인 필요.
-6. resolver(`control_resolver.py`)가 `action`→`is_overridden` 매핑을 실제로 어떻게 제공하는지 — FE envelope 계약(`sourceEnvelope.ts`)은 `is_overridden` flat 필드를 전제하므로 코드 재확인 필요 (미해결, seed와 무관)
+~~6. resolver(`control_resolver.py`)가 `action`→`is_overridden` 매핑을 실제로 어떻게 제공하는지~~ ✅ **해소 (2026-08-11, 코드 직독 확인)** — mutation 와이어링 착수 전 계약 확정. 근거: `control_resolver.py:85-109`(`_resolve_layer`), `api/rcm.py:404-522`(단건 CRUD, 2-A-4-1/커밋 `85dc049`).
+   - **`is_overridden`은 서버 계산값, DB 컬럼 아님** — `inst.action == "override"` 판정을 읽기 시점에 계산해 응답 dict에 flat으로 얹음. 매핑: instance 없음(암묵 adopt)·`action="adopt"` → `source="baseline"`/`baseline_id`=해당 id/`is_overridden=False`. `action="override"` → `source="baseline"`/`is_overridden=True`. `action="exclude"` → 결과에서 행 자체가 제외됨. `action="add"`(`baseline_control_id IS NULL`) → `source="tenant"`/`baseline_id=None`/`is_overridden=False`. FE는 `baseline_control_id`/`action`을 자체 판정할 필요 없이 응답의 flat 필드를 그대로 신뢰하면 됨(현 `sourceEnvelope.ts` 계약과 일치).
+   - **PATCH는 서버가 자동 diff** — `changes = body.model_dump(exclude_unset=True)`로 미전송 필드는 무시, 전송된 필드는 baseline 값과 재비교해 같으면 override 컬럼을 `None`(=baseline 따름)으로, 다르면 그 값으로 저장. 전 override 필드가 `None`이 되면 `action`이 `override`→`adopt`로 자동 환원(instance 행은 감사 흔적으로 유지). FE가 사전 diff할 필요 없음 — 폼 전체를 보내도 안전.
+   - **DELETE는 단일 엔드포인트, 서버가 분기** — `DELETE /controls/{control_id}` 하나. 서버가 `control_id`로 `baseline_controls` 조회해 있으면 override instance를 `action="exclude"`로 생성/전환(override 필드 정리), 없으면 `action="add"` instance를 `is_deleted=True` soft delete. FE가 source별로 다른 엔드포인트/payload를 고를 필요 없음.
+   - **FE 헬퍼(`isBaseline`/`isTenantAdd`/`resolveDeleteSemantics`)는 API 분기용이 아니라 UI 표현 전용**(확인 다이얼로그 문구, 배지, 버튼 라벨) — 실제 mutation 호출은 소스 무관하게 항상 동일 엔드포인트.
 
 ### 13.5 기존 테스트 실패 3건 (2-A-4 범위 부채 — seed와 무관)
 
