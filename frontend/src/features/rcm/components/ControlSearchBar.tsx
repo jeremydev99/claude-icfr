@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Search, SlidersHorizontal, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -14,6 +15,9 @@ import {
   RISK_LEVEL_LABELS,
 } from '../types'
 import type { AssertionCode } from '../types'
+import { fetchProcesses } from '../api/controlsApi'
+import { queryKeys } from '@/lib/queryKeys'
+import { useActiveTenantId } from '@/features/auth/store'
 
 interface Props {
   params: ControlSearchParams
@@ -21,11 +25,19 @@ interface Props {
   onReset: () => void
 }
 
-const PROCESSES = ['O2C', 'P2P', 'R2R', 'HR', 'ITG']
-
 export default function ControlSearchBar({ params, onChange, onReset }: Props) {
   const [open, setOpen] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tenantId = useActiveTenantId()
+
+  const { data: processesData } = useQuery({
+    queryKey: queryKeys.rcm.processes(tenantId),
+    queryFn: fetchProcesses,
+    staleTime: 1000 * 60 * 10,
+  })
+  const processOptions = (processesData?.items ?? []).map(
+    (p) => [p.code, `${p.code} — ${p.name}`] as [string, string],
+  )
 
   const handleTextChange = useCallback(
     (value: string) => {
@@ -96,7 +108,7 @@ export default function ControlSearchBar({ params, onChange, onReset }: Props) {
               params.process_code,
               (v) => onChange({ process_code: v, skip: 0 }),
               '전체',
-              PROCESSES.map((p) => [p, p] as [string, string]),
+              processOptions,
             )}
           </div>
 
