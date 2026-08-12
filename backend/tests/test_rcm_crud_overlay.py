@@ -221,3 +221,217 @@ def test_patch_falsy_values_are_valid_override(client: TestClient) -> None:
     assert inst.is_key_control is False           # NULL 아님
     assert inst.activity_approval is False
     assert inst.description == ""
+
+
+# ── 2-A-4-2: 다건(bulk) — 단건과 같은 분기 ────────────────────
+
+def _instance_by_id(instance_id: str) -> ControlInstance | None:
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        return db.query(ControlInstance).filter(ControlInstance.id == UUID(instance_id)).first()
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def _add_control(client: TestClient, h: dict, suffix: str) -> str:
+    """회사 add 통제 1건 생성 후 id 반환."""
+    rid = _seed_baseline_risk(suffix)
+    resp = client.post("/api/rcm/controls", json={
+        "code": f"C42-ADD-{suffix}", "name": f"회사통제{suffix}", "risk_id": rid, "frequency": "M",
+    }, headers=h)
+    assert resp.status_code == 201
+    return resp.json()["id"]
+
+
+def _search_codes(client: TestClient, h: dict) -> list[str]:
+    resp = client.get("/api/rcm/controls/search", params={"limit": 500}, headers=h)
+    return [c["code"] for c in resp.json()["items"]]
+
+
+def test_bulk_delete_uses_same_branching_as_single(client: TestClient) -> None:
+    """baseline 유래 → exclude instance, 회사 add → soft delete, 미해당 id → skipped."""
+    h = _headers(client)
+    before = _baseline_count()
+    bid = _seed_baseline_control("C42-BDEL-1", name="표준통제")
+    add_id = _add_control(client, h, "BDEL")
+    missing = "00000000-0000-0000-0000-0000000042de"
+
+    resp = client.post("/api/rcm/controls/bulk-delete", json={
+        "control_ids": [bid, add_id, missing],
+    }, headers=h)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deleted_count"] == 2
+    assert body["skipped_ids"] == [missing]
+
+    # baseline 유래 = exclude instance (원본은 그대로)
+    inst = _instance_for(bid)
+    assert inst is not None and inst.action == "exclude"
+
+    # 회사 add = soft delete
+    assert _instance_by_id(add_id).is_deleted is True
+
+    # 둘 다 목록에서 사라진다
+    codes = _search_codes(client, h)
+    assert "C42-BDEL-1" not in codes
+    assert "C42-ADD-BDEL" not in codes
+
+    # baseline 원본 불변 — 행 수도 내용도 (이 테스트가 시딩한 1건만 증가)
+    assert _baseline_count() == before + 1
+    db = TestingSessionLocal()
+    try:
+        bc = db.query(BaselineControl).filter(BaselineControl.id == UUID(bid)).first()
+        assert bc is not None and bc.name == "표준통제" and bc.is_deleted is False
+    finally:
+        db.close()
+
+
+def test_bulk_update_baseline_creates_override_diff(client: TestClient) -> None:
+    """baseline 유래 → override, 전송 필드만 저장(나머지는 baseline 따름)."""
+    h = _headers(client)
+    b1 = _seed_baseline_control("C42-BUPD-1", name="표준1", owner_name="표준담당", frequency="A")
+    b2 = _seed_baseline_control("C42-BUPD-2", name="표준2", owner_name="표준담당", frequency="A")
+
+    resp = client.post("/api/rcm/controls/bulk-update", json={
+        "control_ids": [b1, b2], "updates": {"frequency": "Q"},
+    }, headers=h)
+    assert resp.status_code == 200
+    assert resp.json()["updated_count"] == 2
+    assert resp.json()["skipped_ids"] == []
+
+    for bid in (b1, b2):
+        inst = _instance_for(bid)
+        assert inst.action == "override"
+        assert inst.frequency == "Q"
+        assert inst.name is None        # 미전송 → NULL(baseline 따름)
+        assert inst.owner_name is None
+
+    # baseline 원본 불변
+    db = TestingSessionLocal()
+    try:
+        bc = db.query(BaselineControl).filter(BaselineControl.id == UUID(b1)).first()
+        assert bc.frequency == "A" and bc.name == "표준1"
+    finally:
+        db.close()
+
+
+def test_bulk_update_add_instance_is_edited_directly(client: TestClient) -> None:
+    """회사 add → instance 직접 수정 (diff 불필요)."""
+    h = _headers(client)
+    add_id = _add_control(client, h, "BUPD")
+
+    resp = client.post("/api/rcm/controls/bulk-update", json={
+        "control_ids": [add_id], "updates": {"frequency": "D", "owner_name": "회사담당"},
+    }, headers=h)
+    assert resp.status_code == 200
+    assert resp.json()["updated_count"] == 1
+
+    inst = _instance_by_id(add_id)
+    assert inst.action == "add"
+    assert inst.frequency == "D" and inst.owner_name == "회사담당"
+
+
+def test_bulk_update_falsy_values_are_stored(client: TestClient) -> None:
+    """False/"" 는 유효 값 — exclude_unset 통일 전(exclude_none)에는 저장되지 않았다.
+
+    ControlUpdate 에 정수 필드가 없어 0 은 이 스키마로 표현 불가(False 가 동일 경로).
+    """
+    h = _headers(client)
+    bid = _seed_baseline_control(
+        "C42-BFAL-1", name="표준명", description="표준설명",
+        is_key_control=True, activity_approval=True,
+    )
+    resp = client.post("/api/rcm/controls/bulk-update", json={
+        "control_ids": [bid],
+        "updates": {"is_key_control": False, "activity_approval": False, "description": ""},
+    }, headers=h)
+    assert resp.status_code == 200
+    assert resp.json()["updated_count"] == 1
+
+    inst = _instance_for(bid)
+    assert inst.is_key_control is False      # NULL 로 떨어지지 않음
+    assert inst.activity_approval is False
+    assert inst.description == ""
+
+    resolved = client.get(f"/api/rcm/controls/{bid}", headers=h).json()
+    assert resolved["is_key_control"] is False
+    assert resolved["activity_approval"] is False
+    assert resolved["description"] == ""
+
+
+def test_bulk_update_back_to_baseline_reverts_to_adopt(client: TestClient) -> None:
+    """전 override 필드가 baseline 과 같아지면 adopt 로 되돌린다(instance 는 남김)."""
+    h = _headers(client)
+    bid = _seed_baseline_control("C42-BREV-1", name="표준명", frequency="A")
+
+    client.post("/api/rcm/controls/bulk-update", json={
+        "control_ids": [bid], "updates": {"frequency": "Q"},
+    }, headers=h)
+    assert _instance_for(bid).action == "override"
+
+    client.post("/api/rcm/controls/bulk-update", json={
+        "control_ids": [bid], "updates": {"frequency": "A"},  # baseline 과 동일
+    }, headers=h)
+    inst = _instance_for(bid)
+    assert inst is not None            # instance 자체는 남는다 (검토 흔적)
+    assert inst.action == "adopt"      # 되돌림
+    assert inst.frequency is None      # 값도 정리
+
+
+def test_bulk_update_skips_unknown_ids(client: TestClient) -> None:
+    """미해당 id 는 skipped_ids 로 나오고 전체를 실패시키지 않는다."""
+    h = _headers(client)
+    bid = _seed_baseline_control("C42-BSKIP-1", name="표준명", frequency="A")
+    missing = "00000000-0000-0000-0000-0000000042bd"
+
+    resp = client.post("/api/rcm/controls/bulk-update", json={
+        "control_ids": [bid, missing], "updates": {"frequency": "W"},
+    }, headers=h)
+    assert resp.status_code == 200
+    assert resp.json()["updated_count"] == 1
+    assert resp.json()["skipped_ids"] == [missing]
+
+
+# ── 2-A-4-2: GET /controls 목록 전환 ─────────────────────────
+
+def test_list_controls_uses_resolver_with_envelope(client: TestClient) -> None:
+    """목록이 resolver 기반이고 envelope 를 포함하며 search 와 id 가 일치한다."""
+    h = _headers(client)
+    bid = _seed_baseline_control("C42-LIST-1", name="목록표준")
+    add_id = _add_control(client, h, "LIST")
+
+    resp = client.get("/api/rcm/controls", params={"limit": 500}, headers=h)
+    assert resp.status_code == 200
+    items = {c["code"]: c for c in resp.json()["items"]}
+
+    assert "C42-LIST-1" in items
+    assert items["C42-LIST-1"]["id"] == bid          # 정체성 id = baseline id
+    assert items["C42-LIST-1"]["source"] == "baseline"
+    assert items["C42-LIST-1"]["is_overridden"] is False
+
+    assert "C42-ADD-LIST" in items
+    assert items["C42-ADD-LIST"]["id"] == add_id     # add 는 instance id
+    assert items["C42-ADD-LIST"]["source"] == "tenant"
+    assert items["C42-ADD-LIST"]["baseline_id"] is None
+
+    # search 와 id 체계 일치
+    s = client.get("/api/rcm/controls/search", params={"limit": 500}, headers=h)
+    s_items = {c["code"]: c for c in s.json()["items"]}
+    for code in ("C42-LIST-1", "C42-ADD-LIST"):
+        assert items[code]["id"] == s_items[code]["id"]
+
+
+def test_list_controls_excludes_deleted(client: TestClient) -> None:
+    """exclude/soft delete 된 통제는 목록에서 빠진다."""
+    h = _headers(client)
+    bid = _seed_baseline_control("C42-LDEL-1", name="목록삭제")
+
+    def _codes() -> list[str]:
+        return [c["code"] for c in
+                client.get("/api/rcm/controls", params={"limit": 500}, headers=h).json()["items"]]
+
+    assert "C42-LDEL-1" in _codes()
+    client.delete(f"/api/rcm/controls/{bid}", headers=h)
+    assert "C42-LDEL-1" not in _codes()
