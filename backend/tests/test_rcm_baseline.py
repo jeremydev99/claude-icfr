@@ -20,6 +20,27 @@ from app.core.tenant_context import set_active_tenant, reset_active_tenant, DEFA
 from tests.conftest import TestingSessionLocal
 
 
+# ControlInstance 규약(models/rcm_baseline.py): add 는 baseline 이 없으므로 **자체 필드를 전부 채운다**.
+# 비워두면 resolver 가 None 을 그대로 내보내 ControlSearchOut/ControlRead 검증이 깨진다
+# (adopt/override 는 baseline 이 NOT NULL 이라 문제가 없고, add 만 해당).
+# 값은 API 경로가 실제로 만드는 형태 = ControlBase 기본값과 동일하게 둔다.
+_ADD_ACTIVITIES = {
+    "activity_approval": False,
+    "activity_verification": False,
+    "activity_physical": False,
+    "activity_master_data": False,
+    "activity_reconciliation": False,
+    "activity_supervision": False,
+}
+_ADD_ATTRS = {
+    "is_key_control": True,
+    "preventive_detective": "P",
+    "auto_manual": "M",
+    "frequency": "A",
+    "ipe_relevant": "N/A",
+}
+
+
 def _make_baseline(db, code, name="표준 통제", **kwargs):
     b = BaselineControl(code=code, name=name, **kwargs)
     db.add(b)
@@ -111,6 +132,7 @@ def test_resolve_add(app):
             baseline_control_id=None, action="add",
             code="CI-ADD-1", name="회사 고유 통제", is_key_control=True,
             preventive_detective="D", auto_manual="M", frequency="M", ipe_relevant="N",
+            **_ADD_ACTIVITIES,
         ))
         db.commit()
 
@@ -134,7 +156,8 @@ def test_resolve_mixed(app):
             ControlInstance(baseline_control_id=b_adopt.id, action="adopt"),
             ControlInstance(baseline_control_id=b_over.id, action="override", name="변경명"),
             ControlInstance(baseline_control_id=b_excl.id, action="exclude"),
-            ControlInstance(baseline_control_id=None, action="add", code="CI-MIX-ADD", name="추가 통제"),
+            ControlInstance(baseline_control_id=None, action="add", code="CI-MIX-ADD", name="추가 통제",
+                            **_ADD_ACTIVITIES, **_ADD_ATTRS),
         ])
         db.commit()
 
@@ -165,7 +188,8 @@ def test_resolve_tenant_isolation(app):
         tok = set_active_tenant(tenant_b.id)
         db.add_all([
             ControlInstance(baseline_control_id=b.id, action="exclude"),
-            ControlInstance(baseline_control_id=None, action="add", code="CI-ISO-B", name="B사 통제"),
+            ControlInstance(baseline_control_id=None, action="add", code="CI-ISO-B", name="B사 통제",
+                            **_ADD_ACTIVITIES, **_ADD_ATTRS),
         ])
         db.commit()
         rows_b = _resolve_codes(db)
@@ -328,8 +352,10 @@ def test_instance_parent_refs(app):
         db.add(ri)
         db.flush()
         db.add_all([
-            ControlInstance(action="add", code="CI-B-1", name="baseline risk 밑", risk_baseline_id=r.id),
-            ControlInstance(action="add", code="CI-I-1", name="instance risk 밑", risk_instance_id=ri.id),
+            ControlInstance(action="add", code="CI-B-1", name="baseline risk 밑", risk_baseline_id=r.id,
+                            **_ADD_ACTIVITIES, **_ADD_ATTRS),
+            ControlInstance(action="add", code="CI-I-1", name="instance risk 밑", risk_instance_id=ri.id,
+                            **_ADD_ACTIVITIES, **_ADD_ATTRS),
         ])
         db.commit()
 
@@ -476,7 +502,7 @@ def test_assertion_instance_add_control_target(app):
     db = TestingSessionLocal()
     tok = set_active_tenant(DEFAULT_TENANT_ID)
     try:
-        ci = ControlInstance(action="add", code="CI-AST-1", name="회사 통제")
+        ci = ControlInstance(action="add", code="CI-AST-1", name="회사 통제", **_ADD_ACTIVITIES, **_ADD_ATTRS)
         cat = _make_category(db, "AST3-V")
         db.add(ci)
         db.flush()
@@ -499,7 +525,7 @@ def test_assertion_instance_dual_fk_check_violation(app):
     tok = set_active_tenant(DEFAULT_TENANT_ID)
     try:
         b = _make_baseline(db, "BL-AST-4")
-        ci = ControlInstance(action="add", code="CI-AST-4", name="회사 통제")
+        ci = ControlInstance(action="add", code="CI-AST-4", name="회사 통제", **_ADD_ACTIVITIES, **_ADD_ATTRS)
         cat = _make_category(db, "AST4-R")
         db.add(ci)
         db.flush()
@@ -676,7 +702,8 @@ def test_resolve_add_chain_identity(app):
                           sub_process_instance_id=spi.id)
         db.add(ri)
         db.flush()
-        db.add(ControlInstance(action="add", code="B4-CI", name="회사C", risk_instance_id=ri.id))
+        db.add(ControlInstance(action="add", code="B4-CI", name="회사C", risk_instance_id=ri.id,
+                               **_ADD_ACTIVITIES, **_ADD_ATTRS))
         db.commit()
 
         row = {x["code"]: x for x in resolve_controls(db)}["B4-CI"]
@@ -789,7 +816,8 @@ def test_resolve_control_source_envelope(app):
         db.add_all([
             ControlInstance(baseline_control_id=b_ad.id, action="adopt"),
             ControlInstance(baseline_control_id=b_ov.id, action="override", name="회사명"),
-            ControlInstance(baseline_control_id=None, action="add", code="CI-2B4-ADD", name="회사 통제"),
+            ControlInstance(baseline_control_id=None, action="add", code="CI-2B4-ADD", name="회사 통제",
+                            **_ADD_ACTIVITIES, **_ADD_ATTRS),
         ])
         db.commit()
         rows = {x["code"]: x for x in resolve_controls(db)}

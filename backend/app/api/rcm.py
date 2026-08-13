@@ -19,7 +19,7 @@ from app.models.rcm_baseline import (
     BaselineControl, BaselineRisk, ControlInstance, RiskInstance,
 )
 from app.schemas.rcm import (
-    BulkDeleteRequest, BulkUpdateRequest, ClearAllRequest,
+    BulkDeleteRequest, BulkUpdateRequest,
     ControlAssertionCreate, ControlAssertionRead,
     ControlCreate, ControlRead, ControlSearchOut, ControlSearchResponse, ControlUpdate,
     ProcessCreate, ProcessRead, ProcessUpdate,
@@ -327,58 +327,51 @@ def search_controls(
 
 @router.post("/controls/bulk-delete")
 def bulk_delete_controls(body: BulkDeleteRequest, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
-    count = 0
+    """다건 삭제 — 단건 DELETE 와 동일 분기를 id 마다 적용 (ADR-0027, 2-A-4-2).
+
+    미해당 id 는 건너뛰고 `skipped_ids` 로 드러낸다 — 하나 때문에 전체를 404 로 실패시키지 않는다.
+    단일 트랜잭션(루프 후 1회 커밋) — 중간 실패 시 전체 롤백.
+    """
+    deleted, skipped = 0, []
     for cid in body.control_ids:
-        obj = db.query(Control).filter(Control.id == cid, Control.is_deleted == False).first()  # noqa: E712
-        if obj:
-            obj.is_deleted = True
-            count += 1
+        if _apply_control_delete(db, cid):
+            deleted += 1
+        else:
+            skipped.append(cid)
     db.commit()
-    return {"deleted_count": count}
+    return {"deleted_count": deleted, "skipped_ids": skipped}
 
 
 @router.post("/controls/bulk-update")
 def bulk_update_controls(body: BulkUpdateRequest, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
-    updates = body.updates.model_dump(exclude_none=True)
-    count = 0
+    """다건 수정 — 단건 PATCH 와 동일 분기를 id 마다 적용 (ADR-0027, 2-A-4-2).
+
+    `exclude_unset` — 단건 PATCH 와 동일 기준으로 통일(2-A-4-2). 이전 `exclude_none` 은
+    False/0/"" 를 미전송으로 오인해 저장할 수 없었다.
+    단일 트랜잭션(루프 후 1회 커밋).
+    """
+    changes = body.updates.model_dump(exclude_unset=True)
+    updated, skipped = 0, []
     for cid in body.control_ids:
-        obj = db.query(Control).filter(Control.id == cid, Control.is_deleted == False).first()  # noqa: E712
-        if obj:
-            for f, v in updates.items():
-                setattr(obj, f, v)
-            count += 1
+        if _apply_control_update(db, cid, changes):
+            updated += 1
+        else:
+            skipped.append(cid)
     db.commit()
-    return {"updated_count": count}
-
-
-@router.post("/controls/clear-all")
-def clear_all_rcm(body: ClearAllRequest, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
-    """전체 RCM 데이터 하드 삭제 — Excel 재업로드용. Phase 0 한정 허용."""
-    if body.confirm != "DELETE_ALL_RCM_DATA":
-        raise HTTPException(status_code=400, detail="confirm 값이 올바르지 않습니다")
-    ca_count = db.query(ControlAssertion).delete(synchronize_session=False)
-    c_count = db.query(Control).delete(synchronize_session=False)
-    r_count = db.query(Risk).delete(synchronize_session=False)
-    sp_count = db.query(SubProcess).delete(synchronize_session=False)
-    p_count = db.query(Process).delete(synchronize_session=False)
-    db.commit()
-    return {
-        "deleted": {
-            "assertions": ca_count,
-            "controls": c_count,
-            "risks": r_count,
-            "sub_processes": sp_count,
-            "processes": p_count,
-        }
-    }
+    return {"updated_count": updated, "skipped_ids": skipped}
 
 
 @router.get("/controls")
 def list_controls(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
-    q = db.query(Control).filter(Control.is_deleted == False)  # noqa: E712
-    total = q.count()
-    items = q.offset(skip).limit(limit).all()
-    return {"items": [ControlRead.model_validate(i) for i in items], "total": total, "skip": skip, "limit": limit}
+    """목록 — resolve_controls 경유 (ADR-0027, 2-A-4-2).
+
+    search·상세와 같은 정체성 id 체계 + source envelope. 정렬은 search 기본과 동일(code 오름차순).
+    """
+    rows = resolve_controls(db)
+    rows.sort(key=lambda r: (r["code"] is None, r["code"]))
+    total = len(rows)
+    page = rows[skip: skip + limit]
+    return {"items": [ControlRead(**r) for r in page], "total": total, "skip": skip, "limit": limit}
 
 
 # PATCH override diff 대상 = ControlUpdate 필드(코드·risk_id 제외한 미러링 필드).
@@ -406,6 +399,85 @@ def _resolved_or_404(db: Session, control_id: UUID) -> dict:
         if r["id"] == control_id:
             return r
     raise HTTPException(status_code=404, detail="Control not found")
+
+
+def _apply_control_update(db: Session, control_id: UUID, changes: dict) -> bool:
+    """수정 분기 — 단건 PATCH 와 다건 bulk-update 공통 (2-A-4-1, 2-A-4-2 추출).
+
+    - baseline 유래 → override instance 생성/갱신 (바뀐 필드만 저장, 필드 diff).
+      요청 값이 baseline 과 같으면 NULL(=baseline 따름), 다르면 값 저장.
+      모든 override 필드가 NULL 이면 action 을 adopt 로 전환(instance 는 남김 — 검토 흔적).
+    - 회사 add → instance 직접 수정 (baseline 없어 diff 불필요).
+
+    False/0/"" 는 유효 값이므로 호출자가 `exclude_unset` 으로 미전송을 판별해 changes 를
+    만든다(falsy 판정 금지). **커밋하지 않는다** — 트랜잭션 경계는 호출자(다건은 1회 커밋).
+    대상이 없으면 False.
+    """
+    baseline = db.query(BaselineControl).filter(BaselineControl.id == control_id).first()
+    if baseline is not None:
+        inst = db.query(ControlInstance).filter(
+            ControlInstance.baseline_control_id == control_id
+        ).first()  # (tenant_id, baseline_control_id) unique → 최대 1건
+        if inst is None:
+            inst = ControlInstance(baseline_control_id=control_id, action="override")
+            db.add(inst)
+        elif inst.action in ("adopt", "exclude"):
+            inst.action = "override"
+        for f in _OVERRIDE_FIELDS:
+            if f in changes:  # 전송된 필드만 (None 도 전송이면 diff 대상)
+                base_val = getattr(baseline, f)
+                req_val = changes[f]
+                setattr(inst, f, None if req_val == base_val else req_val)
+        if all(getattr(inst, f) is None for f in _OVERRIDE_FIELDS):
+            inst.action = "adopt"  # 전부 baseline 과 동일 → 되돌림 (instance 는 남김)
+        return True
+
+    inst = db.query(ControlInstance).filter(
+        ControlInstance.id == control_id,
+        ControlInstance.action == "add",
+        ControlInstance.is_deleted == False,  # noqa: E712
+    ).first()
+    if inst is None:
+        return False
+    for f, v in changes.items():
+        setattr(inst, f, v)
+    return True
+
+
+def _apply_control_delete(db: Session, control_id: UUID) -> bool:
+    """삭제 분기 — 단건 DELETE 와 다건 bulk-delete 공통 (2-A-4-1, 2-B-3.5 규약, 2-A-4-2 추출).
+
+    - baseline 유래 → exclude instance 생성/전환 (원본 baseline_controls 절대 불변, hide).
+    - 회사 add → instance soft delete.
+
+    **커밋하지 않는다** — 트랜잭션 경계는 호출자. 대상이 없으면 False.
+    """
+    baseline = db.query(BaselineControl).filter(BaselineControl.id == control_id).first()
+    if baseline is not None:
+        inst = db.query(ControlInstance).filter(
+            ControlInstance.baseline_control_id == control_id
+        ).first()
+        if inst is None:
+            inst = ControlInstance(baseline_control_id=control_id, action="exclude")
+            db.add(inst)
+        else:
+            inst.action = "exclude"
+            for f in _OVERRIDE_FIELDS:  # override 필드 정리
+                setattr(inst, f, None)
+            inst.code = None
+            inst.risk_baseline_id = None
+            inst.risk_instance_id = None
+        return True
+
+    inst = db.query(ControlInstance).filter(
+        ControlInstance.id == control_id,
+        ControlInstance.action == "add",
+        ControlInstance.is_deleted == False,  # noqa: E712
+    ).first()
+    if inst is None:
+        return False
+    inst.is_deleted = True
+    return True
 
 
 @router.post("/controls", status_code=status.HTTP_201_CREATED, response_model=ControlRead)
@@ -443,82 +515,21 @@ def get_control(control_id: UUID, user: CurrentUser = None, db: Session = Depend
 
 @router.patch("/controls/{control_id}", response_model=ControlRead)
 def update_control(control_id: UUID, body: ControlUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
-    """대상 정체성에 따라 분기 (ADR-0027, 2-A-4-1).
+    """단건 수정 — 분기는 `_apply_control_update` 공통 (ADR-0027, 2-A-4-1).
 
-    - baseline 유래 → override instance 생성/갱신 (바뀐 필드만 저장, 필드 diff).
-      요청 값이 baseline 과 같으면 NULL(=baseline 따름), 다르면 값 저장.
-      모든 override 필드가 NULL 이면 action 을 adopt 로 전환(instance 는 남김 — 검토 흔적).
-    - 회사 add → instance 직접 수정 (baseline 없어 diff 불필요).
-    False/0/"" 는 유효 값 — `is None` 으로만 미전송 판별(falsy 판정 금지).
+    `exclude_unset` 으로 미전송을 판별한다 — False/0/"" 는 유효 값(falsy 판정 금지).
     """
-    changes = body.model_dump(exclude_unset=True)
-
-    baseline = db.query(BaselineControl).filter(BaselineControl.id == control_id).first()
-    if baseline is not None:
-        inst = db.query(ControlInstance).filter(
-            ControlInstance.baseline_control_id == control_id
-        ).first()  # (tenant_id, baseline_control_id) unique → 최대 1건
-        if inst is None:
-            inst = ControlInstance(baseline_control_id=control_id, action="override")
-            db.add(inst)
-        elif inst.action in ("adopt", "exclude"):
-            inst.action = "override"
-        for f in _OVERRIDE_FIELDS:
-            if f in changes:  # 전송된 필드만 (None 도 전송이면 diff 대상)
-                base_val = getattr(baseline, f)
-                req_val = changes[f]
-                setattr(inst, f, None if req_val == base_val else req_val)
-        if all(getattr(inst, f) is None for f in _OVERRIDE_FIELDS):
-            inst.action = "adopt"  # 전부 baseline 과 동일 → 되돌림 (instance 는 남김)
-        db.commit()
-        return _resolved_or_404(db, control_id)
-
-    inst = db.query(ControlInstance).filter(
-        ControlInstance.id == control_id,
-        ControlInstance.action == "add",
-        ControlInstance.is_deleted == False,  # noqa: E712
-    ).first()
-    if inst is None:
+    if not _apply_control_update(db, control_id, body.model_dump(exclude_unset=True)):
         raise HTTPException(status_code=404, detail="Control not found")
-    for f, v in changes.items():
-        setattr(inst, f, v)
     db.commit()
     return _resolved_or_404(db, control_id)
 
 
 @router.delete("/controls/{control_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_control(control_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
-    """대상 정체성에 따라 분기 (ADR-0027, 2-A-4-1, 2-B-3.5 삭제 규약).
-
-    - baseline 유래 → exclude instance 생성/전환 (원본 baseline_controls 절대 불변, hide).
-    - 회사 add → instance soft delete.
-    """
-    baseline = db.query(BaselineControl).filter(BaselineControl.id == control_id).first()
-    if baseline is not None:
-        inst = db.query(ControlInstance).filter(
-            ControlInstance.baseline_control_id == control_id
-        ).first()
-        if inst is None:
-            inst = ControlInstance(baseline_control_id=control_id, action="exclude")
-            db.add(inst)
-        else:
-            inst.action = "exclude"
-            for f in _OVERRIDE_FIELDS:  # override 필드 정리
-                setattr(inst, f, None)
-            inst.code = None
-            inst.risk_baseline_id = None
-            inst.risk_instance_id = None
-        db.commit()
-        return
-
-    inst = db.query(ControlInstance).filter(
-        ControlInstance.id == control_id,
-        ControlInstance.action == "add",
-        ControlInstance.is_deleted == False,  # noqa: E712
-    ).first()
-    if inst is None:
+    """단건 삭제 — 분기는 `_apply_control_delete` 공통 (ADR-0027, 2-A-4-1, 2-B-3.5 삭제 규약)."""
+    if not _apply_control_delete(db, control_id):
         raise HTTPException(status_code=404, detail="Control not found")
-    inst.is_deleted = True
     db.commit()
 
 

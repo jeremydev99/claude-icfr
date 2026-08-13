@@ -149,7 +149,8 @@ class ControlRead(ControlBase):
     updated_at: datetime
     # source envelope (ADR-0027, 2-A-3) — resolve_controls 유래 항목의 정체성 메타.
     # flat 유지(중첩 wrapper 금지) — Regina FE 가 flat 계약(sourceEnvelope.ts)으로 준비 완료.
-    # 기본값은 legacy 조회(GET /controls)의 model_validate 호환용(그쪽은 값 없음).
+    # 기본값 보유 — 통제 조회 경로(search/상세/목록)는 2-A-4-2 로 전부 resolver 경유라
+    # 실제로는 항상 채워진다. 기본값은 resolver 외 경로(직접 model_validate)의 호환용.
     source: str | None = None            # "baseline"(adopt/override) | "tenant"(add)
     baseline_id: UUID | None = None      # baseline 유래면 그 id, add면 None
     is_overridden: bool = False          # override instance 적용 시 True
@@ -178,10 +179,8 @@ class BulkDeleteRequest(BaseModel):
 
 class BulkUpdateRequest(BaseModel):
     control_ids: list[UUID]
+    # 단건 PATCH 와 동일 스키마 — 라우터가 exclude_unset 으로 미전송을 판별한다(2-A-4-2).
     updates: ControlUpdate
-
-class ClearAllRequest(BaseModel):
-    confirm: str  # 반드시 "DELETE_ALL_RCM_DATA"
 
 
 # ── Search 전용 응답 스키마 ──────────────────────────────────
