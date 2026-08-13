@@ -9,18 +9,18 @@ import {
 import { Input } from '@/components/ui/input'
 import { Loader2 } from 'lucide-react'
 import { fetchControls } from '@/features/rcm/api/controlsApi'
-import type { Control } from '@/features/rcm/types'
+import type { ControlOption } from '@/features/rcm/types'
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSelect: (control: Control) => void
+  onSelect: (control: ControlOption) => void
 }
 
 export default function ControlSelector({ open, onOpenChange, onSelect }: Props) {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [controls, setControls] = useState<Control[]>([])
+  const [controls, setControls] = useState<ControlOption[]>([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -37,7 +37,7 @@ export default function ControlSelector({ open, onOpenChange, onSelect }: Props)
       .finally(() => setLoading(false))
   }, [open, debouncedQuery])
 
-  const handleSelect = (control: Control) => {
+  const handleSelect = (control: ControlOption) => {
     onSelect(control)
     onOpenChange(false)
     setQuery('')

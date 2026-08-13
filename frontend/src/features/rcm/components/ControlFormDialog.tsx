@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import type { Control, ControlCreatePayload, ControlUpdatePayload } from '../types'
 import { useCreateControl, useUpdateControl } from '../api/useControls'
+import { toControl } from '../api/controlsAdapter'
 import BasicInfoTab from './form-tabs/BasicInfoTab'
 import ClassificationTab from './form-tabs/ClassificationTab'
 import ActivityTab from './form-tabs/ActivityTab'
@@ -198,7 +199,7 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
         }
         const saved = await createMutation.mutateAsync(payload)
         toast.success('통제가 추가되었습니다')
-        onSuccess?.(saved)
+        onSuccess?.(toControl(saved))
       } else if (mode === 'edit' && control) {
         const payload: ControlUpdatePayload = {
           name: data.name,
@@ -222,7 +223,7 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
         }
         const saved = await updateMutation.mutateAsync({ id: control.id, payload })
         toast.success('통제가 수정되었습니다')
-        onSuccess?.(saved)
+        onSuccess?.(toControl(saved))
       }
       onOpenChange(false)
     } catch (err) {

@@ -34,8 +34,11 @@ export interface Control {
   sub_process_code: string | null
   risk_level: RiskLevel | null
   created_at: string
-  envelope?: SourceEnvelope
+  envelope: SourceEnvelope
 }
+
+// ControlSelector 등 envelope 불필요한 경량 소비처 전용(2-A-3-1) — 어댑터 없이 DTO 필드를 그대로 대입 가능.
+export type ControlOption = Pick<Control, 'id' | 'code' | 'name' | 'process_code'>
 
 export interface ControlSearchParams {
   q?: string
@@ -186,10 +189,11 @@ export const OVERALL_ASSESSMENT_LABELS: Record<OverallAssessment, string> = {
   'Higher': '높음',
 }
 
-// POST /controls 요청 페이로드 (서버 생성 필드 + JOIN 표시 필드 제외)
+// POST /controls 요청 페이로드 (서버 생성 필드 + JOIN 표시 필드 + envelope 제외)
 export type ControlCreatePayload = Omit<Control,
   | 'id' | 'created_at' | 'updated_at'
   | 'process_code' | 'sub_process_code' | 'risk_level' | 'assertions'
+  | 'envelope'
 >
 
 // PATCH /controls/{id} 요청 페이로드 (code·risk_id 불변 필드 제외, 전부 옵셔널)

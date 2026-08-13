@@ -175,7 +175,7 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
                   <TableCell className="font-mono text-xs font-medium text-blue-600 whitespace-nowrap hover:underline cursor-pointer">
                     <div className="flex items-center gap-1.5">
                       {ctrl.code}
-                      {ctrl.envelope && <SourceBadge envelope={ctrl.envelope} />}
+                      <SourceBadge envelope={ctrl.envelope} />
                     </div>
                   </TableCell>
                   <TableCell className="text-sm">{ctrl.name}</TableCell>

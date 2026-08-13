@@ -6,7 +6,7 @@ import { isAxiosError } from 'axios'
 import { toast } from 'sonner'
 import { ChevronsUpDown, X } from 'lucide-react'
 import ControlSelector from '@/features/test/components/ControlSelector'
-import type { Control } from '@/features/rcm/types'
+import type { ControlOption } from '@/features/rcm/types'
 import {
   Dialog,
   DialogContent,
@@ -69,7 +69,7 @@ function extractErrorMessage(err: unknown): string {
 export default function DeficiencyFormDialog({ open, onOpenChange, editTarget }: Props) {
   const isEdit = !!editTarget
   const [controlSelectorOpen, setControlSelectorOpen] = useState(false)
-  const [selectedControl, setSelectedControl] = useState<Control | null>(null)
+  const [selectedControl, setSelectedControl] = useState<ControlOption | null>(null)
 
   const {
     register,

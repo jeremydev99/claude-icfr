@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label'
 import { ChevronDown } from 'lucide-react'
 import ControlSelector from './ControlSelector'
 import { useCreateTestRun } from '../api/useTestRuns'
-import type { Control } from '@/features/rcm/types'
+import type { ControlOption } from '@/features/rcm/types'
 
 interface Props {
   open: boolean
@@ -44,7 +44,7 @@ function extractErrorMessage(err: unknown, fiscalYear: number): string {
 }
 
 export default function CreateTestRunDialog({ open, onOpenChange, defaultFiscalYear, onSuccess }: Props) {
-  const [selectedControl, setSelectedControl] = useState<Control | null>(null)
+  const [selectedControl, setSelectedControl] = useState<ControlOption | null>(null)
   const [fiscalYear, setFiscalYear] = useState(defaultFiscalYear)
   const [selectorOpen, setSelectorOpen] = useState(false)
 
