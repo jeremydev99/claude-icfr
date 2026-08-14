@@ -19,7 +19,6 @@ import {
 } from '../types'
 import RawcSection from './RawcSection'
 import SourceBadge from './SourceBadge'
-import { RCM_MUTATION_LOCKED, RCM_MUTATION_LOCKED_MESSAGE } from '../rcmMutationLock'
 
 interface Props {
   control: Control | null
@@ -88,8 +87,6 @@ export default function ControlDetailSheet({ control, open, onOpenChange, onEdit
                     onOpenChange(false)
                     onEditClick?.(control)
                   }}
-                  disabled={RCM_MUTATION_LOCKED}
-                  title={RCM_MUTATION_LOCKED ? RCM_MUTATION_LOCKED_MESSAGE : undefined}
                 >
                   편집
                 </Button>

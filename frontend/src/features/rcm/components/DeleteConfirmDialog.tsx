@@ -9,6 +9,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import type { Control } from '../types'
+import { resolveDeleteSemantics } from '../api/sourceEnvelope'
 
 interface Props {
   open: boolean
@@ -19,14 +20,21 @@ interface Props {
 }
 
 export default function DeleteConfirmDialog({ open, control, onOpenChange, onConfirm, isPending }: Props) {
+  const semantics = resolveDeleteSemantics(control?.envelope)
+  const isExclude = semantics === 'exclude'
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>통제 삭제 확인</AlertDialogTitle>
+          <AlertDialogTitle>{isExclude ? '기준 통제 제외 확인' : '통제 삭제 확인'}</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-2">
-              <p>선택한 통제를 삭제합니다.</p>
+              <p>
+                {isExclude
+                  ? '이 통제는 기준(baseline) 통제입니다. 삭제 시 귀사 범위에서 제외 처리되며 기준 자체는 보존됩니다.'
+                  : '이 통제를 삭제합니다.'}
+              </p>
               {control && (
                 <p className="font-medium text-foreground">
                   {control.code} — {control.name}

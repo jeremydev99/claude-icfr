@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import type { Control, ControlCreatePayload, ControlUpdatePayload } from '../types'
 import { useCreateControl, useUpdateControl } from '../api/useControls'
 import { toControl } from '../api/controlsAdapter'
+import { isBaseline } from '../api/sourceEnvelope'
 import BasicInfoTab from './form-tabs/BasicInfoTab'
 import ClassificationTab from './form-tabs/ClassificationTab'
 import ActivityTab from './form-tabs/ActivityTab'
@@ -118,6 +119,7 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
   const createMutation = useCreateControl()
   const updateMutation = useUpdateControl()
   const isPending = createMutation.isPending || updateMutation.isPending
+  const showBaselineHint = mode === 'edit' && isBaseline(control?.envelope)
 
   const methods = useForm<ControlFormData>({
     resolver: zodResolver(controlFormSchema),
@@ -267,6 +269,11 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
           <DialogDescription>
             {mode === 'create' ? '새 통제를 등록합니다.' : '통제 정보를 수정합니다.'} 필수 항목을 모두 입력해 주세요.
           </DialogDescription>
+          {showBaselineHint && (
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
+              이 통제는 기준(baseline)입니다 — 저장 시 귀사 재정의(override)로 기록됩니다.
+            </p>
+          )}
         </DialogHeader>
 
         <FormProvider {...methods}>
