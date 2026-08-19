@@ -7,6 +7,7 @@ Phase 3: 이사회 보고서 자동 초안, PBC 패키지, 결재, 잠금.
 자세한 명세: ClaudeICFR.md 섹션 4.10 참조.
 """
 from fastapi import APIRouter
+
 from app.core.deps import CurrentUser
 
 router = APIRouter(prefix="/api/report", tags=["report"])

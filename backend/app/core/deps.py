@@ -1,15 +1,16 @@
 from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
+
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import decode_token
-from app.core.tenant_context import set_active_tenant, get_active_tenant
-from app.models.user import User
+from app.core.tenant_context import get_active_tenant, set_active_tenant
 from app.models.tenant import UserTenantAccess
+from app.models.user import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 

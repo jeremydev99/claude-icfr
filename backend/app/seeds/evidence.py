@@ -37,11 +37,11 @@ def seed(ctx: SeedContext) -> None:
         None,
     )
     if linked:
-        print(f"  [evidence_links] file→control exists (skip)")
+        print("  [evidence_links] file→control exists (skip)")
     else:
         ctx.post("/api/evidence/links", {
             "file_id": file_obj["id"],
             "linked_entity_type": "control",
             "linked_entity_id": control_id,
         })
-        print(f"  [evidence_links] file→control created")
+        print("  [evidence_links] file→control created")

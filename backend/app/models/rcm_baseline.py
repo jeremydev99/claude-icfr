@@ -36,11 +36,21 @@ RiskCategory(어서션)는 baseline만 두고 instance 미도입 — 제도 고�
   · 실제 CRUD 수행은 2-A-4, resolver 반영은 2-B-4. 본 단계는 규약 문서화 + 컬럼까지.
 """
 from uuid import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Text, Boolean, Integer, ForeignKey, UniqueConstraint, Index, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
-from app.models.base import IdentityBase, AuditedBase
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import AuditedBase, IdentityBase
 
 
 class BaselineProcess(IdentityBase):

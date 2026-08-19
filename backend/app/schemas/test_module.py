@@ -1,9 +1,9 @@
-from uuid import UUID
 from datetime import date, datetime
-from pydantic import BaseModel, Field, ConfigDict
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.user import UserBrief  # 공통 사용자 간략 스키마 (id+display_name)
-
 
 # ── ControlRiskAssessment (RAWC) ──────────────────────────
 

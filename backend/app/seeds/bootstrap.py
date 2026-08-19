@@ -1,13 +1,16 @@
 import logging
+
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.security import hash_password
 from app.core.tenant_context import (
-    DEFAULT_TENANT_ID, DEFAULT_TENANT_CODE, DEFAULT_TENANT_NAME,
+    DEFAULT_TENANT_CODE,
+    DEFAULT_TENANT_ID,
+    DEFAULT_TENANT_NAME,
 )
-from app.models.user import User
 from app.models.tenant import Tenant, UserTenantAccess
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 

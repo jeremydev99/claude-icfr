@@ -7,6 +7,7 @@ Phase 2: 이메일 (SMTP), 잔디 Webhook, 이벤트 기반 알림.
 자세한 명세: ClaudeICFR.md 섹션 4.9 참조.
 """
 from fastapi import APIRouter
+
 from app.core.deps import CurrentUser
 
 router = APIRouter(prefix="/api/notification", tags=["notification"])

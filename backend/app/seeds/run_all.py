@@ -1,6 +1,6 @@
 """시드 전체 실행 진입점. 멱등성 보장 — 여러 번 실행해도 안전."""
+from app.seeds import evidence, rcm, remediation, test_module, users
 from app.seeds._shared import SeedContext
-from app.seeds import users, rcm, test_module, remediation, evidence
 
 
 def main() -> None:

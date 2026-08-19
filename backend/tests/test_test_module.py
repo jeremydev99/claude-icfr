@@ -1,5 +1,4 @@
 """Test 모듈 통합 테스트 — Phase 1 작업3 (RAWC + 워크플로 + 이력)."""
-import pytest
 from fastapi.testclient import TestClient
 
 

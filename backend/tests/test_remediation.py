@@ -1,7 +1,7 @@
 """Remediation 모듈 통합 테스트 — Phase 1 작업4 (DesignAssessment + 워크플로 + 이력)."""
 import base64
 import json
-import pytest
+
 from fastapi.testclient import TestClient
 
 

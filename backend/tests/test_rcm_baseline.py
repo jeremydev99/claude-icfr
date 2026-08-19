@@ -7,18 +7,29 @@ resolve_controls 의 4 action(adopt/exclude/override/add) + 혼합 case + tenant
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.models.tenant import Tenant
+from app.core.tenant_context import DEFAULT_TENANT_ID, reset_active_tenant, set_active_tenant
 from app.models.rcm_baseline import (
-    BaselineProcess, BaselineSubProcess, BaselineRisk, BaselineRiskCategory, BaselineControl,
-    ProcessInstance, SubProcessInstance, RiskInstance, ControlInstance,
-    BaselineControlAssertion, ControlAssertionInstance,
+    BaselineControl,
+    BaselineControlAssertion,
+    BaselineProcess,
+    BaselineRisk,
+    BaselineRiskCategory,
+    BaselineSubProcess,
+    ControlAssertionInstance,
+    ControlInstance,
+    ProcessInstance,
+    RiskInstance,
+    SubProcessInstance,
 )
+from app.models.tenant import Tenant
 from app.services.control_resolver import (
-    resolve_controls, resolve_processes, resolve_sub_processes, resolve_risks, CONTROL_FIELDS,
+    CONTROL_FIELDS,
+    resolve_controls,
+    resolve_processes,
+    resolve_risks,
+    resolve_sub_processes,
 )
-from app.core.tenant_context import set_active_tenant, reset_active_tenant, DEFAULT_TENANT_ID
 from tests.conftest import TestingSessionLocal
-
 
 # ControlInstance 규약(models/rcm_baseline.py): add 는 baseline 이 없으므로 **자체 필드를 전부 채운다**.
 # 비워두면 resolver 가 None 을 그대로 내보내 ControlSearchOut/ControlRead 검증이 깨진다

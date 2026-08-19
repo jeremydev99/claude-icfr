@@ -2,11 +2,14 @@
 
 before_flush 자동 stamp + do_orm_execute 자동 필터가 회사 간 데이터 누출을
 원천 차단하는지 검증한다. ORM 레벨에서 직접 검증 (이벤트 리스너 동작 확인)."""
-from app.models.tenant import Tenant
-from app.models.rcm import Process
 from app.core.tenant_context import (
-    set_active_tenant, reset_active_tenant, get_active_tenant, DEFAULT_TENANT_ID,
+    DEFAULT_TENANT_ID,
+    get_active_tenant,
+    reset_active_tenant,
+    set_active_tenant,
 )
+from app.models.rcm import Process
+from app.models.tenant import Tenant
 from tests.conftest import TestingSessionLocal
 
 

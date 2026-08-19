@@ -21,13 +21,22 @@
 읽기 필터 모두 baseline 에 영향 없음.
 """
 from app.core.database import SessionLocal
-from app.core.tenant_context import set_active_tenant, reset_active_tenant, DEFAULT_TENANT_ID
+from app.core.tenant_context import DEFAULT_TENANT_ID, reset_active_tenant, set_active_tenant
 from app.models.rcm import (
-    Process, SubProcess, Risk, RiskCategory, Control, ControlAssertion,
+    Control,
+    ControlAssertion,
+    Process,
+    Risk,
+    RiskCategory,
+    SubProcess,
 )
 from app.models.rcm_baseline import (
-    BaselineProcess, BaselineSubProcess, BaselineRisk, BaselineRiskCategory,
-    BaselineControl, BaselineControlAssertion,
+    BaselineControl,
+    BaselineControlAssertion,
+    BaselineProcess,
+    BaselineRisk,
+    BaselineRiskCategory,
+    BaselineSubProcess,
 )
 
 # Control 미러링 필드 (risk_id 는 매핑 필요 → 별도 처리, baseline_version 은 default=1).

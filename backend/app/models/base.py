@@ -1,9 +1,10 @@
 from datetime import datetime
 from uuid import UUID
-from uuid_utils import uuid7 as _uuid7_native
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import DateTime, String, Boolean, Integer, ForeignKey, func
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from uuid_utils import uuid7 as _uuid7_native
 
 
 def uuid7() -> UUID:

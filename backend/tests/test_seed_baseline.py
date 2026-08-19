@@ -13,13 +13,24 @@ from sqlalchemy.orm import sessionmaker
 import app.models  # noqa: F401 — 모든 모델을 Base.metadata 에 등록
 from app.models.base import Base
 from app.models.rcm_baseline import (
-    BaselineControl, BaselineControlAssertion, BaselineProcess,
-    BaselineRisk, BaselineRiskCategory, BaselineSubProcess,
-    ControlInstance, ProcessInstance, RiskInstance,
-    SubProcessInstance, ControlAssertionInstance,
+    BaselineControl,
+    BaselineControlAssertion,
+    BaselineProcess,
+    BaselineRisk,
+    BaselineRiskCategory,
+    BaselineSubProcess,
+    ControlAssertionInstance,
+    ControlInstance,
+    ProcessInstance,
+    RiskInstance,
+    SubProcessInstance,
 )
 from seeds.seed_baseline import (
-    ASSERTION_MASTER, EXCEL_PATH, _assert_baseline_empty, _load_excel, _seed,
+    ASSERTION_MASTER,
+    EXCEL_PATH,
+    _assert_baseline_empty,
+    _load_excel,
+    _seed,
 )
 
 pytestmark = pytest.mark.skipif(
