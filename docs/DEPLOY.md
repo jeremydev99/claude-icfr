@@ -46,6 +46,10 @@ sudo nginx -t && sudo systemctl reload nginx
 # 5) 첫 배포는 GitHub Actions 의 Deploy 워크플로를 수동 실행(workflow_dispatch)
 ```
 
+> ⚠️ `sites-enabled/icfr.conf` 는 심볼릭 링크다. 이 경로로 `sed ... > /etc/nginx/sites-enabled/icfr.conf`
+> 같은 리다이렉트를 걸면 셸이 링크를 따라가 **원본(`sites-available/icfr.conf`)을 먼저 비운 뒤** 쓰기 때문에
+> 내용이 날아간다. 설정을 고칠 때는 리포의 `infra/nginx/icfr.conf` 를 고쳐 다시 `cp` 한다.
+
 ## 2. 일상 배포
 
 `main` 에 머지 → `Deploy` 워크플로 자동 실행 (build → GHCR push → self-hosted runner 에서 up -d → 헬스체크).
