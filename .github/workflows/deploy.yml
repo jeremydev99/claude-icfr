@@ -1,0 +1,105 @@
+name: Deploy
+
+# 기존 ci.yml(린트·테스트)은 그대로 두고 배포만 이 워크플로에서 담당한다.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/jeremydev99/claude-icfr
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 태그는 커밋 SHA 고정. latest 는 배포에 쓰지 않는다(롤백 대상 특정 목적).
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}
+          # Vite 는 빌드 타임에 값이 박힌다. 운영은 같은 오리진의 /api 를 쓰므로 도메인을 주입.
+          build-args: |
+            VITE_API_BASE_URL=https://icfr.synap.co.kr
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: [self-hosted, icfr-prod]
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE_TAG: ${{ github.sha }}
+      COMPOSE_PROJECT_NAME: icfr
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # down -v 금지(ADR-0023). pull → up -d 로 교체 기동만 한다.
+      - name: Pull & up
+        run: |
+          docker compose -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.prod.yml up -d
+
+      - name: Health check (최대 60초)
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/api/health/ > /dev/null; then
+              echo "backend healthy (${i}회차)"
+              curl -fsS http://127.0.0.1:8000/api/health/db || true
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::backend 헬스체크 실패 — 60초 내 200 응답 없음"
+          docker compose -f docker-compose.prod.yml ps
+          docker compose -f docker-compose.prod.yml logs --tail=200 backend
+          exit 1
+
+      - name: Frontend 확인
+        run: curl -fsS -o /dev/null http://127.0.0.1:8080/
+
+      # dangling 이미지만 정리. 볼륨·바인드마운트는 절대 건드리지 않는다.
+      - name: Prune old images
+        run: docker image prune -f
