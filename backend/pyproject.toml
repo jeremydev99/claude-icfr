@@ -14,6 +14,13 @@ extend-exclude = ["alembic/versions"]
 select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# SQLAlchemy 관계의 문자열 전방참조("Control"/"User")는 런타임에 레지스트리가 해석한다.
+# 실제 미정의가 아니므로 F821 만 무시한다(TYPE_CHECKING import 는 순환참조 위험).
+"app/models/remediation.py" = ["F821"]
+"app/models/test_module.py" = ["F821"]
+"app/models/user_mgmt.py" = ["F821"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
