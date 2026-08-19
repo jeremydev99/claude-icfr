@@ -7,6 +7,8 @@ requires-python = ">=3.12"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# 적용 완료된 마이그레이션 이력이라 스타일 수정 대상이 아니다(내용 변경 = 이력 조작).
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
