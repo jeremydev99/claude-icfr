@@ -237,7 +237,23 @@ DB와 보존정책이 다르고(원본 보관 의무 vs 시점 복원) 데이터
 
 ### 5.1 고객사 설치 시 재발 함정
 
-> 1~6번은 이 리포에 기록이 없다. 다른 곳에 보관 중이면 이 목록으로 옮겨 번호를 잇는다.
+> **기록 규칙**: 원인만 적지 말고 **증상(무엇이 보이는가)** 을 함께 적는다.
+> 정작 그 상황에 놓였을 때 검색되는 것은 증상이지 원인이 아니다.
+
+1. **별도 ACG는 아웃바운드가 비어 있다** — 기본 ACG와 달리 아웃바운드 규칙이 자동 생성되지 않는다.
+   증상: 서버에서 `apt-get update`·`docker pull`·외부 API 호출이 전부 타임아웃. 인바운드만 보고 있으면 원인을 못 찾는다.
+   → 아웃바운드 규칙을 직접 연다.
+2. **NCP 서버는 IPv6를 지원하지 않는다** — nginx 설정에 `listen [::]:80` / `listen [::]:443 ssl` 이 있으면
+   증상: `nginx -t` 또는 기동 시 주소 계열 관련 실패. → `[::]` 줄을 제거하고 IPv4만 둔다.
+3. **nginx 1.24는 `http2 on;` 단독 지시어를 모른다**(1.25+ 문법).
+   증상: `nginx: [emerg] unknown directive "http2"`. → `listen 443 ssl http2;` 한 줄로 쓴다.
+4. **`/etc/icfr/.env` 가 600이면 self-hosted runner가 읽지 못한다.**
+   증상: 컨테이너가 환경변수 없이 떠서 DB 접속 실패·기동 실패. 권한을 보기 전에는 설정 오류로 오인하기 쉽다.
+   → 그룹 `icfr` 소유 + 모드 `640`.
+5. **certbot webroot 경로는 nginx 설정값과 일치해야 한다**(`/var/www/certbot`).
+   증상: `certbot` 챌린지가 404로 실패해 인증서 발급이 안 된다. → 양쪽 경로를 같은 값으로 맞추고 디렉터리를 미리 만든다.
+6. **스토리지 암호화는 서버 생성 시점에만 지정 가능**하다(생성 후 변경 불가).
+   증상: 나중에 켜려 하면 콘솔에 옵션 자체가 없다. **현재 서버는 N** — 고객사 실데이터 투입 전 재생성이 필요하다.
 
 7. **AWS CLI v2 기본 체크섬(CRC64NVME)을 NCP Object Storage가 미지원** — `PutObject` 시
    `X-Amz-Content-SHA256: STREAMING-UNSIGNED-PAYLOAD-TRAILER` 트레일러가 붙어 서명 검증에 실패하고,
@@ -245,6 +261,14 @@ DB와 보존정책이 다르고(원본 보관 의무 vs 시점 복원) 데이터
    체크섬 비활성 환경변수가 필수다 — `AWS_REQUEST_CHECKSUM_CALCULATION=when_required`,
    `AWS_RESPONSE_CHECKSUM_VALIDATION=when_required`. (2026-08-19 서버 실측: 미설정 시 403 재현, 설정 시 업로드 성공.
    `scripts/backup_db.sh`·`scripts/restore_db.sh` 상단에서 export 1회로 적용.)
+8. **NCP Ubuntu 미러에 `awscli` 패키지가 없다.**
+   증상: `apt-get install -y awscli` 가 `E: Unable to locate package awscli` 로 실패.
+   → 공식 v2 설치본(`awscli-exe-linux-x86_64.zip`)으로 고정한다. apt 저장소는 배포판·미러마다 유무가 갈린다.
+9. **`.env` 값에 공백이 있는데 따옴표가 없으면 `source` 시 셸이 뒷단어를 명령으로 해석한다.**
+   증상: 스크립트가 `System: command not found` 로 죽는다(실제 사례: `APP_NAME=ICFR System`).
+   docker compose 는 자체 파서로 읽어 **통과하기 때문에**, `source` 를 쓰는 스크립트를 도입하기 전까지 드러나지 않는다.
+   → `.env` 값에 공백이 있으면 반드시 따옴표로 감싼다.
+10. **함정을 기록할 때는 증상을 함께 남긴다.** 원인만 적으면 정작 그 상황에서 검색이 되지 않는다(위 기록 규칙과 동일).
 
 ---
 
