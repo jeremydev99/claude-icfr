@@ -39,6 +39,10 @@ done
 export AWS_ACCESS_KEY_ID="$BACKUP_ACCESS_KEY"
 export AWS_SECRET_ACCESS_KEY="$BACKUP_SECRET_KEY"
 export AWS_DEFAULT_REGION="$BACKUP_S3_REGION"
+# NCP Object Storage 는 AWS CLI v2 기본 체크섬(CRC64NVME 트레일러)을 미지원한다.
+# 미설정 시 PutObject 가 403 AccessDenied 로 실패한다(권한 문제로 오진하기 쉬움).
+export AWS_REQUEST_CHECKSUM_CALCULATION=when_required
+export AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
 
 mkdir -p "$TMP_DIR"
 

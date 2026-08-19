@@ -194,6 +194,17 @@
 - seed 실행 후 검증은 스크립트 출력이 아니라 psql 직접 조회로 한다(2026-08-11 검증 선례).
 - `docker compose down -v`는 운영 서버 어떤 스크립트에도 포함하지 않는다.
 
+### 5.1 고객사 설치 시 재발 함정
+
+> 1~6번은 이 리포에 기록이 없다. 다른 곳에 보관 중이면 이 목록으로 옮겨 번호를 잇는다.
+
+7. **AWS CLI v2 기본 체크섬(CRC64NVME)을 NCP Object Storage가 미지원** — `PutObject` 시
+   `X-Amz-Content-SHA256: STREAMING-UNSIGNED-PAYLOAD-TRAILER` 트레일러가 붙어 서명 검증에 실패하고,
+   이것이 **403 AccessDenied 로 반환되어 권한 문제로 오진하기 쉽다**(`s3 ls`·버킷 조회는 정상 동작하므로 더 헷갈린다).
+   체크섬 비활성 환경변수가 필수다 — `AWS_REQUEST_CHECKSUM_CALCULATION=when_required`,
+   `AWS_RESPONSE_CHECKSUM_VALIDATION=when_required`. (2026-08-19 서버 실측: 미설정 시 403 재현, 설정 시 업로드 성공.
+   `scripts/backup_db.sh`·`scripts/restore_db.sh` 상단에서 export 1회로 적용.)
+
 ---
 
 ## 6. 확인 필요 (실행 전 채울 값)
