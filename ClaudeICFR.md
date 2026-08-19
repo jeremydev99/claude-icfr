@@ -1708,6 +1708,20 @@ seed는 실제 데이터 시작행을 탐색하는 `_find_data_start`로 보정�
 
 **2026-08-13 확장 확인 (`ICFR-PROMPT-2A3-1-envelope-required.md` 사전확인 중, Regina/Claude)**: 동일 패턴이 `/sub-processes`·`/risks` 엔드포인트에도 그대로 적용됨을 `api/rcm.py` 코드로 확인 — 둘 다 `resolve_sub_processes`/`resolve_risks`(둘 다 `control_resolver.py`에 이미 구현되어 envelope flat 필드를 채움)를 거치지 않고 레거시 테이블을 직접 조회·CRUD한다. 즉 `control_resolver.py` 자체는 "전 계층 공통 envelope"라 서술하지만, 실제 배선(API 라우팅)은 `resolve_controls`만 되어 있고 상위 3계층(process/sub_process/risk)은 미배선 — FE가 이 3계층에서 envelope를 required로 가정하면 런타임에 항상 깨진다. 따라서 FE envelope required 전환(2-A-3-1)은 **control 계층에 한정**하고, 상위 3계층의 `envelope?: SourceEnvelope`는 optional로 유지(`types.ts` `ProcessItem`/`SubProcessItem`/`RiskItem`). 3계층 resolver 배선은 별도 백엔드 작업(2-A-4 상위 계층 CRUD 범위 또는 그 이전) 필요 — 코드 변경 없음, 기록만.
 
+### 13.8 배포 파이프라인 부채 — deploy.yml 경로 필터 부재 (미착수)
+
+`.github/workflows/deploy.yml` 은 `main` push 전체를 트리거로 받는다. **문서·스크립트만 바뀌어도 이미지 재빌드 → 운영 컨테이너 전체 재시작**이 일어나 불필요한 다운타임이 발생한다.
+
+근거(2026-08-19 실측):
+
+| Run | 커밋 | 변경 내용 | 소요 | 결과 |
+|---|---|---|---|---|
+| Deploy #4 | `f44a8a3` | ADR 문서만 | 4분 12초 | 운영 컨테이너 전체 재시작 |
+| Deploy #5 | `84fad4c` | 백업 스크립트만 | 4분 35초 | 운영 컨테이너 전체 재시작 |
+
+- 조치안: `on.push.paths`(또는 `paths-ignore`)로 `backend/**`·`frontend/**`·compose·워크플로 변경일 때만 배포. 문서(`docs/**`, `*.md`)·`scripts/**` 는 제외.
+- **백업 cron(03:00)과 배포가 겹치면 그날 백업이 조용히 실패할 수 있다.** `pg_dump` 도중 postgres 컨테이너가 재시작되면 덤프가 끊긴다. `backup_db.sh` 는 1KB 미만 덤프를 실패 처리하지만, 중간 크기로 끊긴 덤프는 크기 검사를 통과할 수 있다 — 경로 필터로 배포 빈도를 줄이는 것이 1차 방어이고, 필요하면 배포 시각 회피(또는 백업 중 배포 잠금)를 별도 검토한다.
+
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
 
