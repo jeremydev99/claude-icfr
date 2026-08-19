@@ -20,6 +20,8 @@ ignore = ["E501"]
 "app/models/remediation.py" = ["F821"]
 "app/models/test_module.py" = ["F821"]
 "app/models/user_mgmt.py" = ["F821"]
+# ICFRException 은 도메인 전반에서 참조되는 공개 이름이라 리네임은 lint 범위를 벗어난다.
+"app/core/exceptions.py" = ["N818"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

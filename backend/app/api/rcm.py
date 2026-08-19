@@ -600,11 +600,11 @@ def _parse_rcm_sheet(ws, header_row: int, mapping: dict[str, int]) -> _ParsedRCM
 
     필수 3개 컬럼은 mapping 사용. 나머지는 사이냅소프트 양식 고정 위치 유지.
     """
-    VALID_LEVELS = {"LR", "MR", "HR", "SR"}
-    VALID_FREQ = {"O", "D", "W", "M", "Q", "A"}
-    VALID_PD = {"P", "D"}
-    VALID_AM = {"A", "M", "IT"}
-    VALID_IPE = {"Y", "N", "N/A"}
+    valid_levels = {"LR", "MR", "HR", "SR"}
+    valid_freq = {"O", "D", "W", "M", "Q", "A"}
+    valid_pd = {"P", "D"}
+    valid_am = {"A", "M", "IT"}
+    valid_ipe = {"Y", "N", "N/A"}
 
     p_col = mapping["process_code"]
     c_col = mapping["control_code"]
@@ -639,7 +639,7 @@ def _parse_rcm_sheet(ws, header_row: int, mapping: dict[str, int]) -> _ParsedRCM
             sub_processes[sp_code] = {"name": sp_name, "process_code": p_code}
 
             level = str(row[14] or "LR").strip().upper()
-            if level not in VALID_LEVELS:
+            if level not in valid_levels:
                 warnings.append(f"Row {row_idx}: 위험평가 '{level}' 무효 → LR 사용")
                 level = "LR"
             risks[r_code] = {
@@ -654,22 +654,22 @@ def _parse_rcm_sheet(ws, header_row: int, mapping: dict[str, int]) -> _ParsedRCM
                 continue
 
             pd_val = str(row[25] or "P").strip().upper()
-            if pd_val not in VALID_PD:
+            if pd_val not in valid_pd:
                 warnings.append(f"Row {row_idx}: P/D 값 '{pd_val}' 무효 → P 사용")
                 pd_val = "P"
 
             am_val = str(row[26] or "M").strip().upper()
-            if am_val not in VALID_AM:
+            if am_val not in valid_am:
                 warnings.append(f"Row {row_idx}: Auto/Manual '{am_val}' 무효 → M 사용")
                 am_val = "M"
 
             freq_val = str(row[35] or "A").strip().upper()
-            if freq_val not in VALID_FREQ:
+            if freq_val not in valid_freq:
                 warnings.append(f"Row {row_idx}: 통제주기 '{freq_val}' 무효 → A 사용")
                 freq_val = "A"
 
             ipe_val = str(row[36] or "N/A").strip()
-            if ipe_val not in VALID_IPE:
+            if ipe_val not in valid_ipe:
                 warnings.append(f"Row {row_idx}: IPE '{ipe_val}' 무효 → N/A 사용")
                 ipe_val = "N/A"
 
@@ -720,10 +720,10 @@ def _parse_rcm_sheet(ws, header_row: int, mapping: dict[str, int]) -> _ParsedRCM
 
 def _build_not_found_response(sheet_names: list[str], current_range: int) -> JSONResponse:
     """헤더 미발견 시 단계적 확장 또는 최종 오류 응답."""
-    NEXT_STAGE = {15: 30, 30: 130}
+    next_stage = {15: 30, 30: 130}
 
-    if current_range in NEXT_STAGE:
-        next_range = NEXT_STAGE[current_range]
+    if current_range in next_stage:
+        next_range = next_stage[current_range]
         return JSONResponse(
             status_code=200,
             content={

@@ -681,7 +681,7 @@ def test_resolve_cascade_process_exclude(app):
     try:
         tok = set_active_tenant(t.id)
         p, sp, r, c = _make_baseline_chain(db, "2B4CAS")  # BC-2B4CAS: risk_id=r
-        cnull = _make_baseline(db, "BC-2B4NULL")          # risk_id NULL
+        _make_baseline(db, "BC-2B4NULL")                  # risk_id NULL
         codes_before = {x["code"] for x in resolve_controls(db)}
         assert "BC-2B4CAS" in codes_before and "BC-2B4NULL" in codes_before
 

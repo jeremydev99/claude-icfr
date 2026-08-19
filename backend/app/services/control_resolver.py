@@ -186,7 +186,7 @@ def _resolve_assertions(db: Session) -> dict:
     )
 
     cat_ids = (
-        {l.baseline_risk_category_id for l in baseline_links}
+        {lnk.baseline_risk_category_id for lnk in baseline_links}
         | {i.baseline_risk_category_id for i in instances}
     )
     code_by_cat = {}
