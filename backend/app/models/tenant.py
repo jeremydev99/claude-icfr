@@ -8,9 +8,10 @@ Tenant / UserTenantAccess 는 tenant 비종속 전역 테이블이므로 Identit
 (자기 자신에 tenant_id 금지 — 순환 방지).
 """
 from uuid import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Boolean, ForeignKey, UniqueConstraint
+
+from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import IdentityBase
 

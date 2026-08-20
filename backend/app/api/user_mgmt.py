@@ -1,15 +1,16 @@
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import CurrentUser, get_db, require_admin
 from app.core.security import hash_password
 from app.core.tenant_context import get_active_tenant
+from app.models.tenant import UserTenantAccess
 from app.models.user import User
 from app.models.user_mgmt import UserRole
-from app.models.tenant import UserTenantAccess
-from app.schemas.user import UserCreate, UserUpdate, PasswordResetRequest
-from app.schemas.user_mgmt import UserRead, UserRoleCreate, UserRoleUpdate, UserRoleRead
+from app.schemas.user import PasswordResetRequest, UserCreate, UserUpdate
+from app.schemas.user_mgmt import UserRead, UserRoleCreate, UserRoleRead, UserRoleUpdate
 
 router = APIRouter(prefix="/api/users", tags=["user_mgmt"])
 

@@ -276,6 +276,8 @@
 | 파일 저장 | MinIO (S3 호환, Docker) | Phase 2+: AWS S3 가능 |
 | 작업 큐 | FastAPI BackgroundTasks | Phase 1.5+: Celery + Redis |
 | 배포 | Docker Compose | Phase 2+: Kubernetes (필요 시) |
+| 백업 암호화 | `age` 키쌍 (서버는 공개키만 상주) | — |
+| AWS CLI | 공식 v2 설치본(`awscli-exe-linux-x86_64.zip`) 고정 | — |
 
 ### 3.2 결정 이유 (요약)
 
@@ -286,6 +288,8 @@
 - **MinIO**: S3 호환으로 미래 마이그레이션 자유, Docker 1분 셋업
 - **BackgroundTasks 단계화**: MVP 부하 가벼움, 인터페이스 추상화 후 Celery 전환 용이
 - **Docker Compose**: 단일 서버 ~ 수백 명 규모에 충분, 로컬·운영 환경 일치
+- **age 키쌍(백업 암호화)**: NCP Object Storage의 SSE-C는 서버에 키를 평문 보관하게 되는데, 서버가 손상된 상황이 곧 백업을 쓸 상황이라 보호가 되지 않는다. 파일 자체를 age로 암호화하고 비밀키를 서버 밖에 두는 편이 우세 — 근거·구조는 ADR-0028 §2.8.1 참조 (2026-08-19 채택)
+- **AWS CLI 공식 v2 설치본 고정**: apt 저장소는 배포판·미러마다 패키지 유무가 갈린다(NCP Ubuntu 미러에 `awscli` 없음 — ADR-0028 §5.1-8). 설치 경로를 공식 zip으로 고정해 환경 편차를 없앤다
 
 자세한 의사결정 배경·대안 비교는 섹션 10의 ADR-0008~0014 참조.
 
@@ -1614,6 +1618,19 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 
 비고: TrustBuilder는 1·2·3·6 영역, Regina는 4·5 영역 담당
 
+### 12.3 운영 환경 현황 (2026-08-19 기준)
+
+| 항목 | 상태 | 실측 근거 |
+|---|---|---|
+| 서비스 URL | https://icfr.synap.co.kr (Let's Encrypt, 만료 2026-11-17) | 서버 실행 확인 |
+| 서버 | NCP s2-g3a / Ubuntu 24.04 / 공인IP 101.79.21.122 / VPC 10.2.0.0/16 | 〃 |
+| 데이터 디스크 | `/data` 50GB | 〃 |
+| 컨테이너 | postgres·minio·backend·frontend 4개 healthy | 〃 |
+| 배포 | GitHub Actions → GHCR → self-hosted runner (`icfr-prod`) | Deploy #4·#5 실행 |
+| baseline 데이터 | 8 / 29 / 85 / 93 / 469 (psql 직접 조회) | 〃 |
+| 백업 | pg_dump→gzip→age→Object Storage, cron 03:00 KST, 보존 90일. 복구 리허설 통과 | ADR-0028 §2.8.1 |
+| CI | `ruff check .` All checks passed / pytest 128 passed·6 xfailed | GitHub Actions run 32210302492 |
+
 ---
 
 ## 13. 다음 작업 (Next Up)
@@ -1726,6 +1743,36 @@ seed는 실제 데이터 시작행을 탐색하는 `_find_data_start`로 보정�
 
 **2026-08-13 확장 확인 (`ICFR-PROMPT-2A3-1-envelope-required.md` 사전확인 중, Regina/Claude)**: 동일 패턴이 `/sub-processes`·`/risks` 엔드포인트에도 그대로 적용됨을 `api/rcm.py` 코드로 확인 — 둘 다 `resolve_sub_processes`/`resolve_risks`(둘 다 `control_resolver.py`에 이미 구현되어 envelope flat 필드를 채움)를 거치지 않고 레거시 테이블을 직접 조회·CRUD한다. 즉 `control_resolver.py` 자체는 "전 계층 공통 envelope"라 서술하지만, 실제 배선(API 라우팅)은 `resolve_controls`만 되어 있고 상위 3계층(process/sub_process/risk)은 미배선 — FE가 이 3계층에서 envelope를 required로 가정하면 런타임에 항상 깨진다. 따라서 FE envelope required 전환(2-A-3-1)은 **control 계층에 한정**하고, 상위 3계층의 `envelope?: SourceEnvelope`는 optional로 유지(`types.ts` `ProcessItem`/`SubProcessItem`/`RiskItem`). 3계층 resolver 배선은 별도 백엔드 작업(2-A-4 상위 계층 CRUD 범위 또는 그 이전) 필요 — 코드 변경 없음, 기록만.
 
+### 13.8 배포 파이프라인 부채 — deploy.yml 경로 필터 부재 (미착수)
+
+`.github/workflows/deploy.yml` 은 `main` push 전체를 트리거로 받는다. **문서·스크립트만 바뀌어도 이미지 재빌드 → 운영 컨테이너 전체 재시작**이 일어나 불필요한 다운타임이 발생한다.
+
+근거(2026-08-19 실측):
+
+| Run | 커밋 | 변경 내용 | 소요 | 결과 |
+|---|---|---|---|---|
+| Deploy #4 | `f44a8a3` | ADR 문서만 | 4분 12초 | 운영 컨테이너 전체 재시작 |
+| Deploy #5 | `84fad4c` | 백업 스크립트만 | 4분 35초 | 운영 컨테이너 전체 재시작 |
+
+- 조치안: `on.push.paths`(또는 `paths-ignore`)로 `backend/**`·`frontend/**`·compose·워크플로 변경일 때만 배포. 문서(`docs/**`, `*.md`)·`scripts/**` 는 제외.
+- **백업 cron(03:00)과 배포가 겹치면 그날 백업이 조용히 실패할 수 있다.** `pg_dump` 도중 postgres 컨테이너가 재시작되면 덤프가 끊긴다. `backup_db.sh` 는 1KB 미만 덤프를 실패 처리하지만, 중간 크기로 끊긴 덤프는 크기 검사를 통과할 수 있다 — 경로 필터로 배포 빈도를 줄이는 것이 1차 방어이고, 필요하면 배포 시각 회피(또는 백업 중 배포 잠금)를 별도 검토한다.
+
+### 13.9 운영 인프라 미결·후속 (2026-08-19 등록)
+
+**신규**
+
+1. **`deploy.yml` 경로 필터** — 13.8 참조. **고객사 온보딩 전 필수**(문서 변경만으로도 운영 재시작이 일어나는 상태를 고객사에 넘길 수 없다).
+2. **`backup_db.sh` 덤프 무결성 검증 강화** — 현재는 크기 1KB 미만만 실패 처리한다. 중간에 끊긴 덤프는 통과할 수 있으므로 **`pg_dump` 종료 마커 확인**(덤프 말미 `-- PostgreSQL database dump complete`) 방식으로 바꾼다.
+3. **함정 목록 1·2·4·5·6번 증상 문구 대조** — ADR-0028 §5.1의 해당 항목 증상은 미검증 서술이다. 실제 겪은 에러 메시지로 교체해야 §5.1의 기록 규칙(증상으로 검색된다)이 성립한다.
+4. **NCP API 인증키 분리** — 현재 루트 계정 키를 쓰고 있다. 서브계정 키로 분리하고 권한을 최소화한다.
+5. **MinIO 증빙 백업 별도 설계** — DB와 보존정책이 달라(원본 보관 의무 vs 시점 복원) 이번 백업 라인 범위에서 제외했다(ADR-0028 §2.8.1 "범위 외").
+
+**유지(기존 미결)**
+
+6. **2-A-4-3** — 상위 계층(processes/sub-processes/risks) + 어서션 junction CRUD 전환, upload-excel 파서 코어 분리·다중 헤더행 대응. 남은 xfail 6건·Excel 업로드 잠금이 여기서 해소된다(13.3 참조).
+7. **코드마스터 테이블화** — 미착수.
+8. **Regina NCP Sub Account** — `icfr-regina` / `icfr-view-only` 정책(ADR-0028 §2.7) 발급 미완.
+
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
 
@@ -1734,6 +1781,10 @@ seed는 실제 데이터 시작행을 탐색하는 `_find_data_start`로 보정�
 ## 14. 변경 로그 (Changelog)
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
+
+- **2026-08-19 / TrustBuilder + Claude** — **운영 백업 라인 구축** (`prompts/ICFR_backup_20260819.md`). ①`pg_dump`(icfr_db)→`gzip`→`age`(공개키)→NCP Object Storage(`icfr-backup`) 경로를 `scripts/backup_db.sh`·`scripts/restore_db.sh` 2개로 구현 — ADR-0020 제로 추상화(함수 분리 없이 순차 실행), 파이프 중간 실패를 임시파일 단계 분리로 차단, 업로드 후 `head-object` 크기 대조 통과 시에만 로컬 삭제, 보존정책은 `LastModified` 타임스탬프로만 판정(파일명 파싱 금지). ②보존 90일(ADR-0028 §2.8 이력에 30일→90일 변경 사유 기록), cron `0 3 * * *`(서버 타임존 `Asia/Seoul` 확인), logrotate monthly/rotate 12/compress. ③**복구 리허설 통과** — 임시 DB 복구 후 baseline 5테이블 8/29/85/93/469가 운영 DB와 완전 일치(운영 DB 무영향, 임시 DB 자동 삭제 안 함). 실측 크기 gzip 34,918 → age 35,144바이트, 객체 `db/2026/08/icfr_db_20260819_143338.sql.gz.age`. ④age 키쌍은 서버에 공개키만 상주, 비밀키는 마스터 2곳 보관·서버 `shred` 완료. ⑤**구축 중 함정 3건 발견** — AWS CLI v2 기본 체크섬(CRC64NVME) 미지원으로 인한 403 AccessDenied 오진, NCP Ubuntu 미러에 awscli 부재, `.env` 공백 값 따옴표 누락 시 `source` 실패(ADR-0028 §5.1의 7·8·9번). 서버 실행은 마스터가 직접 수행(런북 전달 방식, SSH 접근 미확대). 상세는 **ADR-0028 §2.8.1** 참조.
+
+- **2026-08-18~19 / TrustBuilder + Claude** — **NCP 운영 서버 구축 + 공유 백엔드 가동** (`prompts/PROMPT_3-2-A_deploy_artifacts.md`). ①인프라: VPC `10.2.0.0/16`, s2-g3a(Ubuntu 24.04), 공인IP `101.79.21.122`, 데이터 디스크 `/data` 50GB, SSH 키 인증 전용. ②서비스: `https://icfr.synap.co.kr` Let's Encrypt 인증서(만료 2026-11-17), 호스트 nginx가 TLS 종료 후 `/api/`→backend·`/`→frontend 프록시(컨테이너는 `127.0.0.1` 바인딩만). ③배포 산출물 신규 5종 — `docker-compose.prod.yml`(4서비스, `/data` 바인드 마운트, `down -v` 여지 배제), `infra/nginx/icfr.conf`, `.github/workflows/deploy.yml`(커밋 SHA 태그, `latest` 미사용), `.env.prod.example`, `docs/DEPLOY.md`. 기존 로컬 `docker-compose.yml`·`ci.yml`은 무변경. GitHub Actions→GHCR→self-hosted runner(`icfr-prod`) 경로로 컨테이너 4개 healthy, baseline seed는 psql 직접 조회로 8/29/85/93/469 검증. ④**별건 — CI 복구**(`prompts/PROMPT_ci_lint_cleanup.md`): 2026-08-11부터 열흘간 `ruff check .` 171건으로 **lint 단계에서 멈춰 pytest가 한 번도 실행되지 않은 상태**였음. 5커밋으로 분리 처리(alembic 버전 파일 검사 제외 → SQLAlchemy 문자열 힌트 F821 예외 → `--fix` 자동 수정 65파일 → 잔여 17건 수동 → deploy.yml `verify` 게이트) 후 `All checks passed` + pytest 128 passed/6 xfailed 회귀 없음. 배포 전 lint·test 통과가 필수 조건이 됨. ⑤nginx 1.24 호환 수정(IPv6 리스너 제거, `listen 443 ssl http2;`)은 서버 실측 반영분을 리포에 역반영.
 
 - **2026-08-14 / Regina + Claude** — **RCM mutation UI 배선 2-A-3-2** (`ICFR-PROMPT-2A3-2-mutation-ui-wiring.md`, ADR-0027, FE 전용). 백엔드 단건 CRUD(PATCH가 baseline과 자동 diff해 override instance 생성/해제, DELETE 단일 엔드포인트가 baseline→exclude/tenant-add→soft delete로 서버 분기, 13.4 항목6에서 계약 확정)와 2-A-4-2(다건·목록 전환) 완료로 준비된 mutation 경로에서, FE에 남아있던 `RCM_MUTATION_LOCKED` 잠금만 걷어 실제 쓰기가 동작하게 배선한다. 새 훅·새 컴포넌트 없음(`useCreateControl`/`useUpdateControl`/`useDeleteControl`·폼/삭제 다이얼로그 전부 기존재, 막고 있던 건 버튼 disabled 삼항뿐). ①mutation 잠금 4곳(`ControlTable.tsx` "+통제 추가"·행 편집·행 삭제, `ControlDetailSheet.tsx` 편집) `disabled`/`title` 삼항 물리 제거 — LOCK 외 병존 조건 없어 속성 자체 삭제. ②Excel 업로드는 13.6(다중 헤더행 미대응, 0건 파싱) 미해소로 잠금 유지하되 mutation과 의미가 어긋나지 않도록 상수 rename: `rcmMutationLock.ts`→`excelUploadLock.ts`, `RCM_MUTATION_LOCKED`→`EXCEL_UPLOAD_LOCKED` — 코드베이스에서 `RCM_MUTATION_LOCKED` 명칭 완전 제거(grep 0건 확인). ③`DeleteConfirmDialog.tsx`가 기존 `sourceEnvelope.ts`의 `resolveDeleteSemantics(control?.envelope)`(API 분기용이 아니라 UI 표현 전용 헬퍼)를 호출해 baseline(exclude)→"기준 통제 제외 확인", tenant-add(soft_delete)→기존 "통제 삭제 확인" 문구로 분기. 실제 DELETE 호출 경로·payload는 무변경(단일 엔드포인트, 서버가 계속 분기). ④`ControlFormDialog.tsx` 편집 진입 시 `isBaseline(control.envelope)`이면 "이 통제는 기준(baseline)입니다 — 저장 시 귀사 재정의(override)로 기록됩니다" 안내 배너 노출, 편집 자체는 막지 않음(baseline이어도 폼 전체 편집 가능, 서버가 override 처리). `isTenantAdd`는 이번 세션도 실사용처 없이 정의만 유지(대칭성 목적, 프롬프트 명시 허용 범위). **검증**: `sourceEnvelope.test.ts` 17건 통과 유지, `npm run build`(tsc+vite) 에러 0, 브라우저 실 API 왕복(생성/편집/삭제, 목록 자동 invalidate) 확인 완료(Regina). 검증 중 실제로 생성된 테스트 `control_instances` 1건은 이후 `docker compose exec backend python -m seeds.seed_baseline --reset` 재실행으로 정리(baseline 93건 등 엑셀 원천과 재일치 확인, 13.3 참조). 13.4 항목3(생성/수정/삭제 버튼 비활성 UI) 해소. 다음: 2-A-4-3(상위 계층 processes/sub-processes/risks + 어서션 junction CRUD 전환, upload-excel 파서 코어 분리·다중 헤더행 대응 — 남은 xfail 6건·Excel 잠금 해소 지점).
 - **2026-08-13 / Regina + Claude** — **RCM envelope 도메인 required 전환 (control 계층)** (`ICFR-PROMPT-2A3-1-envelope-required.md`, ADR-0027). 2026-07-24에 완료된 DTO 레벨 optional→required(`dto.ts`)에 이어, 도메인·어댑터·컴포넌트 계층까지 조인다. 사전확인(구현 전, 추정 금지 원칙): `api/rcm.py`를 코드로 확인해 control 조회(`search_controls`/`get_control`)만 `resolve_controls` 경유로 envelope flat 필드를 항상 채우고, `/processes`·`/sub-processes`·`/risks`는 `control_resolver.py`에 이미 구현된 `resolve_processes`/`resolve_sub_processes`/`resolve_risks`를 거치지 않고 레거시 테이블을 직접 조회함을 확인 — 상위 3계층은 이번 전환에서 **제외**, known limitation으로 13.7에 확장 기록. ①`types.ts` `Control.envelope` optional(`?`)→required. ②`ControlOption`(Pick id/code/name/process_code) 신설 — envelope 불필요한 경량 소비처(`ControlSelector`/`CreateTestRunDialog`/`DeficiencyFormDialog`)를 `Control` 대신 이 타입으로 전환해, envelope 없는 데이터를 억지로 채우지 않고도 required 계약과 공존. ③`ControlCreatePayload`(Omit) 목록에 `envelope` 추가(생성 요청 페이로드에서 제외). ④`ControlFormDialog`는 뮤테이션 응답(DTO)을 `controlsAdapter.ts`의 `toControl`로 변환 후 `onSuccess` 전달 — DTO/도메인 경계 유지. ⑤`ControlDetailSheet`/`ControlTable`의 `{control.envelope && <SourceBadge .../>}` 가드 제거(required이므로 항상 존재). process/sub_process/risk의 `envelope?: SourceEnvelope`는 optional 유지(범위 밖). mutation 훅 생성·UI 배선·lock 해제 등은 범위 밖(2-A-3-2 예정), 헬퍼(`isBaseline`/`isTenantAdd`/`resolveDeleteSemantics`) 배선도 미착수. **검증**: `sourceEnvelope.test.ts` 17건 유지 통과, `npm run build`(tsc+vite) 에러 0, 브라우저(RCM 관리 화면) 재확인 — 통제 목록 정상 렌더링, SourceBadge 정상, 콘솔 envelope 계약 위반 에러 0건(React Router 경고만 별건 존재). 13.4 항목2·4를 control 계층 한정으로 완료 처리(상위 3계층은 여전히 미검증 — envelope 자체가 optional이라 대상 아님). 검증 완료 후 사용자 승인 받아 push. **원격 동기화(push 시점, `git fetch`)**: TrustBuilder의 2-A-4-2(`03264ea`, 아래 2026-08-11 항목)가 선반영되어 있었음 — `api/rcm.py`/`schemas/rcm.py` 등 백엔드 파일 변경으로 본 세션 FE 변경(7파일)과 겹치지 않아 merge 충돌 없음, `ClaudeICFR.md`만 충돌해 본 항목·아래 TrustBuilder 항목을 모두 보존하는 방향으로 수동 병합.

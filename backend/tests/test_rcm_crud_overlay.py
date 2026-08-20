@@ -8,10 +8,14 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
+from app.core.tenant_context import DEFAULT_TENANT_ID, reset_active_tenant, set_active_tenant
 from app.models.rcm_baseline import (
-    BaselineControl, BaselineRisk, BaselineSubProcess, BaselineProcess, ControlInstance,
+    BaselineControl,
+    BaselineProcess,
+    BaselineRisk,
+    BaselineSubProcess,
+    ControlInstance,
 )
-from app.core.tenant_context import set_active_tenant, reset_active_tenant, DEFAULT_TENANT_ID
 from tests.conftest import TestingSessionLocal
 
 
@@ -41,11 +45,14 @@ def _seed_baseline_risk(suffix: str) -> str:
     tok = set_active_tenant(DEFAULT_TENANT_ID)
     try:
         p = BaselineProcess(code=f"C41P-{suffix}", name="P")
-        db.add(p); db.flush()
+        db.add(p)
+        db.flush()
         sp = BaselineSubProcess(code=f"C41SP-{suffix}", name="SP", process_id=p.id)
-        db.add(sp); db.flush()
+        db.add(sp)
+        db.flush()
         r = BaselineRisk(code=f"C41R-{suffix}", description="R", sub_process_id=sp.id)
-        db.add(r); db.commit()
+        db.add(r)
+        db.commit()
         rid = str(r.id)
     finally:
         reset_active_tenant(tok)

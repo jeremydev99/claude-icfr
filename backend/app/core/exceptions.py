@@ -1,5 +1,9 @@
 import logging
+
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 
 class ICFRException(Exception):
@@ -9,9 +13,6 @@ class ICFRException(Exception):
         self.status_code = status_code
         self.detail = detail
         super().__init__(detail)
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
 

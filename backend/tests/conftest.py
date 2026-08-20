@@ -3,16 +3,18 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.main import create_app
 import app.models  # noqa: F401 — 모든 모델을 Base.metadata에 등록
-from app.models.base import Base
 from app.core.database import get_db
-from app.models.user import User
-from app.models.tenant import Tenant, UserTenantAccess
 from app.core.security import hash_password
 from app.core.tenant_context import (
-    DEFAULT_TENANT_ID, DEFAULT_TENANT_CODE, DEFAULT_TENANT_NAME,
+    DEFAULT_TENANT_CODE,
+    DEFAULT_TENANT_ID,
+    DEFAULT_TENANT_NAME,
 )
+from app.main import create_app
+from app.models.base import Base
+from app.models.tenant import Tenant, UserTenantAccess
+from app.models.user import User
 
 SQLITE_URL = "sqlite:///./test.db"
 

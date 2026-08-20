@@ -7,6 +7,7 @@ Phase 2: 연간 평가 일정 수립 (WBS), 마일스톤 추적, 담당자 배�
 자세한 명세: ClaudeICFR.md 섹션 4.1 참조.
 """
 from fastapi import APIRouter
+
 from app.core.deps import CurrentUser
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])

@@ -5,6 +5,7 @@ Frontend(Regina)가 사이드바 메뉴·라우트를 동적으로 생성할 때
 icon 필드: lucide-react 아이콘 이름 (shadcn/ui 호환).
 """
 from fastapi import APIRouter
+
 from app.core.deps import CurrentUser
 
 router = APIRouter(prefix="/api/system", tags=["system"])

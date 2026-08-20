@@ -3,12 +3,18 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import verify_password, hash_password, create_access_token, create_refresh_token, decode_token
 from app.core.deps import get_current_user
-from app.models.user import User
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    hash_password,
+    verify_password,
+)
 from app.models.tenant import Tenant, UserTenantAccess
-from app.schemas.auth import TokenResponse, RefreshRequest, RefreshResponse, ChangePasswordRequest
-from app.schemas.user import UserRead, TenantAccessRead
+from app.models.user import User
+from app.schemas.auth import ChangePasswordRequest, RefreshRequest, RefreshResponse, TokenResponse
+from app.schemas.user import TenantAccessRead, UserRead
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 

@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import List
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 52428800  # 50MB
 
     # CORS
-    cors_allowed_origins: List[str] = ["http://localhost:5173"]
+    cors_allowed_origins: list[str] = ["http://localhost:5173"]
 
 
 @lru_cache

@@ -1,5 +1,6 @@
+from sqlalchemy import Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Boolean
+
 from app.models.base import IdentityBase
 
 

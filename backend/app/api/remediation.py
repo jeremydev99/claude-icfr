@@ -1,15 +1,28 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import CurrentUser, get_db
-from app.models.remediation import Deficiency, RemediationPlan, DesignAssessment, RemediationStatusHistory
+from app.models.remediation import (
+    Deficiency,
+    DesignAssessment,
+    RemediationPlan,
+    RemediationStatusHistory,
+)
 from app.schemas.remediation import (
-    DeficiencyCreate, DeficiencyUpdate, DeficiencyRead,
-    RemediationPlanCreate, RemediationPlanUpdate, RemediationPlanRead, RemediationTransitionRequest,
+    DeficiencyCreate,
+    DeficiencyRead,
+    DeficiencyUpdate,
+    DesignAssessmentCreate,
+    DesignAssessmentRead,
+    DesignAssessmentUpdate,
+    RemediationPlanCreate,
+    RemediationPlanRead,
+    RemediationPlanUpdate,
     RemediationStatusHistoryRead,
-    DesignAssessmentCreate, DesignAssessmentUpdate, DesignAssessmentRead,
+    RemediationTransitionRequest,
 )
 
 router = APIRouter(prefix="/api/remediation", tags=["remediation"])
@@ -109,7 +122,7 @@ def create_plan(body: RemediationPlanCreate, user: CurrentUser = None, db: Sessi
         from_status=None,
         to_status="planned",
         changed_by_id=user.id,
-        changed_at=datetime.now(timezone.utc),
+        changed_at=datetime.now(UTC),
     )
     db.add(history)
     db.commit()
@@ -160,13 +173,13 @@ def transition_plan(plan_id: UUID, body: RemediationTransitionRequest, user: Cur
     obj.status = body.to_status
     if body.to_status == "approved":
         obj.approved_by_id = user.id
-        obj.approved_at = datetime.now(timezone.utc)
+        obj.approved_at = datetime.now(UTC)
     history = RemediationStatusHistory(
         remediation_plan_id=obj.id,
         from_status=from_status,
         to_status=body.to_status,
         changed_by_id=user.id,
-        changed_at=datetime.now(timezone.utc),
+        changed_at=datetime.now(UTC),
         reason=body.reason,
     )
     db.add(history)

@@ -7,6 +7,7 @@ Phase 3: IUC 리포트 등록, 평가 자동 연결.
 자세한 명세: ClaudeICFR.md 섹션 4.5 참조.
 """
 from fastapi import APIRouter
+
 from app.core.deps import CurrentUser
 
 router = APIRouter(prefix="/api/iuc", tags=["iuc"])

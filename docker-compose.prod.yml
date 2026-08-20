@@ -1,0 +1,88 @@
+# 운영 전용 compose. 로컬 개발용 docker-compose.yml 과 분리 운영한다(수정 금지).
+# 사용: IMAGE_TAG=<커밋SHA> docker compose -f docker-compose.prod.yml -p icfr up -d
+#
+# ⚠️ 이 스택에 `down -v` 를 절대 사용하지 않는다(ADR-0023, 95통제 손실 사고).
+#    데이터는 named volume 이 아니라 /data 바인드 마운트에 있으므로 컨테이너 재생성으로 지워지지 않는다.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: icfr-postgres
+    ports:
+      - "127.0.0.1:5432:5432"
+    env_file:
+      - /etc/icfr/.env
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      # $$ 로 이스케이프 — 호스트가 아닌 컨테이너 내부 env(env_file)로 평가한다.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - icfr-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: icfr-minio
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    env_file:
+      - /etc/icfr/.env
+    volumes:
+      - /data/minio:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - icfr-network
+
+  backend:
+    image: ghcr.io/jeremydev99/claude-icfr/backend:${IMAGE_TAG:?IMAGE_TAG(커밋 SHA)를 지정해야 한다}
+    container_name: icfr-backend
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - /etc/icfr/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - icfr-network
+
+  frontend:
+    image: ghcr.io/jeremydev99/claude-icfr/frontend:${IMAGE_TAG:?IMAGE_TAG(커밋 SHA)를 지정해야 한다}
+    container_name: icfr-frontend
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - icfr-network
+
+networks:
+  icfr-network:
+    driver: bridge

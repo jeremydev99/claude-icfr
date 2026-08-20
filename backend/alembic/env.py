@@ -1,6 +1,8 @@
 import os
 from logging.config import fileConfig
+
 from sqlalchemy import engine_from_config, pool
+
 from alembic import context
 
 # Alembic Config 객체
@@ -16,8 +18,8 @@ if database_url:
     config.set_main_option("sqlalchemy.url", database_url)
 
 # 모델 메타데이터 import (자동 마이그레이션 대상)
-from app.models.base import Base  # noqa: E402
 from app.models import user  # noqa: E402, F401
+from app.models.base import Base  # noqa: E402
 
 target_metadata = Base.metadata
 

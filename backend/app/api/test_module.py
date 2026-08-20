@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -6,12 +6,18 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser
-from app.models.test_module import ControlRiskAssessment, TestRun, TestStep, TestStatusHistory
+from app.models.test_module import ControlRiskAssessment, TestRun, TestStatusHistory, TestStep
 from app.schemas.test_module import (
-    ControlRiskAssessmentCreate, ControlRiskAssessmentRead, ControlRiskAssessmentUpdate,
-    TestRunCreate, TestRunRead, TestRunUpdate,
+    ControlRiskAssessmentCreate,
+    ControlRiskAssessmentRead,
+    ControlRiskAssessmentUpdate,
+    TestRunCreate,
+    TestRunRead,
+    TestRunUpdate,
     TestStatusHistoryRead,
-    TestStepCreate, TestStepRead, TestStepUpdate,
+    TestStepCreate,
+    TestStepRead,
+    TestStepUpdate,
     TransitionRequest,
 )
 
@@ -213,7 +219,7 @@ def transition_test_run(
     run.status = target
     if target == "approved":
         run.approved_by_id = user.id
-        run.approved_at = datetime.now(timezone.utc)
+        run.approved_at = datetime.now(UTC)
 
     db.commit()
     db.refresh(run)

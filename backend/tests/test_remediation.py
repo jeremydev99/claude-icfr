@@ -1,7 +1,7 @@
 """Remediation 모듈 통합 테스트 — Phase 1 작업4 (DesignAssessment + 워크플로 + 이력)."""
 import base64
 import json
-import pytest
+
 from fastapi.testclient import TestClient
 
 
@@ -132,7 +132,7 @@ def _create_deficiency_and_plan(client: TestClient, suffix: str) -> tuple[str, s
     """Deficiency + RemediationPlan 생성 후 (def_id, plan_id) 반환."""
     h = _headers(client)
     owner_id = _current_user_id(client)
-    control_id = _create_control(client, suffix)
+    _create_control(client, suffix)
     d = client.post("/api/remediation/deficiencies", json={
         "code": f"WF-DEF-{suffix}",
         "severity": "medium",

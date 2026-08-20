@@ -37,11 +37,11 @@ def seed(ctx: SeedContext) -> None:
                 "assessment_method": "Walkthrough",
                 "performer_name": "내부 감사팀",
             })
-            print(f"  [design_assessments] EL-010-10-10 / 2025 created")
+            print("  [design_assessments] EL-010-10-10 / 2025 created")
         else:
-            print(f"  [design_assessments] EL-010-10-10 / 2025 exists (skip)")
+            print("  [design_assessments] EL-010-10-10 / 2025 exists (skip)")
     else:
-        print(f"  [design_assessments] EL-010-10-10 not found — skip")
+        print("  [design_assessments] EL-010-10-10 not found — skip")
 
     # ── Deficiency ──────────────────────────────────────────────
     deficiency = get_or_create(
@@ -89,4 +89,4 @@ def seed(ctx: SeedContext) -> None:
             f"/api/remediation/plans/{plan['id']}/transition",
             {"to_status": "in_progress", "reason": "시드 — 개선 시작"},
         )
-        print(f"  [remediation_plans] transitioned to in_progress")
+        print("  [remediation_plans] transitioned to in_progress")

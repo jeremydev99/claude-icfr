@@ -7,6 +7,7 @@ Phase 2: 정량·정성 평가, 유의계정 식별, 평가대상 통제 산출.
 자세한 명세: ClaudeICFR.md 섹션 4.3 참조.
 """
 from fastapi import APIRouter
+
 from app.core.deps import CurrentUser
 
 router = APIRouter(prefix="/api/scoping", tags=["scoping"])

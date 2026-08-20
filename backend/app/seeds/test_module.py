@@ -60,7 +60,7 @@ def seed(ctx: SeedContext) -> None:
     # TestSteps
     existing_steps = ctx.get("/api/test/steps", params={"run_id": run_obj["id"]})
     if existing_steps.get("total", 0) >= 2:
-        print(f"  [test_steps] run steps exist (skip)")
+        print("  [test_steps] run steps exist (skip)")
     else:
         for order, desc, result in [
             (1, "계약서 및 배송 확인서 샘플 추출", "pass"),
@@ -80,6 +80,6 @@ def seed(ctx: SeedContext) -> None:
             "to_status": "in_progress",
             "reason": "시드 데이터 — Tester 평가 시작",
         })
-        print(f"  [test_runs] transitioned → in_progress")
+        print("  [test_runs] transitioned → in_progress")
     else:
         print(f"  [test_runs] status={run_obj.get('status')} (skip transition)")

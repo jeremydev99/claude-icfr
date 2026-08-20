@@ -1,6 +1,7 @@
 import hashlib
 from urllib.parse import quote
 from uuid import UUID, uuid4
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -107,8 +108,7 @@ def download_file(file_id: UUID, user: CurrentUser = None, db: Session = Depends
 
     def iterfile():
         try:
-            for chunk in response.stream(32 * 1024):
-                yield chunk
+            yield from response.stream(32 * 1024)
         finally:
             response.close()
             response.release_conn()

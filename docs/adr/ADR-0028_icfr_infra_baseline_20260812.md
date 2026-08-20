@@ -1,0 +1,279 @@
+# ADR-0028 (2026-08-12) — ICFR 운영 인프라 최종 기준 확정
+
+> 저장 위치: `docs/adr/ADR-0028_icfr_infra_baseline_20260812.md`
+> 관련: ADR-0012(MinIO), ADR-0014(배포 단계화), ADR-0023(데이터 복구 정책), ADR-0025·0026(멀티테넌시), userPreferences 7·8
+
+---
+
+## 1. 배경
+
+지금까지 백엔드·프론트엔드 모두 각자 로컬에서 개발했다. baseline/overlay 전환이 끝나 통제 계층 읽기·쓰기 전 경로가 통일된 시점(pytest 128 passed)에서, 공유 백엔드가 없으면 다음 두 가지가 계속 반복된다.
+
+- Regina 로컬 DB와 마스터 로컬 DB의 상태 불일치 (baseline 0행 사건의 근본 원인)
+- 프론트가 실제 API 대신 mock을 쓰는 상황을 늦게 발견
+
+동시에 본 시스템은 **외부 고객사에 판매할 제품**이다(섹션 20). 따라서 이번 서버는 "개발 편의용 임시 서버"가 아니라 **최종 판매 기준 아키텍처의 축소판**으로 만든다. 지금 구조를 잡아두지 않으면 고객사 납품 시점에 전면 retrofit이 발생한다.
+
+**기존 자산**: 동일 NCP 계정에 hrpms(인사시스템) 운영 서버가 이미 존재한다. ICFR은 hrpms와 **네트워크·계정·키 전부 분리**한다.
+
+| 항목 | hrpms (기존, 실측) | ICFR (신규) |
+|---|---|---|
+| VPC | `hrpms-prod-vpc` / `10.1.0.0/16` | `icfr-prod-vpc` / `10.2.0.0/16` |
+| Subnet | `hrpms-prod-subnet` / `10.1.1.0/24` / KR-1 | `10.2.1.0/24`(Public) + `10.2.2.0/24`(Private) / KR-1 |
+| 서버 | `hrpms-prod-server` s2-g3a (2vCPU·8GB), KVM·G3 | 동일 스펙 |
+| 서버 이미지 | ubuntu-24.04-base | 동일 |
+| 기본 스토리지 | CB1 50GB, **암호화 N** | CB1 50GB, **암호화 Y** |
+| 반납 보호 | **해제** | **설정** |
+| 인증키 | `hrpms-prod-key` | `icfr-prod-key` (별도 발급) |
+
+> hrpms 서버의 암호화 N·반납 보호 해제는 별건으로 검토 필요. 반납 보호는 즉시 설정 가능하나 스토리지 암호화는 생성 시점에만 지정 가능하므로 hrpms는 재생성 없이는 변경 불가.
+
+---
+
+## 2. 결정
+
+### 2.1 네트워크
+
+- ICFR 전용 **별도 VPC**로 격리한다. hrpms VPC와 **피어링하지 않는다**. 두 시스템 간 통신 요건이 발생하면 그때 ADR로 별도 결정한다.
+- VPC CIDR은 생성 후 수정 불가하므로 `10.2.0.0/16`으로 확정한다. hrpms(`10.1.0.0/16`)와 충돌 없음.
+- 서브넷을 **처음부터 2개** 만든다.
+  - `icfr-prod-pub-subnet` `10.2.1.0/24` — Public, 애플리케이션 서버
+  - `icfr-prod-priv-subnet` `10.2.2.0/24` — Private, **Phase 2 Cloud DB for PostgreSQL 이관 대비 예약**
+  - 지금 Private 서브넷을 만들어두는 이유: 나중에 만들면 DB 이관 시 네트워크 재구성이 필요하다. 비용은 0원이다.
+- ACG(`icfr-prod-acg`) 인바운드 최소 개방:
+
+| 프로토콜 | 포트 | 접근 소스 | 용도 |
+|---|---|---|---|
+| TCP | 443 | 사무실 고정 IP `/32` | 애플리케이션(HTTPS) |
+| TCP | 80 | `0.0.0.0/0` | Let's Encrypt HTTP-01 챌린지 전용 (아래 2.6 참조) |
+| TCP | 22 | 사무실 고정 IP `/32` | 긴급 운영 (상시 사용 아님) |
+
+- **인바운드 22를 GitHub Actions에 열지 않는다.** Actions runner의 출발지 IP 대역이 지나치게 넓어 최소 권한 원칙이 무너진다. 대신 self-hosted runner를 쓴다(2.4).
+- 아웃바운드는 전체 허용.
+- 모든 ICFR 리소스에 태그 `service=icfr`를 붙인다. Sub Account ABAC 정책의 판별 근거로 쓴다(문자열 이름 매칭 금지 — 회귀 방지 원칙 1).
+
+### 2.2 서버
+
+- `icfr-prod-server`, s2-g3a(2vCPU·8GB), KVM·G3, ubuntu-24.04-base.
+- **기본 스토리지 암호화 = Y** (생성 시점에만 지정 가능. 판매 제품의 필수 요건).
+- 생성 직후 **반납 보호 설정**.
+- 인증키는 `icfr-prod-key`를 신규 발급한다. hrpms 키를 재사용하지 않는다 — 키 하나가 유출되면 두 시스템이 동시에 뚫린다.
+- 요금제: **시간 요금제**. 스펙 변경 가능성이 남아 있는 동안 월 요금제는 스케일업 시 중복 과금이 발생한다.
+- 서버에서 **소스를 빌드하지 않는다.** 컨테이너 이미지 pull만 수행한다(2.4).
+
+### 2.3 스토리지 / 데이터 배치
+
+- OS 기본 디스크(50GB)와 **데이터 디스크를 분리**한다. 추가 Block Storage 100GB를 `/dev/vdb` → `/data`로 마운트(`/etc/fstab` 등록).
+- 배치:
+  - `/data/postgres` — PostgreSQL 데이터 볼륨
+  - `/data/minio` — MinIO 오브젝트
+  - `/data/backup` — 백업 임시 산출물
+- 이유: 서버를 재생성하거나 스펙을 바꿔도 데이터 디스크를 분리 후 재연결하면 데이터가 보존된다. 또한 Phase 2에 Cloud DB로 이관할 때 `/data/postgres`만 덤프 대상으로 격리된다.
+- **`docker compose down -v` 금지**(ADR-0023). 운영 서버에서는 배포 스크립트에 해당 명령이 들어갈 수 없다.
+
+### 2.4 배포 파이프라인
+
+사람이 서버에 접속해 배포하지 않는다. 배포 주체는 CI다.
+
+```
+개발자(마스터/Regina): 브랜치 push → PR → main 머지
+  → GitHub Actions: backend/frontend 이미지 빌드
+  → GHCR push (태그 = 커밋 SHA, latest 태그 사용 금지)
+  → self-hosted runner(ICFR 서버 내부)가 docker compose pull && up -d
+```
+
+- **이미지 태그는 커밋 SHA 고정.** `latest`는 "지금 서버에 뭐가 떠 있는지"를 알 수 없게 만든다. 내부통제 시스템의 배포 이력이 추적 불가하면 자기모순이다.
+- **롤백 = 이전 SHA 태그로 재기동.** 절차를 README에 명문화한다.
+- **self-hosted runner를 ICFR 서버에 설치**한다. runner가 GitHub로 아웃바운드 연결을 맺으므로 인바운드 22 개방이 불필요하다. 배포 이력은 Actions 로그에 남는다.
+- Regina에게 필요한 권한은 **GitHub repo write뿐**이다. NCP 콘솔 권한도, SSH 키도 필요 없다.
+- 프론트엔드는 같은 서버 nginx가 정적 빌드를 서빙한다. 설치형(On-Premise) 판매 구성과 동일해 배포 분기가 생기지 않는다.
+
+### 2.5 시크릿 관리
+
+- **단일 원천은 GitHub Secrets**로 둔다. 서버의 `.env`는 그 사본이다.
+- 서버 배치: `/etc/icfr/.env`, 소유자 `root`, 권한 `600`. 리포지토리 디렉터리 밖에 둔다(git 실수 커밋 원천 차단).
+- Public 레포이므로 실 계정·토큰·비밀번호는 어떤 경로로도 커밋 금지(섹션 7.1).
+- 최소 교체 대상: PostgreSQL 비밀번호, MinIO 액세스 키, JWT 시크릿 — 로컬 개발값을 운영에 재사용하지 않는다.
+- Phase 2에 NCP Secret Manager 도입을 검토한다.
+
+### 2.6 도메인 / TLS
+
+- `icfr-api.<사이냅소프트 도메인>` → ICFR 서버 공인 IP (A 레코드).
+- nginx + Let's Encrypt(certbot), 자동 갱신.
+- **80 포트를 전체 개방하되 nginx는 `/.well-known/acme-challenge/`만 서빙하고 나머지 전 경로를 443으로 리다이렉트**한다. HTTP-01 챌린지는 전 세계에서 접근 가능해야 성립하므로 사무실 IP만 열면 인증서 발급·갱신이 실패한다. 애플리케이션 자체는 443에서 사무실 IP로 제한되므로 노출면은 챌린지 경로뿐이다.
+- HTTP 헤더: HSTS, X-Content-Type-Options, X-Frame-Options 적용.
+
+### 2.7 계정 / 권한
+
+| 주체 | 권한 | 근거 |
+|---|---|---|
+| 메인 계정 | 인프라 생성·변경 전권 | Access Key 발급하지 않음 |
+| `icfr-deploy` (서버 OS 계정) | self-hosted runner 실행 전용, sudo 제한 | 배포 자동화 |
+| `icfr-regina` (Sub Account) | 사용자 정의 정책 `icfr-view-only` — 태그 `service=icfr` 리소스에 대한 **View만**, Change 없음, Access Key 미발급 | 서버 가동 상태 확인용. 배포는 GitHub 경로로 수행하므로 Change 불필요 |
+
+- hrpms 리소스는 태그가 다르므로 정책상 자동 배제된다. 이름 문자열이 아니라 태그(구조)로 판별한다.
+
+### 2.8 백업 / 복구 (ADR-0023 연장)
+
+- `pg_dump | gzip` 일 1회(cron, 새벽) → `/data/backup` → Object Storage 업로드.
+- MinIO 버킷은 주 1회 동기화.
+- 보존 30일, 이후 자동 삭제. → **2026-08-19 변경: 보존 90일.**
+  사유: 실측 백업 크기 34,918바이트 기반 재산정 — 90일 보존해도 Object Storage 월 요금이
+  0.1원 미만이라 비용이 사실상 0이고, 감사 대응(과거 시점 복원 요구) 여지를 넓히는 편이 이득이다.
+  (원 결정 30일은 취소선 없이 이력으로 남긴다. 운영 반영값은 `/etc/icfr/.env` 의 `BACKUP_RETENTION_DAYS=90`.)
+- **복구 절차를 문서로 남기고, 월 1회 실제 복구 리허설을 수행한다.** 검증하지 않은 백업은 백업이 아니다.
+- 회계법인 PoC 시연 전에는 반드시 직전 백업 존재를 확인한다.
+
+#### 2.8.1 백업 라인 구축 결과 (2026-08-19, 실행 완료)
+
+**구성**: `pg_dump` → `gzip` → `age`(공개키 암호화) → NCP Object Storage 업로드 → 업로드 크기 검증 → 보존정책 정리.
+스크립트는 `scripts/backup_db.sh`(백업)·`scripts/restore_db.sh`(복구 리허설), 서버 배치 경로 `/opt/icfr/scripts`.
+
+**버킷 `icfr-backup` — 잠금 비활성 / 암호화 비활성 / 비공개**
+
+| 설정 | 선택 | 근거 |
+|---|---|---|
+| 객체 잠금(WORM) | **비활성(보류)** | 활성화 시 삭제가 물리적으로 불가능해진다. 백업 프로세스와 파일명 규칙이 안정화된 뒤 별도 판단으로 켠다. 지금 켜면 시행착오 산출물을 지울 수 없다. |
+| 버킷 암호화 | **비활성** | NCP Object Storage 암호화는 SSE-C(고객 제공 키) 방식이라 **서버에 키를 평문 보관**하게 된다. 서버가 손상된 상황이 곧 백업을 쓸 상황이므로 이는 보호가 되지 않는다. `age`로 파일 자체를 암호화하는 편이 보호 강도가 높고 키 관리 지점도 하나로 유지된다. |
+| 공개 여부 | **비공개** | 감사 증적 원본이다. |
+
+**age 키 분리 보관** — 서버에는 **공개키만** 둔다(`/etc/icfr/.env` 의 `BACKUP_AGE_PUBKEY`).
+비밀키는 마스터가 서버 밖 2곳에 보관하며 서버에 상주시키지 않는다(구축 시 `/tmp` 임시 파일은 `shred -u` 완료).
+서버가 통째로 털린 상황에서도 백업 본문은 복호화되지 않는다.
+
+**보존 90일** — 실측 백업 크기 34,918바이트(gzip) → age 암호화 후 35,144바이트.
+90일 보존해도 Object Storage 월 요금이 0.1원 미만이라 비용이 사실상 0이다.
+따라서 비용이 아니라 감사 대응(과거 시점 복원 요구)을 기준으로 90일을 택했다(§2.8 변경 이력 참조).
+
+**Lifecycle을 콘솔이 아니라 스크립트로 구현한 이유** — 고객사 이관 시 **코드로 재현 가능**해야 한다.
+콘솔 설정은 이관 대상에 포함되지 않고 인수인계 문서로만 남아 유실된다.
+삭제 판정은 `list-objects-v2` 의 `LastModified` 타임스탬프로만 하며 **파일명 문자열을 파싱하지 않는다**(파일명 규칙 변경 시 조용히 오작동하는 것을 막기 위함).
+
+**복구 리허설 (2026-08-19, 통과)** — 검증하지 않은 백업은 백업이 아니다.
+
+| 항목 | 결과 |
+|---|---|
+| 백업 실행 | `exit=0` |
+| 객체 키 | `db/2026/08/icfr_db_20260819_143338.sql.gz.age` |
+| 복구 대상 | 임시 DB(`icfr_restore_test_<타임스탬프>`) — 운영 DB 무영향 |
+| baseline 5테이블 대조 | processes 8 / sub_processes 29 / risks 85 / controls 93 / assertions 469 — **운영 DB와 완전 일치** |
+
+**자동화** — cron `0 3 * * *`(서버 타임존 `Asia/Seoul` 확인 후 KST 03:00로 등록),
+로그는 `/data/backup/log/backup_YYYYMM.log`(월별 append) + `/data/backup/LAST_RESULT`(최종 상태 덮어쓰기),
+`logrotate` `/etc/logrotate.d/icfr-backup` — monthly / rotate 12 / compress.
+
+**범위 외** — MinIO 증빙 파일 백업은 이번 범위에 포함하지 않는다.
+DB와 보존정책이 다르고(원본 보관 의무 vs 시점 복원) 데이터량 특성도 달라 별도 설계로 다룬다.
+
+### 2.9 모니터링
+
+- NCP Cloud Insight 기본 메트릭(CPU·메모리·디스크) + 임계치 알림.
+- Docker healthcheck를 backend·postgres·minio 각 서비스에 정의.
+- Phase 1.5에 잔디 Webhook 알림 연동(기술스택에 httpx 기 채택).
+
+### 2.10 Phase 2 확장 트리거 (지금 하지 않는 것과 그 조건)
+
+| 항목 | 이번 범위 | 전환 조건 |
+|---|---|---|
+| Cloud DB for PostgreSQL | 컨테이너 postgres | 고객사 실데이터 투입 또는 동시 사용자 50명 초과 |
+| Load Balancer + 다중 존 | 단일 서버·단일 존 | 회계법인 SaaS 상용 서비스 개시 |
+| Kubernetes | Docker Compose (ADR-0014) | 테넌트 10개 초과 |
+| Celery + Redis (ADR-0013) | BackgroundTasks | 보고서 대량 생성·정기 스케줄 요건 발생 |
+| Secret Manager | `/etc/icfr/.env` | 운영 인원 3명 초과 |
+
+---
+
+## 3. 실행 순서
+
+### 3-1. NCP 콘솔 작업 (마스터 수동)
+
+1. VPC 생성 — `icfr-prod-vpc` / `10.2.0.0/16`
+2. Subnet 생성 — `icfr-prod-pub-subnet` `10.2.1.0/24`(Public, KR-1), `icfr-prod-priv-subnet` `10.2.2.0/24`(Private, KR-1)
+3. 인증키 생성 — `icfr-prod-key` (pem 안전 보관)
+4. ACG 생성 — `icfr-prod-acg`, 인바운드 규칙 2.1 표대로
+5. 서버 생성 — `icfr-prod-server`, s2-g3a, ubuntu-24.04-base, **스토리지 암호화 Y**, 시간 요금제
+6. 서버 생성 직후 — **반납 보호 설정**
+7. 공인 IP 신청·연결
+8. Block Storage 100GB 생성·연결
+9. Object Storage 버킷 생성 — `icfr-backup`
+10. 전 리소스에 태그 `service=icfr` 부여
+11. Sub Account 정책 `icfr-view-only` 생성 → `icfr-regina` 계정 생성·부여
+12. DNS A 레코드 등록 — `icfr-api.<도메인>` → 공인 IP
+
+### 3-2. 서버 초기 설정 + 배포 (Claude Code 프롬프트로 별도 작성)
+
+13. OS 업데이트, `/data` 마운트 + fstab
+14. Docker·Docker Compose 설치
+15. `/etc/icfr/.env` 배치
+16. GHCR 인증, self-hosted runner 설치·등록
+17. nginx + certbot, TLS 발급
+18. `docker compose up -d` → Alembic 마이그레이션 → `seed_baseline.py --reset`
+19. **검증**: baseline_controls 93행을 psql로 직접 확인 (스크립트 출력 신뢰 금지)
+20. 백업 cron 등록 + **1회 복구 리허설**
+21. Regina 온보딩 — API 엔드포인트 전달, 프론트 `.env` 전환, mock 제거 확인
+
+---
+
+## 4. 기각한 대안
+
+| 대안 | 기각 사유 |
+|---|---|
+| hrpms VPC에 서버만 추가 | 격리 실패. 한쪽 침해가 다른 쪽으로 전이. 인사데이터와 회계내부통제데이터를 같은 네트워크에 두는 것은 판매 시 결격 사유 |
+| 서버에서 `git pull && docker build` | 빌드 재현성 없음. 고객사 서버에서 소스 빌드 불가. 판매 기준 미달 |
+| GitHub Actions에서 SSH 직접 배포 | 인바운드 22를 광범위 IP 대역에 개방해야 함 |
+| `latest` 태그 배포 | 현재 배포 버전 추적 불가, 롤백 경로 부재 |
+| Regina에게 Change 권한 부여 | 배포는 GitHub 경로로 수행되므로 불필요. 최소 권한 위배 |
+| watchtower 자동 폴링 배포 | 배포 이력 추적 약함. SHA 태그 고정 배포와 상충 (**폴백**: self-hosted runner 설치가 막힐 경우에만 재검토) |
+| 처음부터 Cloud DB + LB 이중화 | 현 규모 대비 과투자. 단 이관 경로(Private 서브넷)는 지금 확보 |
+
+---
+
+## 5. 회귀 가드
+
+- hrpms 서버·VPC·ACG는 **일체 건드리지 않는다.** 본 작업 중 hrpms 리소스 변경이 발생하면 즉시 중단.
+- VPC CIDR·스토리지 암호화 여부는 **생성 후 변경 불가**. 5·1단계 실행 전 값을 재확인한다.
+- seed 실행 후 검증은 스크립트 출력이 아니라 psql 직접 조회로 한다(2026-08-11 검증 선례).
+- `docker compose down -v`는 운영 서버 어떤 스크립트에도 포함하지 않는다.
+
+### 5.1 고객사 설치 시 재발 함정
+
+> **기록 규칙**: 원인만 적지 말고 **증상(무엇이 보이는가)** 을 함께 적는다.
+> 정작 그 상황에 놓였을 때 검색되는 것은 증상이지 원인이 아니다.
+
+1. **별도 ACG는 아웃바운드가 비어 있다** — 기본 ACG와 달리 아웃바운드 규칙이 자동 생성되지 않는다.
+   증상: 서버에서 `apt-get update`·`docker pull`·외부 API 호출이 전부 타임아웃. 인바운드만 보고 있으면 원인을 못 찾는다.
+   → 아웃바운드 규칙을 직접 연다.
+2. **NCP 서버는 IPv6를 지원하지 않는다** — nginx 설정에 `listen [::]:80` / `listen [::]:443 ssl` 이 있으면
+   증상: `nginx -t` 또는 기동 시 주소 계열 관련 실패. → `[::]` 줄을 제거하고 IPv4만 둔다.
+3. **nginx 1.24는 `http2 on;` 단독 지시어를 모른다**(1.25+ 문법).
+   증상: `nginx: [emerg] unknown directive "http2"`. → `listen 443 ssl http2;` 한 줄로 쓴다.
+4. **`/etc/icfr/.env` 가 600이면 self-hosted runner가 읽지 못한다.**
+   증상: 컨테이너가 환경변수 없이 떠서 DB 접속 실패·기동 실패. 권한을 보기 전에는 설정 오류로 오인하기 쉽다.
+   → 그룹 `icfr` 소유 + 모드 `640`.
+5. **certbot webroot 경로는 nginx 설정값과 일치해야 한다**(`/var/www/certbot`).
+   증상: `certbot` 챌린지가 404로 실패해 인증서 발급이 안 된다. → 양쪽 경로를 같은 값으로 맞추고 디렉터리를 미리 만든다.
+6. **스토리지 암호화는 서버 생성 시점에만 지정 가능**하다(생성 후 변경 불가).
+   증상: 나중에 켜려 하면 콘솔에 옵션 자체가 없다. **현재 서버는 N** — 고객사 실데이터 투입 전 재생성이 필요하다.
+
+7. **AWS CLI v2 기본 체크섬(CRC64NVME)을 NCP Object Storage가 미지원** — `PutObject` 시
+   `X-Amz-Content-SHA256: STREAMING-UNSIGNED-PAYLOAD-TRAILER` 트레일러가 붙어 서명 검증에 실패하고,
+   이것이 **403 AccessDenied 로 반환되어 권한 문제로 오진하기 쉽다**(`s3 ls`·버킷 조회는 정상 동작하므로 더 헷갈린다).
+   체크섬 비활성 환경변수가 필수다 — `AWS_REQUEST_CHECKSUM_CALCULATION=when_required`,
+   `AWS_RESPONSE_CHECKSUM_VALIDATION=when_required`. (2026-08-19 서버 실측: 미설정 시 403 재현, 설정 시 업로드 성공.
+   `scripts/backup_db.sh`·`scripts/restore_db.sh` 상단에서 export 1회로 적용.)
+8. **NCP Ubuntu 미러에 `awscli` 패키지가 없다.**
+   증상: `apt-get install -y awscli` 가 `E: Unable to locate package awscli` 로 실패.
+   → 공식 v2 설치본(`awscli-exe-linux-x86_64.zip`)으로 고정한다. apt 저장소는 배포판·미러마다 유무가 갈린다.
+9. **`.env` 값에 공백이 있는데 따옴표가 없으면 `source` 시 셸이 뒷단어를 명령으로 해석한다.**
+   증상: 스크립트가 `System: command not found` 로 죽는다(실제 사례: `APP_NAME=ICFR System`).
+   docker compose 는 자체 파서로 읽어 **통과하기 때문에**, `source` 를 쓰는 스크립트를 도입하기 전까지 드러나지 않는다.
+   → `.env` 값에 공백이 있으면 반드시 따옴표로 감싼다.
+10. **함정을 기록할 때는 증상을 함께 남긴다.** 원인만 적으면 정작 그 상황에서 검색이 되지 않는다(위 기록 규칙과 동일).
+
+---
+
+## 6. 확인 필요 (실행 전 채울 값)
+
+- [ ] 사이냅소프트 도메인 정확한 FQDN
+- [ ] 사무실 고정 공인 IP (`x.x.x.x/32`)
+- [ ] hrpms 서버 월 청구액 (NCP 콘솔 > 이용 내역) — ICFR 예상 비용의 1차 출처

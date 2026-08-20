@@ -1,33 +1,34 @@
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
+from app.api import (
+    auth,
+    euc,
+    evidence,
+    health,
+    iuc,
+    notification,
+    rcm,
+    remediation,
+    report,
+    schedule,
+    scoping,
+    system,
+    test_module,
+    user_mgmt,
+)
 from app.config import get_settings
 from app.core.database import SessionLocal
 from app.core.exceptions import ICFRException
 from app.core.middleware import AuditLogMiddleware, RequestIDMiddleware
-from app.api import (
-    health,
-    auth,
-    system,
-    schedule,
-    rcm,
-    scoping,
-    euc,
-    iuc,
-    remediation,
-    evidence,
-    user_mgmt,
-    notification,
-    report,
-    test_module,
-)
-from app.seeds.bootstrap import bootstrap_admin
 from app.minio_client import ensure_bucket
+from app.seeds.bootstrap import bootstrap_admin
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -28,12 +28,17 @@ baseline 은 전역(IdentityBase)이라 격리 대상이 아님.
 from sqlalchemy.orm import Session
 
 from app.models.rcm_baseline import (
-    BaselineProcess, ProcessInstance,
-    BaselineSubProcess, SubProcessInstance,
-    BaselineRisk, RiskInstance,
-    BaselineControl, ControlInstance,
+    BaselineControl,
+    BaselineControlAssertion,
+    BaselineProcess,
+    BaselineRisk,
     BaselineRiskCategory,
-    BaselineControlAssertion, ControlAssertionInstance,
+    BaselineSubProcess,
+    ControlAssertionInstance,
+    ControlInstance,
+    ProcessInstance,
+    RiskInstance,
+    SubProcessInstance,
 )
 
 # Control 응답과 동일한 형태를 만들기 위한 응답 키 (기존 ControlBase 와 1:1).
@@ -181,7 +186,7 @@ def _resolve_assertions(db: Session) -> dict:
     )
 
     cat_ids = (
-        {l.baseline_risk_category_id for l in baseline_links}
+        {lnk.baseline_risk_category_id for lnk in baseline_links}
         | {i.baseline_risk_category_id for i in instances}
     )
     code_by_cat = {}

@@ -7,10 +7,21 @@ requires-python = ">=3.12"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# 적용 완료된 마이그레이션 이력이라 스타일 수정 대상이 아니다(내용 변경 = 이력 조작).
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# SQLAlchemy 관계의 문자열 전방참조("Control"/"User")는 런타임에 레지스트리가 해석한다.
+# 실제 미정의가 아니므로 F821 만 무시한다(TYPE_CHECKING import 는 순환참조 위험).
+"app/models/remediation.py" = ["F821"]
+"app/models/test_module.py" = ["F821"]
+"app/models/user_mgmt.py" = ["F821"]
+# ICFRException 은 도메인 전반에서 참조되는 공개 이름이라 리네임은 lint 범위를 벗어난다.
+"app/core/exceptions.py" = ["N818"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

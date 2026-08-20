@@ -1,8 +1,10 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from uuid import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Text, Boolean, Date, DateTime, Integer, ForeignKey, UniqueConstraint
+
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.models.base import AuditedBase
 
 
@@ -123,7 +125,7 @@ class TestStatusHistory(AuditedBase):
     )
     changed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
