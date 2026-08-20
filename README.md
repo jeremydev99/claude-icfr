@@ -16,7 +16,7 @@
 | [`ClaudeICFR.md`](./ClaudeICFR.md) | **단일 진실 공급원**. 명세·ERD·진행상황·ADR 모두 여기에. |
 | [`CLAUDE.md`](./CLAUDE.md) | Claude Code 세션 시작 시 자동 로드되는 가이드. |
 | `docs/diagrams/` | 다이어그램 산출물 (mmd/svg/png). |
-| `docs/adr/` (예정) | 개별 의사결정 기록 분리 — 현재는 `ClaudeICFR.md` 섹션 10에 통합. |
+| `docs/adr/` | ADR-0028부터 개별 파일 사용 시작(대형 인프라 ADR). 표준 ADR 목록은 여전히 `ClaudeICFR.md` 섹션 10. |
 | `docs/api/openapi.yaml` (예정) | API 스펙 — 현재는 FastAPI 자동 생성 문서가 단일 진실 공급원. |
 | `docs/erd/` (예정) | ERD 다이어그램 소스 분리 — 현재는 `ClaudeICFR.md` 섹션 5에 인라인. |
 

@@ -57,7 +57,7 @@ ICFR/
 ├─ README.md
 ├─ docs/
 │   ├─ diagrams/           ← 다이어그램 산출물(mmd/svg/png, ClaudeICFR.md §2에서 참조)
-│   ├─ adr/ (예정)         ← 의사결정 기록은 현재 ClaudeICFR.md §10에 통합. 개별 파일 분리는 미착수.
+│   ├─ adr/                ← ADR-0028부터 개별 파일 사용 시작(대형 인프라 ADR). 표준 ADR 목록은 여전히 ClaudeICFR.md §10.
 │   ├─ api/openapi.yaml (예정) ← API 스펙은 현재 FastAPI 자동 생성 문서가 단일 진실 공급원(ADR-0017 §19). 파일 export는 미착수.
 │   └─ erd/ (예정)         ← ERD는 현재 ClaudeICFR.md §5에 인라인. 별도 다이어그램 소스 분리는 미착수.
 ├─ backend/
