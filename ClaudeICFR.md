@@ -1515,6 +1515,17 @@ cd claude-icfr
 - 같은 사고 재발 방지
 - 미래 작업 명세 작성 시 자동 점검 룰 정착
 
+### ADR-0024 (2026-06-10) — git push 승인 원칙 (2-tier)
+- **배경**: 모든 push를 마스터가 확인하면 병목, 무분별 자동 push는 스키마·마이그레이션 등 위험 변경이 검토 없이 반영될 위험.
+- **결정**: Tier 1(문서·ADR·명세 수정, 명백한 버그픽스, 동작 무영향 변경)은 Claude 판단으로 즉시 push. Tier 2(신규 기능, 데이터모델·API 계약 변경, 마이그레이션, 인프라 구성, 시드/운영데이터 영향)는 Claude가 준비만 하고 마스터가 직접 push.
+- **판단 축**: 되돌리기 난이도 / 데이터·스키마 영향 / AI 추천 신뢰도 — 하나라도 높으면 Tier 2로.
+- **결과**: 채택. Regina 작업은 PR→리뷰 흐름(ADR-0021) 별도이며, 본 원칙은 main 직접 push 판단에 적용.
+
+### ADR-0025 (2026-06-15) — 플랫폼 근간: Baseline + Overlay + 멀티테넌시
+- **배경**: 사이냅소프트 93통제를 `controls`에 직접 적재한 단일회사 고정 스키마로는 "회사별 무한 변형 가능한 ICFR 플랫폼" 목표 달성 불가.
+- **결정**: 평가 흐름(설계→운영→미비점→개선→보고)은 제도가 강제하는 불변 골격으로 코드 보장. 통제 항목·속성·코드체계 등 가변 내용은 **Baseline**(법령 완전대응 표준, Basic-perfect) + **Overlay**(회사별 비채택/변형/추가) 2층 구조. 결합은 참조+diff(복제 아님)로 baseline 교체 시 미변경분 자동 갱신. 제도 공통 속성은 컬럼 고정, 회사 고유만 확장필드(완전 EAV 기각). 전 테이블 `tenant_id` 상시, 온프레는 "tenant 1개짜리 SaaS"로 단일 코드베이스 유지.
+- **결과**: 채택. **skip 금지** — Phase 1 4개 모듈(RCM·Test·Remediation·Evidence)이 3축(baseline/overlay/tenant) 재배치 필요, 지금이 적기(미루면 retrofit 비용 제곱 증가). RCM 실제 구현은 ADR-0027로 구체화.
+
 ### ADR-0026 (2026-06-26) — 멀티테넌시 1단계 구현 (tenant_id 전면 + 자동 격리)
 
 ADR-0025 근간 구조의 1단계 구현. 결정 사항:
@@ -1532,6 +1543,13 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 9. **데이터 보존**: 전환 전 6개 테이블 전부 tenant_id NULL 없음 확인 → 백필 불필요, 바로 인덱스 교체.
 10. **마이그레이션** `c3d4e5f6a7b8`(리비전, down_revision=`b1f2c3d4e5a6`). downgrade는 정직한 실패 허용(2번째 tenant 데이터가 code 중복 상태면 글로벌 unique 재생성 실패 — 의도된 동작).
 - 프롬프트: `prompts/ICFR_tenant_2_20260708.md`
+
+### ADR-0027 (2026-06-15) — RCM Baseline/Overlay 2단계 근간 설계
+- **배경**: ADR-0025 구조를 RCM(Process→SubProcess→Risk→Control+RiskCategory)에 실제 적용. 기존 `code` 글로벌 unique는 멀티테넌시·overlay와 정면 충돌(2번째 회사가 같은 code 사용 불가).
+- **결정**: 전 계층 baseline 제공(표준 프로세스 분류까지 Basic-perfect). **방식 A**(baseline 테이블/instance 테이블 완전분리) 채택, 단일테이블+플래그(방식B)는 기각. instance action 4종: adopt/exclude/override/add. override는 **필드 단위 diff**(전체 스냅샷 아님 — baseline 개정 자동 반영 위해). 조회 = baseline − exclude + override(필드 병합) + add. unique: baseline `code` 전역, instance `(tenant_id, code)` 복합. 기존 controls 95건은 baseline 초안으로 이관(하이브리드 C).
+- **단계**: 2-A(Control 계층 우선 검증) → 2-B(나머지 계층 확대) → 2-C(95통제 이관 + 사이냅소프트=첫 tenant instance).
+- **skip 금지(후속 필수)**: 코드 마스터 테이블화(risk_level·assertion·통제유형·주기 등, 2번째 tenant 온보딩 전 반드시 실행 — 하드코딩 시 커스터마이징 봉쇄), source envelope 전 계층 공통 규약, 삭제 의미론(baseline→exclude, add→soft delete).
+- **결과**: 채택. 후속 구현(2-A~2-C)은 이 문서 위에 단계적으로 얹음. RCM API 응답이 병합 결과로 변경 — Regina 프론트는 스펙 확정 후 대응.
 
 ### (다음 ADR은 여기에 추가)
 

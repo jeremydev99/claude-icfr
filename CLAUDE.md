@@ -56,9 +56,10 @@ ICFR/
 ├─ CLAUDE.md              ← 이 파일
 ├─ README.md
 ├─ docs/
-│   ├─ adr/               ← 의사결정 기록(개별 파일)
-│   ├─ api/openapi.yaml   ← API 스펙
-│   └─ erd/               ← ERD 다이어그램 소스
+│   ├─ diagrams/           ← 다이어그램 산출물(mmd/svg/png, ClaudeICFR.md §2에서 참조)
+│   ├─ adr/ (예정)         ← 의사결정 기록은 현재 ClaudeICFR.md §10에 통합. 개별 파일 분리는 미착수.
+│   ├─ api/openapi.yaml (예정) ← API 스펙은 현재 FastAPI 자동 생성 문서가 단일 진실 공급원(ADR-0017 §19). 파일 export는 미착수.
+│   └─ erd/ (예정)         ← ERD는 현재 ClaudeICFR.md §5에 인라인. 별도 다이어그램 소스 분리는 미착수.
 ├─ backend/
 ├─ frontend/
 ├─ infra/
