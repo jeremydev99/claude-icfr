@@ -357,7 +357,7 @@ def test_instance_parent_refs(app):
         db.flush()
         # risk 계층도 동일 — instance 상위(sub_process) 밑 + control 의 이중 FK
         ri = RiskInstance(
-            action="add", code="RI-I-1", description="회사 위험",
+            action="add", code="RI-I-1", description="회사 위험", assessment_level="LR",
             sub_process_instance_id=sp_under_instance.id,
         )
         db.add(ri)
@@ -396,7 +396,10 @@ def test_instance_dual_fk_check_violation(app, layer):
         spi = SubProcessInstance(action="add", code=f"SPI-CHK-{layer}", name="x", process_instance_id=pi.id)
         db.add(spi)
         db.flush()
-        ri = RiskInstance(action="add", code=f"RI-CHK-{layer}", description="x", sub_process_instance_id=spi.id)
+        # add 는 자체 필드를 전부 채운다(ControlInstance 규약과 동일) — assessment_level 누락 시
+        # resolver 가 NULL 을 내보내 RiskRead(assessment_level: str) 검증이 깨진다.
+        ri = RiskInstance(action="add", code=f"RI-CHK-{layer}", description="x",
+                          assessment_level="LR", sub_process_instance_id=spi.id)
         db.add(ri)
         db.flush()
 

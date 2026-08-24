@@ -21,6 +21,11 @@ class ProcessRead(ProcessBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
+    # source envelope (ADR-0027 / ADR-0029, 2-A-4-3) — resolver 유래 항목의 정체성 메타.
+    # 통제(ControlRead)와 **동일한 flat 계약**(중첩 wrapper 금지) — FE 가 계층별로 분기하지 않도록.
+    source: str | None = None            # "baseline"(adopt/override) | "tenant"(add)
+    baseline_id: UUID | None = None      # baseline 유래면 그 id, add면 None
+    is_overridden: bool = False          # override instance 적용 시 True
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -38,9 +43,16 @@ class SubProcessUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=200)
 
 class SubProcessRead(SubProcessBase):
+    # resolver 는 상위 미지정 add 행을 낼 수 있어 읽기에서는 nullable (Create 는 Base 상속으로 required 유지). ADR-0029.
+    process_id: UUID | None = None
     id: UUID
     created_at: datetime
     updated_at: datetime
+    # source envelope (ADR-0027 / ADR-0029, 2-A-4-3) — resolver 유래 항목의 정체성 메타.
+    # 통제(ControlRead)와 **동일한 flat 계약**(중첩 wrapper 금지) — FE 가 계층별로 분기하지 않도록.
+    source: str | None = None            # "baseline"(adopt/override) | "tenant"(add)
+    baseline_id: UUID | None = None      # baseline 유래면 그 id, add면 None
+    is_overridden: bool = False          # override instance 적용 시 True
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -60,9 +72,16 @@ class RiskUpdate(BaseModel):
     assessment_level: str | None = Field(None, pattern="^(LR|MR|HR|SR)$")
 
 class RiskRead(RiskBase):
+    # resolver 는 상위 미지정 add 행을 낼 수 있어 읽기에서는 nullable (Create 는 Base 상속으로 required 유지). ADR-0029.
+    sub_process_id: UUID | None = None
     id: UUID
     created_at: datetime
     updated_at: datetime
+    # source envelope (ADR-0027 / ADR-0029, 2-A-4-3) — resolver 유래 항목의 정체성 메타.
+    # 통제(ControlRead)와 **동일한 flat 계약**(중첩 wrapper 금지) — FE 가 계층별로 분기하지 않도록.
+    source: str | None = None            # "baseline"(adopt/override) | "tenant"(add)
+    baseline_id: UUID | None = None      # baseline 유래면 그 id, add면 None
+    is_overridden: bool = False          # override instance 적용 시 True
     model_config = ConfigDict(from_attributes=True)
 
 

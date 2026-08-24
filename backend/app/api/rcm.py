@@ -51,7 +51,11 @@ from app.schemas.rcm import (
     SubProcessRead,
     SubProcessUpdate,
 )
-from app.services.control_resolver import resolve_controls
+from app.services.control_resolver import (
+    resolve_controls,
+    resolve_hierarchy,
+    resolve_processes,
+)
 from app.services.excel_parser import find_rcm_sheet
 
 router = APIRouter(prefix="/api/rcm", tags=["rcm"])
@@ -79,12 +83,38 @@ def get_module_info(user: CurrentUser) -> dict:
 
 # ── Processes ─────────────────────────────────────────────
 
+# ── 상위 3계층 resolver 조회 헬퍼 (2-A-4-3, ADR-0029) ──────
+# cascade 로 빠진 항목은 목록에 없으므로 상세도 404 — 조회 경로 일관.
+
+def _resolved_process_or_404(db: Session, process_id: UUID) -> dict:
+    for r in resolve_processes(db):
+        if r["id"] == process_id:
+            return r
+    raise HTTPException(status_code=404, detail="Process not found")
+
+
+def _resolved_sub_process_or_404(db: Session, sp_id: UUID) -> dict:
+    for r in resolve_hierarchy(db)[1]:
+        if r["id"] == sp_id:
+            return r
+    raise HTTPException(status_code=404, detail="SubProcess not found")
+
+
+def _resolved_risk_or_404(db: Session, risk_id: UUID) -> dict:
+    for r in resolve_hierarchy(db)[2]:
+        if r["id"] == risk_id:
+            return r
+    raise HTTPException(status_code=404, detail="Risk not found")
+
+
 @router.get("/processes")
 def list_processes(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
-    q = db.query(Process).filter(Process.is_deleted == False)  # noqa: E712
-    total = q.count()
-    items = q.offset(skip).limit(limit).all()
-    return {"items": [ProcessRead.model_validate(i) for i in items], "total": total, "skip": skip, "limit": limit}
+    """목록 — resolve_processes 경유 (2-A-4-3, ADR-0029). 최상위 계층이라 cascade 대상 없음."""
+    rows = resolve_processes(db)
+    rows.sort(key=lambda r: r["code"] or "")
+    total = len(rows)
+    page = rows[skip: skip + limit]
+    return {"items": [ProcessRead(**r) for r in page], "total": total, "skip": skip, "limit": limit}
 
 
 @router.post("/processes", status_code=status.HTTP_201_CREATED, response_model=ProcessRead)
@@ -97,11 +127,9 @@ def create_process(body: ProcessCreate, user: CurrentUser = None, db: Session = 
 
 
 @router.get("/processes/{process_id}", response_model=ProcessRead)
-def get_process(process_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> Process:
-    obj = db.query(Process).filter(Process.id == process_id, Process.is_deleted == False).first()  # noqa: E712
-    if not obj:
-        raise HTTPException(status_code=404, detail="Process not found")
-    return obj
+def get_process(process_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """상세 — resolver 결과에서 정체성 id 매칭 (2-A-4-3, ADR-0029)."""
+    return _resolved_process_or_404(db, process_id)
 
 
 @router.patch("/processes/{process_id}", response_model=ProcessRead)
@@ -129,12 +157,14 @@ def delete_process(process_id: UUID, user: CurrentUser = None, db: Session = Dep
 
 @router.get("/sub-processes")
 def list_sub_processes(process_id: UUID | None = None, skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
-    q = db.query(SubProcess).filter(SubProcess.is_deleted == False)  # noqa: E712
+    """목록 — resolve_hierarchy 경유 (2-A-4-3, ADR-0029). 상위 process 제외분은 cascade 로 빠진다."""
+    rows = resolve_hierarchy(db)[1]
     if process_id:
-        q = q.filter(SubProcess.process_id == process_id)
-    total = q.count()
-    items = q.offset(skip).limit(limit).all()
-    return {"items": [SubProcessRead.model_validate(i) for i in items], "total": total, "skip": skip, "limit": limit}
+        rows = [r for r in rows if r["process_id"] == process_id]
+    rows.sort(key=lambda r: r["code"] or "")
+    total = len(rows)
+    page = rows[skip: skip + limit]
+    return {"items": [SubProcessRead(**r) for r in page], "total": total, "skip": skip, "limit": limit}
 
 
 @router.post("/sub-processes", status_code=status.HTTP_201_CREATED, response_model=SubProcessRead)
@@ -147,11 +177,9 @@ def create_sub_process(body: SubProcessCreate, user: CurrentUser = None, db: Ses
 
 
 @router.get("/sub-processes/{sp_id}", response_model=SubProcessRead)
-def get_sub_process(sp_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> SubProcess:
-    obj = db.query(SubProcess).filter(SubProcess.id == sp_id, SubProcess.is_deleted == False).first()  # noqa: E712
-    if not obj:
-        raise HTTPException(status_code=404, detail="SubProcess not found")
-    return obj
+def get_sub_process(sp_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """상세 — resolver 결과에서 정체성 id 매칭 (2-A-4-3, ADR-0029)."""
+    return _resolved_sub_process_or_404(db, sp_id)
 
 
 @router.patch("/sub-processes/{sp_id}", response_model=SubProcessRead)
@@ -179,12 +207,14 @@ def delete_sub_process(sp_id: UUID, user: CurrentUser = None, db: Session = Depe
 
 @router.get("/risks")
 def list_risks(sub_process_id: UUID | None = None, skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
-    q = db.query(Risk).filter(Risk.is_deleted == False)  # noqa: E712
+    """목록 — resolve_hierarchy 경유 (2-A-4-3, ADR-0029). 상위 계층 제외분은 cascade 로 빠진다."""
+    rows = resolve_hierarchy(db)[2]
     if sub_process_id:
-        q = q.filter(Risk.sub_process_id == sub_process_id)
-    total = q.count()
-    items = q.offset(skip).limit(limit).all()
-    return {"items": [RiskRead.model_validate(i) for i in items], "total": total, "skip": skip, "limit": limit}
+        rows = [r for r in rows if r["sub_process_id"] == sub_process_id]
+    rows.sort(key=lambda r: r["code"] or "")
+    total = len(rows)
+    page = rows[skip: skip + limit]
+    return {"items": [RiskRead(**r) for r in page], "total": total, "skip": skip, "limit": limit}
 
 
 @router.post("/risks", status_code=status.HTTP_201_CREATED, response_model=RiskRead)
@@ -197,11 +227,9 @@ def create_risk(body: RiskCreate, user: CurrentUser = None, db: Session = Depend
 
 
 @router.get("/risks/{risk_id}", response_model=RiskRead)
-def get_risk(risk_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> Risk:
-    obj = db.query(Risk).filter(Risk.id == risk_id, Risk.is_deleted == False).first()  # noqa: E712
-    if not obj:
-        raise HTTPException(status_code=404, detail="Risk not found")
-    return obj
+def get_risk(risk_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """상세 — resolver 결과에서 정체성 id 매칭 (2-A-4-3, ADR-0029)."""
+    return _resolved_risk_or_404(db, risk_id)
 
 
 @router.patch("/risks/{risk_id}", response_model=RiskRead)

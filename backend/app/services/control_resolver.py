@@ -107,6 +107,8 @@ def _resolve_layer(db, baseline_model, instance_model, fields, baseline_fk_attr)
         row["source"] = "baseline"
         row["baseline_id"] = base.id
         row["is_overridden"] = overridden
+        row["created_at"] = base.created_at
+        row["updated_at"] = base.updated_at
         triples.append((row, base, inst))
 
     for inst in instances:
@@ -116,6 +118,8 @@ def _resolve_layer(db, baseline_model, instance_model, fields, baseline_fk_attr)
             row["source"] = "tenant"
             row["baseline_id"] = None
             row["is_overridden"] = False
+            row["created_at"] = inst.created_at
+            row["updated_at"] = inst.updated_at
             triples.append((row, None, inst))
 
     return triples
@@ -170,6 +174,22 @@ def resolve_risks(db: Session) -> list[dict]:
         )
         result.append(row)
     return result
+
+
+def resolve_hierarchy(db: Session) -> tuple[list[dict], list[dict], list[dict]]:
+    """3계층 최종 목록 (process, sub_process, risk) — cascade 적용 (ADR-0029 §2.1).
+
+    상위 제외 목록을 **한 번** 읽어 하위를 걸러낸다. 부모 체인을 거슬러 오르는 재귀 조회를
+    하지 않으며, 하위 레코드를 물리적으로 변경하지도 않는다(§2.2 — "상위로 인한 제외"는
+    저장하지 않고 조회 시점에 계산). 계층별 resolve_* 는 자기 계층 exclude 만 반영하므로
+    cascade 가 필요한 소비처(목록·상세 API, resolve_controls)는 이 함수를 쓴다.
+    """
+    processes = resolve_processes(db)
+    alive_processes = {p["id"] for p in processes}
+    sub_processes = [s for s in resolve_sub_processes(db) if s["process_id"] in alive_processes]
+    alive_sub = {s["id"] for s in sub_processes}
+    risks = [r for r in resolve_risks(db) if r["sub_process_id"] in alive_sub]
+    return processes, sub_processes, risks
 
 
 def _resolve_assertions(db: Session) -> dict:
@@ -229,18 +249,12 @@ def resolve_controls(db: Session) -> list[dict]:
     - baseline 유래 행(adopt/override)의 id 는 baseline id — 통제의 정체성은 표준 쪽.
     - add 행의 id 는 instance id.
     """
-    processes = resolve_processes(db)
-    sub_processes = resolve_sub_processes(db)
-    risks = resolve_risks(db)
+    processes, sub_processes, risks = resolve_hierarchy(db)  # cascade 적용 (ADR-0029 §2.1)
 
     proc_by_id = {p["id"]: p for p in processes}
     sub_by_id = {s["id"]: s for s in sub_processes}
     risk_by_id = {r["id"]: r for r in risks}
-
-    # cascade — 상위가 살아있는(=exclude/전파 제외되지 않은) 것만 alive.
-    alive_processes = set(proc_by_id)
-    alive_sub = {s["id"] for s in sub_processes if s["process_id"] in alive_processes}
-    alive_risks = {r["id"] for r in risks if r["sub_process_id"] in alive_sub}
+    alive_risks = set(risk_by_id)
 
     assertions_by_control = _resolve_assertions(db)
 
@@ -255,10 +269,6 @@ def resolve_controls(db: Session) -> list[dict]:
         # cascade: risk 가 있는데 죽었으면 제외. risk_id NULL 은 유지(이관 전 통제).
         if risk_id is not None and risk_id not in alive_risks:
             continue
-
-        src = base if base is not None else inst
-        row["created_at"] = src.created_at
-        row["updated_at"] = src.updated_at
 
         # 관계 필드 — 정체성 id lookup 체인 (상위 없거나 못 찾으면 None)
         risk = risk_by_id.get(risk_id)

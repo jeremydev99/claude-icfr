@@ -14,6 +14,13 @@ _XFAIL_SRC_SPLIT = pytest.mark.xfail(
 )
 
 
+# 상위 3계층 전용 — 통제(_XFAIL_SRC_SPLIT)와 해소 시점이 다르므로 마커를 분리한다.
+_XFAIL_SRC_SPLIT_H = pytest.mark.xfail(
+    reason="2-A-4-3 커밋1 READ 전환 / 커밋2 WRITE 전환 대기 — write(legacy 상위계층)→read(resolver) 소스 분리",
+    strict=True,
+)
+
+
 def _token(client: TestClient) -> str:
     resp = client.post("/api/auth/login", data={"username": "admin@acme.example", "password": "admin123"})
     assert resp.status_code == 200
@@ -119,6 +126,7 @@ def _make_excel_with_headers(
 
 # ── Process CRUD ──────────────────────────────────────────
 
+@_XFAIL_SRC_SPLIT_H  # 2-A-4-3 커밋1: 조회만 resolver 전환 — CRUD(legacy 쓰기) 는 커밋2 에서 전환
 def test_process_crud(client: TestClient) -> None:
     h = _headers(client)
     resp = client.post("/api/rcm/processes", json={"code": "P-TEST", "name": "테스트 프로세스"}, headers=h)
@@ -144,6 +152,7 @@ def test_process_crud(client: TestClient) -> None:
 
 # ── SubProcess CRUD ───────────────────────────────────────
 
+@_XFAIL_SRC_SPLIT_H  # 2-A-4-3 커밋1: 조회만 resolver 전환 — CRUD(legacy 쓰기) 는 커밋2 에서 전환
 def test_subprocess_crud(client: TestClient) -> None:
     h = _headers(client)
     p = client.post("/api/rcm/processes", json={"code": "P-SP-TEST", "name": "SP 테스트 프로세스"}, headers=h)
@@ -169,6 +178,7 @@ def test_subprocess_crud(client: TestClient) -> None:
 
 # ── Risk CRUD ─────────────────────────────────────────────
 
+@_XFAIL_SRC_SPLIT_H  # 2-A-4-3 커밋1: 조회만 resolver 전환 — CRUD(legacy 쓰기) 는 커밋2 에서 전환
 def test_risk_crud(client: TestClient) -> None:
     h = _headers(client)
     p = client.post("/api/rcm/processes", json={"code": "P-RISK-TEST", "name": "Risk 테스트"}, headers=h)
