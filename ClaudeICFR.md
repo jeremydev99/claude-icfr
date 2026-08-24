@@ -1745,6 +1745,21 @@ seed는 실제 데이터 시작행을 탐색하는 `_find_data_start`로 보정�
 
 **2026-08-13 확장 확인 (`ICFR-PROMPT-2A3-1-envelope-required.md` 사전확인 중, Regina/Claude)**: 동일 패턴이 `/sub-processes`·`/risks` 엔드포인트에도 그대로 적용됨을 `api/rcm.py` 코드로 확인 — 둘 다 `resolve_sub_processes`/`resolve_risks`(둘 다 `control_resolver.py`에 이미 구현되어 envelope flat 필드를 채움)를 거치지 않고 레거시 테이블을 직접 조회·CRUD한다. 즉 `control_resolver.py` 자체는 "전 계층 공통 envelope"라 서술하지만, 실제 배선(API 라우팅)은 `resolve_controls`만 되어 있고 상위 3계층(process/sub_process/risk)은 미배선 — FE가 이 3계층에서 envelope를 required로 가정하면 런타임에 항상 깨진다. 따라서 FE envelope required 전환(2-A-3-1)은 **control 계층에 한정**하고, 상위 3계층의 `envelope?: SourceEnvelope`는 optional로 유지(`types.ts` `ProcessItem`/`SubProcessItem`/`RiskItem`). 3계층 resolver 배선은 별도 백엔드 작업(2-A-4 상위 계층 CRUD 범위 또는 그 이전) 필요 — 코드 변경 없음, 기록만.
 
+**2026-08-24 정정 (운영 서버 실측, 조사 전용 세션 / 코드 변경 없음)**: 위 두 항목의 **영향도 판단("실질 응답 차이는 없다")이 뒤집혔다.** 미배선 사실 자체는 그대로이고, 그 결과의 크기가 틀렸다.
+
+| 테이블 | 운영 | 로컬 |
+|---|---|---|
+| `processes`(레거시) | **0** | 9 |
+| `controls`(레거시) | **0** | 95 |
+| `baseline_processes` | 8 | 8 |
+| `baseline_controls` | 93 | 93 |
+| `process_instances` / `control_instances` | 0 | 0 |
+
+- **원인**: 로컬에는 Phase 0~1 시절 레거시 데이터가 남아 있어 `/processes`가 9건을 반환 — **미배선 상태가 가려졌다.** 운영은 `seeds/seed_baseline.py`(Baseline* 6모델만 기록)로만 구축돼 레거시가 비어 있어 그대로 드러났다. 같은 원인의 양면으로, 통제 93건이 정상 표시되는 것은 `resolve_controls`가 `baseline_controls`(93) − exclude(0) + add(0)를 읽기 때문이며 레거시 `controls` 0건과 모순되지 않는다.
+- **사용자 영향**: `ControlSearchBar`의 프로세스 필터 드롭다운(2026-08-12 동적화, `GET /api/rcm/processes` 사용)이 **운영에서 빈 목록**이 된다. "차이 없음"이 아니라 **기능 결손**이다.
+- **성격**: 버그가 아니라 **2-A-4-3 미착수로 인한 예정된 미완 구간**(대응이 다르므로 구분해 기록한다).
+- **교훈**: "로컬 통과를 검증으로 인정하지 않는다"는 원칙의 실제 사례. **레거시 잔존 데이터가 미구현을 가릴 수 있다** — 로컬이 운영보다 관대한 상태였다.
+
 ### 13.8 배포 파이프라인 부채 — deploy.yml 경로 필터 부재 (미착수)
 
 `.github/workflows/deploy.yml` 은 `main` push 전체를 트리거로 받는다. **문서·스크립트만 바뀌어도 이미지 재빌드 → 운영 컨테이너 전체 재시작**이 일어나 불필요한 다운타임이 발생한다.
@@ -1769,11 +1784,14 @@ seed는 실제 데이터 시작행을 탐색하는 `_find_data_start`로 보정�
 4. **NCP API 인증키 분리** — 현재 루트 계정 키를 쓰고 있다. 서브계정 키로 분리하고 권한을 최소화한다.
 5. **MinIO 증빙 백업 별도 설계** — DB와 보존정책이 달라(원본 보관 의무 vs 시점 복원) 이번 백업 라인 범위에서 제외했다(ADR-0028 §2.8.1 "범위 외").
 
+6. **상위 3계층 resolver 배선** — `/processes`·`/sub-processes`·`/risks` 를 resolver 경유로 전환(**2-A-4-3 범위**). `resolve_processes`/`resolve_sub_processes`/`resolve_risks` 는 `backend/app/services/control_resolver.py:137,144,157` 에 **이미 구현돼 있고 호출처만 없다**(`app/` 전체에서 유일한 호출은 `tests/test_rcm_baseline.py`). 운영 영향은 13.7 정정 참조.
+7. **레거시 테이블 백필은 채택하지 않는다(기각)** — 운영 `processes`·`controls` 를 채워 증상만 덮는 방식. 방향이 baseline/overlay 전환과 **반대**이고, 2-A-4-3 완료 후 두 번 걷어내야 한다.
+
 **유지(기존 미결)**
 
-6. **2-A-4-3** — 상위 계층(processes/sub-processes/risks) + 어서션 junction CRUD 전환, upload-excel 파서 코어 분리·다중 헤더행 대응. 남은 xfail 6건·Excel 업로드 잠금이 여기서 해소된다(13.3 참조).
-7. **코드마스터 테이블화** — 미착수.
-8. **Regina NCP Sub Account** — `icfr-regina` / `icfr-view-only` 정책(ADR-0028 §2.7) 발급 미완.
+8. **2-A-4-3** — 상위 계층(processes/sub-processes/risks) + 어서션 junction CRUD 전환, upload-excel 파서 코어 분리·다중 헤더행 대응. 남은 xfail 6건·Excel 업로드 잠금이 여기서 해소된다(13.3 참조).
+9. **코드마스터 테이블화** — 미착수.
+10. **Regina NCP Sub Account** — `icfr-regina` / `icfr-view-only` 정책(ADR-0028 §2.7) 발급 미완.
 
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
