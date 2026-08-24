@@ -14,13 +14,6 @@ _XFAIL_SRC_SPLIT = pytest.mark.xfail(
 )
 
 
-# 상위 3계층 전용 — 통제(_XFAIL_SRC_SPLIT)와 해소 시점이 다르므로 마커를 분리한다.
-_XFAIL_SRC_SPLIT_H = pytest.mark.xfail(
-    reason="2-A-4-3 커밋1 READ 전환 / 커밋2 WRITE 전환 대기 — write(legacy 상위계층)→read(resolver) 소스 분리",
-    strict=True,
-)
-
-
 def _token(client: TestClient) -> str:
     resp = client.post("/api/auth/login", data={"username": "admin@acme.example", "password": "admin123"})
     assert resp.status_code == 200
@@ -126,7 +119,6 @@ def _make_excel_with_headers(
 
 # ── Process CRUD ──────────────────────────────────────────
 
-@_XFAIL_SRC_SPLIT_H  # 2-A-4-3 커밋1: 조회만 resolver 전환 — CRUD(legacy 쓰기) 는 커밋2 에서 전환
 def test_process_crud(client: TestClient) -> None:
     h = _headers(client)
     resp = client.post("/api/rcm/processes", json={"code": "P-TEST", "name": "테스트 프로세스"}, headers=h)
@@ -152,7 +144,6 @@ def test_process_crud(client: TestClient) -> None:
 
 # ── SubProcess CRUD ───────────────────────────────────────
 
-@_XFAIL_SRC_SPLIT_H  # 2-A-4-3 커밋1: 조회만 resolver 전환 — CRUD(legacy 쓰기) 는 커밋2 에서 전환
 def test_subprocess_crud(client: TestClient) -> None:
     h = _headers(client)
     p = client.post("/api/rcm/processes", json={"code": "P-SP-TEST", "name": "SP 테스트 프로세스"}, headers=h)
@@ -178,7 +169,6 @@ def test_subprocess_crud(client: TestClient) -> None:
 
 # ── Risk CRUD ─────────────────────────────────────────────
 
-@_XFAIL_SRC_SPLIT_H  # 2-A-4-3 커밋1: 조회만 resolver 전환 — CRUD(legacy 쓰기) 는 커밋2 에서 전환
 def test_risk_crud(client: TestClient) -> None:
     h = _headers(client)
     p = client.post("/api/rcm/processes", json={"code": "P-RISK-TEST", "name": "Risk 테스트"}, headers=h)
@@ -497,7 +487,6 @@ def _create_hierarchy(client: TestClient, h: dict, prefix: str, risk_level: str 
     return {"process_id": p.json()["id"], "control_id": c.json()["id"], "risk_id": r.json()["id"]}
 
 
-@_XFAIL_SRC_SPLIT
 def test_search_response_includes_process_code(client: TestClient) -> None:
     """search 응답에 process_code 포함."""
     h = _headers(client)
@@ -509,7 +498,6 @@ def test_search_response_includes_process_code(client: TestClient) -> None:
     assert items[0]["process_code"] == "SPC-P"
 
 
-@_XFAIL_SRC_SPLIT
 def test_search_response_includes_sub_process_code(client: TestClient) -> None:
     """search 응답에 sub_process_code 포함."""
     h = _headers(client)
@@ -519,7 +507,6 @@ def test_search_response_includes_sub_process_code(client: TestClient) -> None:
     assert resp.json()["items"][0]["sub_process_code"] == "SSC-SP"
 
 
-@_XFAIL_SRC_SPLIT
 def test_search_response_includes_risk_level(client: TestClient) -> None:
     """search 응답에 risk_level 포함 (LR/MR/HR/SR)."""
     h = _headers(client)
@@ -544,7 +531,6 @@ def test_search_response_includes_assertions(client: TestClient) -> None:
     assert "TST" in assertions
 
 
-@_XFAIL_SRC_SPLIT
 def test_search_no_n_plus_one(client: TestClient) -> None:
     """여러 통제 검색 시 모두 관계 데이터 포함 — JOIN 단일 쿼리 효과 검증."""
     h = _headers(client)

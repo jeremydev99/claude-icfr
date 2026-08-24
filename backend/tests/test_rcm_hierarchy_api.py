@@ -12,12 +12,14 @@ from fastapi.testclient import TestClient
 from app.core.tenant_context import DEFAULT_TENANT_ID, reset_active_tenant, set_active_tenant
 from app.models.rcm_baseline import (
     ACTION_ADD,
+    ACTION_ADOPT,
     ACTION_EXCLUDE,
     ACTION_OVERRIDE,
     BaselineProcess,
     BaselineRisk,
     BaselineSubProcess,
     ProcessInstance,
+    SubProcessInstance,
 )
 from tests.conftest import TestingSessionLocal
 
@@ -167,3 +169,167 @@ def test_legacy_tables_untouched_by_reads(client: TestClient) -> None:
     assert "HL5-P" in codes, "baseline 이 응답에 없다 — resolver 미배선 회귀"
     # 레거시 행 수와 무관하게 baseline 이 나와야 한다(운영은 legacy 0건).
     assert resp.json()["total"] >= 1 and legacy_count >= 0
+
+
+# ── CRUD overlay 전환 (2-A-4-3 커밋2) ─────────────────────
+
+def test_create_hierarchy_writes_instance_not_legacy(client: TestClient) -> None:
+    """POST 는 legacy 테이블이 아니라 instance(action=add)에 쓴다."""
+    from app.models.rcm import Process as LegacyProcess
+
+    h = _headers(client)
+    resp = client.post("/api/rcm/processes", json={"code": "HC1-P", "name": "회사 프로세스"}, headers=h)
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["source"] == "tenant" and body["baseline_id"] is None
+
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        inst = db.query(ProcessInstance).filter(ProcessInstance.code == "HC1-P").one()
+        assert inst.action == ACTION_ADD and inst.baseline_process_id is None
+        assert db.query(LegacyProcess).filter(LegacyProcess.code == "HC1-P").first() is None
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_patch_baseline_creates_override_instance(client: TestClient) -> None:
+    """baseline 수정은 원본을 건드리지 않고 override instance 로 기록된다."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        p, sp, r = _seed_chain(db, "C2")
+        p_id = p.id
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+    h = _headers(client)
+    resp = client.patch(f"/api/rcm/processes/{p_id}", json={"name": "회사가 바꾼 이름"}, headers=h)
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "회사가 바꾼 이름"
+    assert resp.json()["is_overridden"] is True
+    assert resp.json()["id"] == str(p_id)          # 정체성은 baseline 유지
+
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        assert db.query(BaselineProcess).filter(BaselineProcess.id == p_id).one().name == "표준 프로세스"
+        inst = db.query(ProcessInstance).filter(ProcessInstance.baseline_process_id == p_id).one()
+        assert inst.action == ACTION_OVERRIDE and inst.name == "회사가 바꾼 이름"
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_patch_back_to_baseline_value_reverts_to_adopt(client: TestClient) -> None:
+    """override 값이 baseline 과 같아지면 adopt 로 되돌아간다(instance 는 흔적으로 남음)."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        p, sp, r = _seed_chain(db, "C3")
+        p_id = p.id
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+    h = _headers(client)
+    client.patch(f"/api/rcm/processes/{p_id}", json={"name": "임시명"}, headers=h)
+    resp = client.patch(f"/api/rcm/processes/{p_id}", json={"name": "표준 프로세스"}, headers=h)
+    assert resp.status_code == 200 and resp.json()["is_overridden"] is False
+
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        inst = db.query(ProcessInstance).filter(ProcessInstance.baseline_process_id == p_id).one()
+        assert inst.action == ACTION_ADOPT and inst.name is None  # NULL=baseline 따름
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_delete_baseline_creates_exclude_and_keeps_original(client: TestClient) -> None:
+    """baseline 삭제는 exclude instance — 원본 baseline 행은 그대로 남는다."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        p, sp, r = _seed_chain(db, "C4")
+        p_id = p.id
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+    h = _headers(client)
+    assert client.delete(f"/api/rcm/processes/{p_id}", headers=h).status_code == 204
+    assert client.get(f"/api/rcm/processes/{p_id}", headers=h).status_code == 404
+
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        assert db.query(BaselineProcess).filter(BaselineProcess.id == p_id).one().is_deleted is False
+        inst = db.query(ProcessInstance).filter(ProcessInstance.baseline_process_id == p_id).one()
+        assert inst.action == ACTION_EXCLUDE
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_delete_add_instance_soft_deletes(client: TestClient) -> None:
+    """회사 add 삭제는 instance soft delete."""
+    h = _headers(client)
+    pid = client.post("/api/rcm/processes", json={"code": "HC5-P", "name": "회사"}, headers=h).json()["id"]
+    assert client.delete(f"/api/rcm/processes/{pid}", headers=h).status_code == 204
+    assert client.get(f"/api/rcm/processes/{pid}", headers=h).status_code == 404
+
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        inst = db.query(ProcessInstance).filter(ProcessInstance.code == "HC5-P").one()
+        assert inst.is_deleted is True and inst.action == ACTION_ADD
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_create_rejects_code_duplicate_against_baseline(client: TestClient) -> None:
+    """add 의 code 가 baseline code 와 겹치면 409 (ADR-0029 §3 — DB 제약이 못 막는 구간)."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        _seed_chain(db, "C6")
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+    h = _headers(client)
+    resp = client.post("/api/rcm/processes", json={"code": "HC6-P", "name": "중복"}, headers=h)
+    assert resp.status_code == 409
+    assert "표준" in resp.json()["detail"]
+
+
+def test_create_rejects_code_duplicate_against_instance(client: TestClient) -> None:
+    """add 끼리 code 가 겹쳐도 409 (IntegrityError 가 아니라 의미 있는 메시지)."""
+    h = _headers(client)
+    assert client.post("/api/rcm/processes", json={"code": "HC7-P", "name": "첫번째"}, headers=h).status_code == 201
+    resp = client.post("/api/rcm/processes", json={"code": "HC7-P", "name": "두번째"}, headers=h)
+    assert resp.status_code == 409
+    assert "사용 중" in resp.json()["detail"]
+
+
+def test_create_sub_process_under_added_parent(client: TestClient) -> None:
+    """회사 add 프로세스 밑에 하위프로세스를 add 하면 instance 쪽 이중 FK 로 매핑된다."""
+    h = _headers(client)
+    pid = client.post("/api/rcm/processes", json={"code": "HC8-P", "name": "회사P"}, headers=h).json()["id"]
+    resp = client.post("/api/rcm/sub-processes", json={"code": "HC8-SP", "name": "회사SP", "process_id": pid}, headers=h)
+    assert resp.status_code == 201
+    assert resp.json()["process_id"] == pid
+
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        inst = db.query(SubProcessInstance).filter(SubProcessInstance.code == "HC8-SP").one()
+        assert inst.process_instance_id is not None and inst.process_baseline_id is None
+    finally:
+        reset_active_tenant(tok)
+        db.close()

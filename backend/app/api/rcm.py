@@ -24,9 +24,13 @@ from app.models.rcm_baseline import (
     ACTION_EXCLUDE,
     ACTION_OVERRIDE,
     BaselineControl,
+    BaselineProcess,
     BaselineRisk,
+    BaselineSubProcess,
     ControlInstance,
+    ProcessInstance,
     RiskInstance,
+    SubProcessInstance,
 )
 from app.schemas.rcm import (
     BulkDeleteRequest,
@@ -83,6 +87,128 @@ def get_module_info(user: CurrentUser) -> dict:
 
 # ── Processes ─────────────────────────────────────────────
 
+# ── 상위 3계층 overlay CRUD 헬퍼 (2-A-4-3, ADR-0029) ───────
+# 통제(_apply_control_update/_apply_control_delete)와 같은 규칙을 계층 모델로 매개화한 것.
+# 계층마다 복붙하지 않되 클래스·서비스는 두지 않는다(ADR-0020 — _resolve_layer 선례).
+
+# override 대상 = 각 계층 Update 스키마 필드 (code·상위참조는 제외 — 정체성/구조라 override 대상 아님)
+_PROCESS_OVERRIDE_FIELDS = list(ProcessUpdate.model_fields.keys())
+_SUB_PROCESS_OVERRIDE_FIELDS = list(SubProcessUpdate.model_fields.keys())
+_RISK_OVERRIDE_FIELDS = list(RiskUpdate.model_fields.keys())
+
+
+def _assert_code_available(db: Session, baseline_model, instance_model, code: str, label: str) -> None:
+    """신규 add 의 code 중복 검증 (ADR-0029 §3).
+
+    DB 제약은 `(tenant_id, code)` 뿐이라 **instance 끼리의 충돌만** 막는다.
+    baseline 테이블의 code 와 겹치는 경우는 어떤 제약도 막지 못하므로 여기서 함께 본다
+    (겹치면 resolver 결과에 같은 code 가 둘 나온다). 제약 위반을 IntegrityError 로 터뜨리는
+    대신 의미 있는 409 를 돌려준다.
+    """
+    dup_baseline = db.query(baseline_model).filter(
+        baseline_model.code == code,
+        baseline_model.is_deleted == False,  # noqa: E712
+    ).first()
+    if dup_baseline is not None:
+        raise HTTPException(status_code=409, detail=f"{label} 코드 '{code}' 는 표준(baseline)에 이미 있습니다")
+    dup_inst = db.query(instance_model).filter(
+        instance_model.code == code,
+        instance_model.is_deleted == False,  # noqa: E712
+    ).first()
+    if dup_inst is not None:
+        raise HTTPException(status_code=409, detail=f"{label} 코드 '{code}' 는 이미 사용 중입니다")
+
+
+def _apply_layer_update(db: Session, baseline_model, instance_model, fk_attr: str,
+                        override_fields: list[str], item_id: UUID, changes: dict) -> bool:
+    """계층 수정 — baseline 유래는 override instance 필드 diff, add 는 instance 직접 수정.
+
+    요청 값이 baseline 과 같으면 NULL(=baseline 따름), 다르면 값 저장. 전부 NULL 이면 adopt 로
+    되돌린다(instance 는 검토 흔적으로 남긴다). **커밋하지 않는다** — 경계는 호출자.
+    """
+    baseline = db.query(baseline_model).filter(baseline_model.id == item_id).first()
+    if baseline is not None:
+        inst = db.query(instance_model).filter(getattr(instance_model, fk_attr) == item_id).first()
+        if inst is None:
+            inst = instance_model(**{fk_attr: item_id}, action=ACTION_OVERRIDE)
+            db.add(inst)
+        elif inst.action in (ACTION_ADOPT, ACTION_EXCLUDE):
+            inst.action = ACTION_OVERRIDE
+        for f in override_fields:
+            if f in changes:  # 전송된 필드만 (None 도 전송이면 diff 대상)
+                req_val = changes[f]
+                setattr(inst, f, None if req_val == getattr(baseline, f) else req_val)
+        if all(getattr(inst, f) is None for f in override_fields):
+            inst.action = ACTION_ADOPT
+        return True
+
+    inst = db.query(instance_model).filter(
+        instance_model.id == item_id,
+        instance_model.action == ACTION_ADD,
+        instance_model.is_deleted == False,  # noqa: E712
+    ).first()
+    if inst is None:
+        return False
+    for f, v in changes.items():
+        setattr(inst, f, v)
+    return True
+
+
+def _apply_layer_delete(db: Session, baseline_model, instance_model, fk_attr: str,
+                        override_fields: list[str], item_id: UUID, parent_attrs: tuple[str, ...]) -> bool:
+    """계층 삭제 — baseline 유래는 exclude instance(원본 baseline 불변), add 는 soft delete.
+
+    하위 계층에는 아무것도 쓰지 않는다 — "상위로 인한 제외"는 저장하지 않고 조회 시점에
+    계산한다(ADR-0029 §2.2). **커밋하지 않는다** — 경계는 호출자.
+    """
+    baseline = db.query(baseline_model).filter(baseline_model.id == item_id).first()
+    if baseline is not None:
+        inst = db.query(instance_model).filter(getattr(instance_model, fk_attr) == item_id).first()
+        if inst is None:
+            inst = instance_model(**{fk_attr: item_id}, action=ACTION_EXCLUDE)
+            db.add(inst)
+        else:
+            inst.action = ACTION_EXCLUDE
+            for f in override_fields:  # override 흔적 정리
+                setattr(inst, f, None)
+            inst.code = None
+            for a in parent_attrs:
+                setattr(inst, a, None)
+        return True
+
+    inst = db.query(instance_model).filter(
+        instance_model.id == item_id,
+        instance_model.action == ACTION_ADD,
+        instance_model.is_deleted == False,  # noqa: E712
+    ).first()
+    if inst is None:
+        return False
+    inst.is_deleted = True
+    return True
+
+
+def _resolve_process_parent(db: Session, process_id: UUID | None) -> tuple[UUID | None, UUID | None]:
+    """요청 process_id → (process_baseline_id, process_instance_id). 2-B-2 이중 FK 규칙."""
+    if process_id is None:
+        return None, None
+    if db.query(BaselineProcess).filter(BaselineProcess.id == process_id).first() is not None:
+        return process_id, None
+    if db.query(ProcessInstance).filter(ProcessInstance.id == process_id).first() is not None:
+        return None, process_id
+    return None, None
+
+
+def _resolve_sub_process_parent(db: Session, sub_process_id: UUID | None) -> tuple[UUID | None, UUID | None]:
+    """요청 sub_process_id → (sub_process_baseline_id, sub_process_instance_id)."""
+    if sub_process_id is None:
+        return None, None
+    if db.query(BaselineSubProcess).filter(BaselineSubProcess.id == sub_process_id).first() is not None:
+        return sub_process_id, None
+    if db.query(SubProcessInstance).filter(SubProcessInstance.id == sub_process_id).first() is not None:
+        return None, sub_process_id
+    return None, None
+
+
 # ── 상위 3계층 resolver 조회 헬퍼 (2-A-4-3, ADR-0029) ──────
 # cascade 로 빠진 항목은 목록에 없으므로 상세도 404 — 조회 경로 일관.
 
@@ -118,12 +244,13 @@ def list_processes(skip: int = 0, limit: int = 100, user: CurrentUser = None, db
 
 
 @router.post("/processes", status_code=status.HTTP_201_CREATED, response_model=ProcessRead)
-def create_process(body: ProcessCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> Process:
-    obj = Process(**body.model_dump())
-    db.add(obj)
+def create_process(body: ProcessCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """add instance 생성 (2-A-4-3, ADR-0029). tenant_id 는 before_flush 자동 stamp."""
+    _assert_code_available(db, BaselineProcess, ProcessInstance, body.code, "프로세스")
+    inst = ProcessInstance(action=ACTION_ADD, baseline_process_id=None, **body.model_dump())
+    db.add(inst)
     db.commit()
-    db.refresh(obj)
-    return obj
+    return _resolved_process_or_404(db, inst.id)
 
 
 @router.get("/processes/{process_id}", response_model=ProcessRead)
@@ -133,23 +260,27 @@ def get_process(process_id: UUID, user: CurrentUser = None, db: Session = Depend
 
 
 @router.patch("/processes/{process_id}", response_model=ProcessRead)
-def update_process(process_id: UUID, body: ProcessUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> Process:
-    obj = db.query(Process).filter(Process.id == process_id, Process.is_deleted == False).first()  # noqa: E712
-    if not obj:
+def update_process(process_id: UUID, body: ProcessUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """수정 — baseline 유래면 override instance, add 면 instance 직접 (2-A-4-3, ADR-0029).
+
+    `exclude_unset` — False/""/None 도 유효한 값이라 미전송 여부로만 판별한다(2-A-4-2 선례).
+    """
+    if not _apply_layer_update(db, BaselineProcess, ProcessInstance, "baseline_process_id",
+                               _PROCESS_OVERRIDE_FIELDS, process_id, body.model_dump(exclude_unset=True)):
         raise HTTPException(status_code=404, detail="Process not found")
-    for f, v in body.model_dump(exclude_none=True).items():
-        setattr(obj, f, v)
     db.commit()
-    db.refresh(obj)
-    return obj
+    return _resolved_process_or_404(db, process_id)
 
 
 @router.delete("/processes/{process_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_process(process_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
-    obj = db.query(Process).filter(Process.id == process_id, Process.is_deleted == False).first()  # noqa: E712
-    if not obj:
+    """삭제 — baseline 유래는 exclude instance, add 는 soft delete (2-A-4-3, ADR-0029).
+
+    하위(sub_process/risk/control)는 건드리지 않는다 — cascade 는 조회 시점 계산(§2.2).
+    """
+    if not _apply_layer_delete(db, BaselineProcess, ProcessInstance, "baseline_process_id",
+                               _PROCESS_OVERRIDE_FIELDS, process_id, ()):
         raise HTTPException(status_code=404, detail="Process not found")
-    obj.is_deleted = True
     db.commit()
 
 
@@ -168,12 +299,16 @@ def list_sub_processes(process_id: UUID | None = None, skip: int = 0, limit: int
 
 
 @router.post("/sub-processes", status_code=status.HTTP_201_CREATED, response_model=SubProcessRead)
-def create_sub_process(body: SubProcessCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> SubProcess:
-    obj = SubProcess(**body.model_dump())
-    db.add(obj)
+def create_sub_process(body: SubProcessCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """add instance 생성 (2-A-4-3, ADR-0029). 상위는 이중 FK 규칙으로 baseline/instance 매핑."""
+    _assert_code_available(db, BaselineSubProcess, SubProcessInstance, body.code, "하위프로세스")
+    data = body.model_dump()
+    pb, pi = _resolve_process_parent(db, data.pop("process_id"))
+    inst = SubProcessInstance(action=ACTION_ADD, baseline_sub_process_id=None,
+                              process_baseline_id=pb, process_instance_id=pi, **data)
+    db.add(inst)
     db.commit()
-    db.refresh(obj)
-    return obj
+    return _resolved_sub_process_or_404(db, inst.id)
 
 
 @router.get("/sub-processes/{sp_id}", response_model=SubProcessRead)
@@ -183,23 +318,22 @@ def get_sub_process(sp_id: UUID, user: CurrentUser = None, db: Session = Depends
 
 
 @router.patch("/sub-processes/{sp_id}", response_model=SubProcessRead)
-def update_sub_process(sp_id: UUID, body: SubProcessUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> SubProcess:
-    obj = db.query(SubProcess).filter(SubProcess.id == sp_id, SubProcess.is_deleted == False).first()  # noqa: E712
-    if not obj:
+def update_sub_process(sp_id: UUID, body: SubProcessUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """수정 — baseline 유래면 override instance, add 면 instance 직접 (2-A-4-3, ADR-0029)."""
+    if not _apply_layer_update(db, BaselineSubProcess, SubProcessInstance, "baseline_sub_process_id",
+                               _SUB_PROCESS_OVERRIDE_FIELDS, sp_id, body.model_dump(exclude_unset=True)):
         raise HTTPException(status_code=404, detail="SubProcess not found")
-    for f, v in body.model_dump(exclude_none=True).items():
-        setattr(obj, f, v)
     db.commit()
-    db.refresh(obj)
-    return obj
+    return _resolved_sub_process_or_404(db, sp_id)
 
 
 @router.delete("/sub-processes/{sp_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_sub_process(sp_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
-    obj = db.query(SubProcess).filter(SubProcess.id == sp_id, SubProcess.is_deleted == False).first()  # noqa: E712
-    if not obj:
+    """삭제 — baseline 유래는 exclude instance, add 는 soft delete (2-A-4-3, ADR-0029)."""
+    if not _apply_layer_delete(db, BaselineSubProcess, SubProcessInstance, "baseline_sub_process_id",
+                               _SUB_PROCESS_OVERRIDE_FIELDS, sp_id,
+                               ("process_baseline_id", "process_instance_id")):
         raise HTTPException(status_code=404, detail="SubProcess not found")
-    obj.is_deleted = True
     db.commit()
 
 
@@ -218,12 +352,16 @@ def list_risks(sub_process_id: UUID | None = None, skip: int = 0, limit: int = 1
 
 
 @router.post("/risks", status_code=status.HTTP_201_CREATED, response_model=RiskRead)
-def create_risk(body: RiskCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> Risk:
-    obj = Risk(**body.model_dump())
-    db.add(obj)
+def create_risk(body: RiskCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """add instance 생성 (2-A-4-3, ADR-0029). 상위는 이중 FK 규칙으로 baseline/instance 매핑."""
+    _assert_code_available(db, BaselineRisk, RiskInstance, body.code, "위험")
+    data = body.model_dump()
+    sb, si = _resolve_sub_process_parent(db, data.pop("sub_process_id"))
+    inst = RiskInstance(action=ACTION_ADD, baseline_risk_id=None,
+                        sub_process_baseline_id=sb, sub_process_instance_id=si, **data)
+    db.add(inst)
     db.commit()
-    db.refresh(obj)
-    return obj
+    return _resolved_risk_or_404(db, inst.id)
 
 
 @router.get("/risks/{risk_id}", response_model=RiskRead)
@@ -233,23 +371,22 @@ def get_risk(risk_id: UUID, user: CurrentUser = None, db: Session = Depends(get_
 
 
 @router.patch("/risks/{risk_id}", response_model=RiskRead)
-def update_risk(risk_id: UUID, body: RiskUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> Risk:
-    obj = db.query(Risk).filter(Risk.id == risk_id, Risk.is_deleted == False).first()  # noqa: E712
-    if not obj:
+def update_risk(risk_id: UUID, body: RiskUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """수정 — baseline 유래면 override instance, add 면 instance 직접 (2-A-4-3, ADR-0029)."""
+    if not _apply_layer_update(db, BaselineRisk, RiskInstance, "baseline_risk_id",
+                               _RISK_OVERRIDE_FIELDS, risk_id, body.model_dump(exclude_unset=True)):
         raise HTTPException(status_code=404, detail="Risk not found")
-    for f, v in body.model_dump(exclude_none=True).items():
-        setattr(obj, f, v)
     db.commit()
-    db.refresh(obj)
-    return obj
+    return _resolved_risk_or_404(db, risk_id)
 
 
 @router.delete("/risks/{risk_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_risk(risk_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
-    obj = db.query(Risk).filter(Risk.id == risk_id, Risk.is_deleted == False).first()  # noqa: E712
-    if not obj:
+    """삭제 — baseline 유래는 exclude instance, add 는 soft delete (2-A-4-3, ADR-0029)."""
+    if not _apply_layer_delete(db, BaselineRisk, RiskInstance, "baseline_risk_id",
+                               _RISK_OVERRIDE_FIELDS, risk_id,
+                               ("sub_process_baseline_id", "sub_process_instance_id")):
         raise HTTPException(status_code=404, detail="Risk not found")
-    obj.is_deleted = True
     db.commit()
 
 
