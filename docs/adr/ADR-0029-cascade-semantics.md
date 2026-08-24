@@ -1,6 +1,6 @@
 # ADR-0029: 계층 cascade 시맨틱 및 overlay 소유 경계
 
-- 상태: 제안 (초안)
+- 상태: **채택** (2026-08-24 — 제안(초안)에서 전환. 근거는 §7)
 - 작성일: 2026-08-24
 - 관련: ADR-0020(제로 추상화), ADR-0027(조회 resolver), 2-A-4-3
 - 배경 실측: `process_instances` 스키마 (운영 서버 psql, 2026-08-24)
@@ -180,6 +180,21 @@ DB 제약에만 의존하면 에러 메시지가 사용자에게 의미 없는 �
 
 3번이 이 ADR의 핵심 검증이다. 이것이 깨지면 2.2 결정이 구현되지 않은 것이다.
 
+**2026-08-24 — 5개 전부 통과.** 검증 코드는 `backend/tests/test_rcm_cascade.py`.
+
+| § | 테스트 함수 | 결과 |
+|---|---|---|
+| 5-1 | `test_processes_list_returns_all_baseline` | ✅ |
+| 5-2 | `test_parent_exclusion_cascades_to_children` | ✅ |
+| **5-3** | **`test_child_exclusion_survives_parent_restore`** | ✅ |
+| 5-4 | `test_control_exclusion_drops_its_assertions` / `test_cascade_hides_assertions_of_cascaded_control` | ✅ |
+| 5-5 | `test_added_hierarchy_follows_same_cascade_rules` | ✅ |
+| §2.2 직접 | `test_cascade_does_not_write_to_children` | ✅ |
+
+마지막 항목은 §5 목록에는 없지만 **§2.2(제외 상태 저장 금지)를 직접 고정**한다 —
+상위 삭제 후 하위 instance 행 수가 불변인지 본다. 5-3 이 결과를 보는 검증이라면 이쪽은
+저장 자체를 보는 검증이라, 둘이 함께 있어야 "계산으로 처리한다"가 코드로 잠긴다.
+
 ---
 
 ## 6. 미해결
@@ -187,3 +202,32 @@ DB 제약에만 의존하면 에러 메시지가 사용자에게 의미 없는 �
 - 상위 계층 "수정"(`action='override'`) 시 하위 표시 규칙 — 수정은 제외가 아니므로
   cascade 대상이 아니라고 판단하나, 코드 변경이 하위 코드 계층에 반영되는지는 별건
 - MinIO 증빙이 붙은 통제가 제외될 때 증빙 파일 처리 — 별도 설계
+
+---
+
+## 7. 채택 근거 (2026-08-24)
+
+제안(초안) → **채택**. 구현·검증이 모두 끝났고 운영에서 의도한 결과가 확인됐다.
+
+**구현** — 커밋 5건 (2-A-4-3)
+
+| 해시 | 내용 |
+|---|---|
+| `6ba94a4` | `action` 허용값 모듈 상수화 (§2.6 실측 반영분) |
+| `9401dd8` | 상위 3계층 조회 API resolver 전환 + envelope 확장 |
+| `cad62a9` | 상위 3계층 CRUD overlay 전환 (§3 code 중복 검증 포함) |
+| `0f9a9b1` | cascade 시맨틱 검증 케이스 (§5) |
+| `fc94ad4` | §2.6·§3 실측 반영 이력 |
+
+**운영 확인** — 2026-08-24 배포, 이미지 `fc94ad46bda4de5c6f15cf966f8716b136e4fc8d`
+
+- 통제 93건 정상 표시
+- **프로세스 컬럼이 채워짐** — resolver 체인(control→risk→sub_process→process)이 연결됐다는 뜻.
+  전환 전에는 상위 계층이 레거시 테이블(운영 0건)을 읽어 비어 있었다.
+- 통제 검색의 프로세스 필터 드롭다운 정상 동작 — "EX — 경비관리" 선택 시 3건으로 필터링.
+  이 드롭다운이 `GET /api/rcm/processes` 소비처이며, 0건이던 증상의 사용자 접점이었다.
+
+**테스트** — 로컬 `pytest` 152 passed / 2 xfailed / 0 failed, `ruff check .` All checks passed.
+§5 검증 조건 5개 + §2.2 직접 검증 1개 전부 통과(위 표).
+
+잔여 xfail 2건은 이 ADR 범위 밖이다 — `upload-excel` 파서(13.6)와 어서션 junction CRUD 전환.

@@ -1784,20 +1784,27 @@ seed는 실제 데이터 시작행을 탐색하는 `_find_data_start`로 보정�
 4. **NCP API 인증키 분리** — 현재 루트 계정 키를 쓰고 있다. 서브계정 키로 분리하고 권한을 최소화한다.
 5. **MinIO 증빙 백업 별도 설계** — DB와 보존정책이 달라(원본 보관 의무 vs 시점 복원) 이번 백업 라인 범위에서 제외했다(ADR-0028 §2.8.1 "범위 외").
 
-6. **상위 3계층 resolver 배선** — `/processes`·`/sub-processes`·`/risks` 를 resolver 경유로 전환(**2-A-4-3 범위**). `resolve_processes`/`resolve_sub_processes`/`resolve_risks` 는 `backend/app/services/control_resolver.py:137,144,157` 에 **이미 구현돼 있고 호출처만 없다**(`app/` 전체에서 유일한 호출은 `tests/test_rcm_baseline.py`). 운영 영향은 13.7 정정 참조. **cascade 시맨틱(상위 exclude의 하위 전파·overlay 소유 경계)은 `docs/adr/ADR-0029-cascade-semantics.md` 로 확정**(상태: 제안(초안) — 2-A-4-3 구현 완료 시 채택으로 전환).
+6. ~~**상위 3계층 resolver 배선**~~ ✅ **완료 (2026-08-24, 2-A-4-3)** — `/processes`·`/sub-processes`·`/risks` 조회·CRUD를 resolver/overlay 경유로 전환. 커밋 5건: `6ba94a4`(action 상수화) → `9401dd8`(조회 전환) → `cad62a9`(CRUD overlay) → `0f9a9b1`(cascade 테스트) → `fc94ad4`(ADR 실측 반영). cascade 시맨틱은 **ADR-0029 채택**(§7 채택 근거). 로컬 pytest 152 passed/2 xfailed, **운영 확인 2026-08-24**(이미지 `fc94ad46bda4de5c6f15cf966f8716b136e4fc8d` — 통제 93건·프로세스 컬럼 채워짐·필터 드롭다운 "EX — 경비관리" 3건 필터링). 13.7 정정에서 지적한 기능 결손 해소.
 7. **레거시 테이블 백필은 채택하지 않는다(기각)** — 운영 `processes`·`controls` 를 채워 증상만 덮는 방식. 방향이 baseline/overlay 전환과 **반대**이고, 2-A-4-3 완료 후 두 번 걷어내야 한다.
 
 8. **용어·제도 해설 기능** (백로그 등록만, **착수 시점 미정**) — ICFR 담당자 다수가 회계 비전문가라 어서션·통제유형·설계평가 등 용어를 모른 채 입력 판단을 해야 한다. **비전문가가 전문가처럼 사용하는 것**이 목표.
    - 범위: (1) 용어 사전 데이터 (2) 마우스오버 툴팁 (3) 별도 매뉴얼 페이지 (4) 관련 규정 연동 및 중요부분 강조 표시
+   - **배치 확정 (2026-08-24): 화면 우측에서 슬라이드로 열리는 패널.** 읽기 흐름과 방향이 같고, 본문 **위에 겹쳐** 뜨므로 작업이 끊기지 않는다.
+     - 기각: 사이드바 옆 배치 — 본문이 밀려 RCM 테이블 열이 잘린다. 결국 사용자가 닫아두게 되어 기능이 죽는다.
+   - **용어에 점선 밑줄 등 클릭 가능 표시 필수** — 표시가 없으면 기능 자체가 발견되지 않는다(있어도 없는 것과 같다).
+   - 콘텐츠 원칙: 규정 원문은 **출처·조번호와 함께 요지만 인용**하고 해설은 자체 작성한다. 회계기준원·회계법인 자료를 그대로 옮기지 않는다(**저작권**).
+   - **각 해설에 출처와 기준일 표기** — 제도는 개정된다. 기준일이 없으면 낡은 설명이 잘못된 판단을 유도하고, 그 판단이 감사 증적으로 남는다.
    - 선행 조건: **용어 사전 콘텐츠가 먼저 있어야 UI 작업이 가능**하다.
    - 분담: 콘텐츠는 **마스터 영역**(규정 정확성 필요), UI는 **Regina 영역**.
-   - 순서: 화면 구조가 2-A-4-3으로 변경 중이라 **툴팁 앵커 작업은 그 이후**.
+   - 순서: 화면 구조가 2-A-4-3으로 변경 중이었으므로 **툴팁 앵커 작업은 그 이후** — 조회·CRUD 전환이 끝나 이제 구조는 안정됐다.
+9. **어서션 junction CRUD 전환 (미완)** — `POST /api/rcm/control-assertions` 가 아직 레거시 `control_assertions` 테이블에 쓴다. baseline/overlay 쌍(`baseline_control_assertions` + `control_assertion_instances`)은 2-B-3에서 이미 구축돼 있고 **읽기(`_resolve_assertions`)는 전환 완료** — 쓰기만 남았다. 13.3의 2-A-4-3 범위에는 포함돼 있었으나 **2026-08-24 작업 프롬프트 §1 포함 목록에서 누락**되어 이번 전환에서 빠졌다(제외 목록에도 없었음 — 의도적 제외가 아니라 누락). 잔여 xfail: `test_search_response_includes_assertions`.
+10. **upload-excel 파서 분리 + 13.6 멀티헤더 0건 버그** — 2026-08-24 작업에서 의도적으로 제외했다(읽는 경로를 고치기 전에 쓰는 경로를 고치면 파서를 두 번 수정하게 됨). **읽는 경로 전환이 끝났으므로 이제 착수 가능하다.** 잔여 xfail: `test_excel_upload_commit`. Excel 업로드 잠금(`EXCEL_UPLOAD_LOCKED`)도 여기서 해소된다.
 
 **유지(기존 미결)**
 
-9. **2-A-4-3** — 상위 계층(processes/sub-processes/risks) + 어서션 junction CRUD 전환, upload-excel 파서 코어 분리·다중 헤더행 대응. 남은 xfail 6건·Excel 업로드 잠금이 여기서 해소된다(13.3 참조).
-10. **코드마스터 테이블화** — 미착수.
-11. **Regina NCP Sub Account** — `icfr-regina` / `icfr-view-only` 정책(ADR-0028 §2.7) 발급 미완.
+11. **2-A-4-3 (부분 완료)** — 상위 3계층 조회·CRUD 전환은 ✅ 완료(위 6번). **남은 범위는 어서션 junction CRUD(9번)와 upload-excel 파서 분리(10번)** 둘로 쪼개 관리한다. 남은 xfail 2건도 각각 그쪽에 붙어 있다(6건 중 4건은 6번 작업으로 해소).
+12. **코드마스터 테이블화** — 미착수.
+13. **Regina NCP Sub Account** — `icfr-regina` / `icfr-view-only` 정책(ADR-0028 §2.7) 발급 미완.
 
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
@@ -1807,6 +1814,8 @@ seed는 실제 데이터 시작행을 탐색하는 `_find_data_start`로 보정�
 ## 14. 변경 로그 (Changelog)
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
+
+- **2026-08-24 / TrustBuilder + Claude** — **2-A-4-3 상위 3계층 resolver 배선** (`prompts/ICFR_2A43_20260824.md`, **ADR-0029 채택**). 발단은 **Regina의 운영 화면 0건 신고** — `GET /api/rcm/processes` 가 200 OK / `items:[]` 를 반환하는데 통제 93건은 정상 표시. 조사 결과 **버그가 아니라 미배선**이었고(13.7 정정), 로컬에 남아 있던 Phase 0~1 레거시 데이터(`processes` 9 / `controls` 95)가 이를 가리고 있었다 — 운영은 `seed_baseline.py` 로만 구축돼 레거시가 0건이라 그대로 드러났다. ①**커밋 5건 분리**: `6ba94a4` action 허용값 모듈 상수화(실측 결과 enum·CHECK 없이 주석+리터럴로만 존재 — 계층 overlay 4값과 어서션 junction 2값을 접두사로 분리, 기존 리터럴 13곳 전량 교체, 동작 변경 0건을 기존 테스트로 증명) → `9401dd8` 조회 전환(`resolve_hierarchy` 신규로 cascade 판정 단일화, `resolve_controls` 내부에 묻혀 있던 alive 집합 계산을 추출해 동작 동일 유지, 3계층 응답에 통제와 **동일한 flat envelope** 확장) → `cad62a9` CRUD overlay 전환(`_apply_layer_update`/`_apply_layer_delete` 공통 함수 + code 중복 검증) → `0f9a9b1` cascade 검증 테스트 → `fc94ad4` ADR 실측 반영. ②**ADR-0029 §3 사각지대 발견**: `uq_*_tenant_code` 는 instance 끼리만 막고 **tenant add 의 code 가 baseline code 와 겹치는 것은 어떤 DB 제약도 막지 못한다**(다른 테이블) — `_assert_code_available` 이 양쪽을 조회해 409(메시지 구분) 반환. instance 3테이블이 동일 제약 보유함도 확인해 ADR 에 이력으로 기록. ③**xfail 6→2**: 상위 계층 POST 가 instance 로 전환되며 resolver 체인이 이어져 4건이 XPASS(strict) 자동 신호로 검출 → 마커 제거(`test_search_response_includes_process_code`·`_sub_process_code`·`_risk_level`·`test_search_no_n_plus_one`). 잔여 2건은 범위 밖(어서션 junction 쓰기, upload-excel 파서 — 13.9-9·10). ④**§5 검증 5개 + §2.2 직접 검증 1개 전부 통과**(`tests/test_rcm_cascade.py`) — 핵심은 `test_child_exclusion_survives_parent_restore`(하위 개별 제외 → 상위 제외 → 상위 복원 시 개별 제외 보존). `test_cascade_does_not_write_to_children` 은 상위 삭제 후 하위 instance 행 수 불변을 봐서 "제외 상태를 저장하지 않는다"(§2.2)를 저장 측면에서 잠근다. ⑤부수: `test_rcm_baseline.py` 의 `RiskInstance(action="add")` 픽스처 2곳이 `assessment_level` 을 비워 조회 전환 후 `RiskRead` 검증이 깨짐 — 선례대로 제품 코드 대신 픽스처를 규약("add 는 자체 필드 전부 채움")에 맞춰 수정. **로컬 `ruff` All checks passed / `pytest` 152 passed·2 xfailed·0 failed**, **운영 확인 2026-08-24**(이미지 `fc94ad46bda4de5c6f15cf966f8716b136e4fc8d` — 통제 93건 정상, 프로세스 컬럼 채워짐=resolver 체인 연결, 프로세스 필터 드롭다운 "EX — 경비관리" 3건 필터링). 다음: 어서션 junction CRUD(13.9-9) → upload-excel 파서 분리(13.9-10).
 
 - **2026-08-20 / Regina + Claude** — **Regina_ClaudeContext.md 슬림화** (`prompts/ICFR-13.5-regina-context-slim.md`). 정적 부트스트랩 전용 문서로 축소(201줄→144줄). §4(진행 상태)·§6(다음 할 일) 삭제 → `ClaudeICFR.md` §12·§13 참조 1줄로 대체. §5(ADR-0017/18 요지) 삭제 → §10 참조로 대체, Docker 이미지 캐시 교훈(문서 내 §8 명령어 주석과 중복)·백엔드 응답 스키마 노트(§14 2026-06-09 항목에 원본 있고 이후 envelope 확장으로 이미 stale)도 함께 제거. §2(프로젝트 개요)는 레포·경로·SSOT 파일명·개발 로그인 계정만 부트스트랩 최소 정보로 남기고 스택·역할분담·모듈구성 상세는 참조로 축약. §1 "Claude Code Sonnet 4.6" 하드코딩 제거(버전 계속 갱신되어 재발 방지 목적). §7·8·9(첫 메시지 템플릿·명령어 패턴·협업자 메모)는 무변경. 상단에 "동적 상태는 여기 기재 안 함 — ClaudeICFR.md가 SSOT" 규칙 문구 추가. **작업 중 확인**: 이 파일이 `.gitignore:94`에 등록되어 애초에 git에 커밋된 적 없는 로컬 전용 파일임을 확인 — 슬림화 결과물도 동일하게 **로컬 전용 유지, 커밋하지 않음**(Public 레포에 개발 로그인 계정 노출 방지 의도로 판단, 사용자 확인 완료).
 - **2026-08-20 / Regina + Claude** — **docs/adr 참조 정정** (커밋 `3aaa91c`). 바로 아래 항목(13.5 문서 정리)에서 "docs/adr는 미존재라 (예정) 표기"로 정리했으나, 같은 세션에서 origin/main을 병합(`git pull`)하는 과정에 TrustBuilder의 `docs/adr/ADR-0028_icfr_infra_baseline_20260812.md`가 새로 들어와 있어 그 표기가 병합 직후 곧바로 부정확해짐을 발견. `CLAUDE.md`·`README.md`의 `docs/adr/` 항목을 "ADR-0028부터 개별 파일 사용 시작(대형 인프라 ADR). 표준 ADR 목록은 여전히 ClaudeICFR.md §10"로 정정. `docs/api`·`docs/erd`는 계속 미존재라 (예정) 표기 유지.
