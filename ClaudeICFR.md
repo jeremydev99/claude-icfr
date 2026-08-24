@@ -1784,14 +1784,20 @@ seed는 실제 데이터 시작행을 탐색하는 `_find_data_start`로 보정�
 4. **NCP API 인증키 분리** — 현재 루트 계정 키를 쓰고 있다. 서브계정 키로 분리하고 권한을 최소화한다.
 5. **MinIO 증빙 백업 별도 설계** — DB와 보존정책이 달라(원본 보관 의무 vs 시점 복원) 이번 백업 라인 범위에서 제외했다(ADR-0028 §2.8.1 "범위 외").
 
-6. **상위 3계층 resolver 배선** — `/processes`·`/sub-processes`·`/risks` 를 resolver 경유로 전환(**2-A-4-3 범위**). `resolve_processes`/`resolve_sub_processes`/`resolve_risks` 는 `backend/app/services/control_resolver.py:137,144,157` 에 **이미 구현돼 있고 호출처만 없다**(`app/` 전체에서 유일한 호출은 `tests/test_rcm_baseline.py`). 운영 영향은 13.7 정정 참조.
+6. **상위 3계층 resolver 배선** — `/processes`·`/sub-processes`·`/risks` 를 resolver 경유로 전환(**2-A-4-3 범위**). `resolve_processes`/`resolve_sub_processes`/`resolve_risks` 는 `backend/app/services/control_resolver.py:137,144,157` 에 **이미 구현돼 있고 호출처만 없다**(`app/` 전체에서 유일한 호출은 `tests/test_rcm_baseline.py`). 운영 영향은 13.7 정정 참조. **cascade 시맨틱(상위 exclude의 하위 전파·overlay 소유 경계)은 `docs/adr/ADR-0029-cascade-semantics.md` 로 확정**(상태: 제안(초안) — 2-A-4-3 구현 완료 시 채택으로 전환).
 7. **레거시 테이블 백필은 채택하지 않는다(기각)** — 운영 `processes`·`controls` 를 채워 증상만 덮는 방식. 방향이 baseline/overlay 전환과 **반대**이고, 2-A-4-3 완료 후 두 번 걷어내야 한다.
+
+8. **용어·제도 해설 기능** (백로그 등록만, **착수 시점 미정**) — ICFR 담당자 다수가 회계 비전문가라 어서션·통제유형·설계평가 등 용어를 모른 채 입력 판단을 해야 한다. **비전문가가 전문가처럼 사용하는 것**이 목표.
+   - 범위: (1) 용어 사전 데이터 (2) 마우스오버 툴팁 (3) 별도 매뉴얼 페이지 (4) 관련 규정 연동 및 중요부분 강조 표시
+   - 선행 조건: **용어 사전 콘텐츠가 먼저 있어야 UI 작업이 가능**하다.
+   - 분담: 콘텐츠는 **마스터 영역**(규정 정확성 필요), UI는 **Regina 영역**.
+   - 순서: 화면 구조가 2-A-4-3으로 변경 중이라 **툴팁 앵커 작업은 그 이후**.
 
 **유지(기존 미결)**
 
-8. **2-A-4-3** — 상위 계층(processes/sub-processes/risks) + 어서션 junction CRUD 전환, upload-excel 파서 코어 분리·다중 헤더행 대응. 남은 xfail 6건·Excel 업로드 잠금이 여기서 해소된다(13.3 참조).
-9. **코드마스터 테이블화** — 미착수.
-10. **Regina NCP Sub Account** — `icfr-regina` / `icfr-view-only` 정책(ADR-0028 §2.7) 발급 미완.
+9. **2-A-4-3** — 상위 계층(processes/sub-processes/risks) + 어서션 junction CRUD 전환, upload-excel 파서 코어 분리·다중 헤더행 대응. 남은 xfail 6건·Excel 업로드 잠금이 여기서 해소된다(13.3 참조).
+10. **코드마스터 테이블화** — 미착수.
+11. **Regina NCP Sub Account** — `icfr-regina` / `icfr-view-only` 정책(ADR-0028 §2.7) 발급 미완.
 
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
