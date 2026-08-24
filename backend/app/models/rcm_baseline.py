@@ -52,6 +52,24 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import AuditedBase, IdentityBase
 
+# ── overlay action 허용값 (2-A-4-3) ──────────────────────
+# DB 는 String(10) 일 뿐 enum·CHECK 제약이 없다(실측 2026-08-24, ADR-0029 §2.6).
+# 허용값이 주석과 흩어진 리터럴로만 존재하던 것을 여기서 단일 정의한다.
+#
+# 두 집합은 값이 다르므로 접두사로 분리한다 — 섞어 쓰지 말 것.
+#   INSTANCE_ACTIONS  : 계층 overlay(process/sub_process/risk/control) 4값
+#   ASSERTION_ACTIONS : 어서션 junction(control_assertion_instances) 2값
+
+ACTION_ADOPT = "adopt"
+ACTION_EXCLUDE = "exclude"
+ACTION_OVERRIDE = "override"
+ACTION_ADD = "add"
+INSTANCE_ACTIONS = (ACTION_ADOPT, ACTION_EXCLUDE, ACTION_OVERRIDE, ACTION_ADD)
+
+ASSERTION_ACTION_ADD = "add"
+ASSERTION_ACTION_REMOVE = "remove"
+ASSERTION_ACTIONS = (ASSERTION_ACTION_ADD, ASSERTION_ACTION_REMOVE)
+
 
 class BaselineProcess(IdentityBase):
     """표준 프로세스 (전역). Process 미러링."""
@@ -190,7 +208,7 @@ class ProcessInstance(AuditedBase):
         PG_UUID(as_uuid=True), ForeignKey("baseline_processes.id"), nullable=True, index=True
     )
     action: Mapped[str] = mapped_column(String(10), nullable=False)
-    # "adopt" | "exclude" | "override" | "add"
+    # INSTANCE_ACTIONS 참조 (adopt | exclude | override | add)
 
     # ── baseline_processes 필드의 nullable 미러링 (NULL=baseline 따름) ──
     code: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -229,6 +247,7 @@ class SubProcessInstance(AuditedBase):
         PG_UUID(as_uuid=True), ForeignKey("baseline_sub_processes.id"), nullable=True, index=True
     )
     action: Mapped[str] = mapped_column(String(10), nullable=False)
+    # INSTANCE_ACTIONS 참조 (adopt | exclude | override | add)
 
     # ── baseline_sub_processes 필드의 nullable 미러링 ──
     code: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -263,6 +282,7 @@ class RiskInstance(AuditedBase):
         PG_UUID(as_uuid=True), ForeignKey("baseline_risks.id"), nullable=True, index=True
     )
     action: Mapped[str] = mapped_column(String(10), nullable=False)
+    # INSTANCE_ACTIONS 참조 (adopt | exclude | override | add)
 
     # ── baseline_risks 필드의 nullable 미러링 ──
     code: Mapped[str | None] = mapped_column(String(30), nullable=True)
@@ -308,7 +328,7 @@ class ControlInstance(AuditedBase):
         PG_UUID(as_uuid=True), ForeignKey("baseline_controls.id"), nullable=True, index=True
     )
     action: Mapped[str] = mapped_column(String(10), nullable=False)
-    # "adopt" | "exclude" | "override" | "add"
+    # INSTANCE_ACTIONS 참조 (adopt | exclude | override | add)
 
     # ── 이하 baseline_controls 전 필드의 nullable 미러링 (NULL=baseline 따름) ──
     code: Mapped[str | None] = mapped_column(String(30), nullable=True)
@@ -406,7 +426,7 @@ class ControlAssertionInstance(AuditedBase):
     )
 
     action: Mapped[str] = mapped_column(String(10), nullable=False)
-    # "add" | "remove"
+    # ASSERTION_ACTIONS 참조 (add | remove) — 계층 overlay 와 값 집합이 다르다
 
     # ── 대상 통제 (이중 nullable FK) ──
     control_baseline_id: Mapped[UUID | None] = mapped_column(

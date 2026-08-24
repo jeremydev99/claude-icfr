@@ -19,6 +19,10 @@ from app.models.rcm import (
     SubProcess,
 )
 from app.models.rcm_baseline import (
+    ACTION_ADD,
+    ACTION_ADOPT,
+    ACTION_EXCLUDE,
+    ACTION_OVERRIDE,
     BaselineControl,
     BaselineRisk,
     ControlInstance,
@@ -441,22 +445,22 @@ def _apply_control_update(db: Session, control_id: UUID, changes: dict) -> bool:
             ControlInstance.baseline_control_id == control_id
         ).first()  # (tenant_id, baseline_control_id) unique → 최대 1건
         if inst is None:
-            inst = ControlInstance(baseline_control_id=control_id, action="override")
+            inst = ControlInstance(baseline_control_id=control_id, action=ACTION_OVERRIDE)
             db.add(inst)
-        elif inst.action in ("adopt", "exclude"):
-            inst.action = "override"
+        elif inst.action in (ACTION_ADOPT, ACTION_EXCLUDE):
+            inst.action = ACTION_OVERRIDE
         for f in _OVERRIDE_FIELDS:
             if f in changes:  # 전송된 필드만 (None 도 전송이면 diff 대상)
                 base_val = getattr(baseline, f)
                 req_val = changes[f]
                 setattr(inst, f, None if req_val == base_val else req_val)
         if all(getattr(inst, f) is None for f in _OVERRIDE_FIELDS):
-            inst.action = "adopt"  # 전부 baseline 과 동일 → 되돌림 (instance 는 남김)
+            inst.action = ACTION_ADOPT  # 전부 baseline 과 동일 → 되돌림 (instance 는 남김)
         return True
 
     inst = db.query(ControlInstance).filter(
         ControlInstance.id == control_id,
-        ControlInstance.action == "add",
+        ControlInstance.action == ACTION_ADD,
         ControlInstance.is_deleted == False,  # noqa: E712
     ).first()
     if inst is None:
@@ -480,10 +484,10 @@ def _apply_control_delete(db: Session, control_id: UUID) -> bool:
             ControlInstance.baseline_control_id == control_id
         ).first()
         if inst is None:
-            inst = ControlInstance(baseline_control_id=control_id, action="exclude")
+            inst = ControlInstance(baseline_control_id=control_id, action=ACTION_EXCLUDE)
             db.add(inst)
         else:
-            inst.action = "exclude"
+            inst.action = ACTION_EXCLUDE
             for f in _OVERRIDE_FIELDS:  # override 필드 정리
                 setattr(inst, f, None)
             inst.code = None
@@ -493,7 +497,7 @@ def _apply_control_delete(db: Session, control_id: UUID) -> bool:
 
     inst = db.query(ControlInstance).filter(
         ControlInstance.id == control_id,
-        ControlInstance.action == "add",
+        ControlInstance.action == ACTION_ADD,
         ControlInstance.is_deleted == False,  # noqa: E712
     ).first()
     if inst is None:
@@ -504,7 +508,7 @@ def _apply_control_delete(db: Session, control_id: UUID) -> bool:
 
 @router.post("/controls", status_code=status.HTTP_201_CREATED, response_model=ControlRead)
 def create_control(body: ControlCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
-    """add instance 생성 (ADR-0027, 2-A-4-1). 회사 고유 통제 = ControlInstance(action="add").
+    """add instance 생성 (ADR-0027, 2-A-4-1). 회사 고유 통제 = ControlInstance(action=ACTION_ADD).
 
     tenant_id 는 before_flush 자동 stamp(ADR-0026, 수동 지정 금지).
     상위 risk 참조는 이중 FK 규칙으로 baseline/instance 중 하나에 매핑.
@@ -513,7 +517,7 @@ def create_control(body: ControlCreate, user: CurrentUser = None, db: Session = 
     risk_id = data.pop("risk_id")
     rb, ri = _resolve_risk_parent(db, risk_id)
     inst = ControlInstance(
-        action="add", baseline_control_id=None,
+        action=ACTION_ADD, baseline_control_id=None,
         risk_baseline_id=rb, risk_instance_id=ri,
         **data,
     )

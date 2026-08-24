@@ -28,6 +28,11 @@ baseline 은 전역(IdentityBase)이라 격리 대상이 아님.
 from sqlalchemy.orm import Session
 
 from app.models.rcm_baseline import (
+    ACTION_ADD,
+    ACTION_EXCLUDE,
+    ACTION_OVERRIDE,
+    ASSERTION_ACTION_ADD,
+    ASSERTION_ACTION_REMOVE,
     BaselineControl,
     BaselineControlAssertion,
     BaselineProcess,
@@ -89,9 +94,9 @@ def _resolve_layer(db, baseline_model, instance_model, fields, baseline_fk_attr)
     triples = []
     for base in baselines:
         inst = by_baseline_id.get(base.id)
-        if inst is not None and inst.action == "exclude":
+        if inst is not None and inst.action == ACTION_EXCLUDE:
             continue
-        overridden = inst is not None and inst.action == "override"
+        overridden = inst is not None and inst.action == ACTION_OVERRIDE
         row = {f: getattr(base, f) for f in fields}
         if overridden:
             for f in fields:
@@ -105,7 +110,7 @@ def _resolve_layer(db, baseline_model, instance_model, fields, baseline_fk_attr)
         triples.append((row, base, inst))
 
     for inst in instances:
-        if getattr(inst, baseline_fk_attr) is None and inst.action == "add":
+        if getattr(inst, baseline_fk_attr) is None and inst.action == ACTION_ADD:
             row = {f: getattr(inst, f) for f in fields}
             row["id"] = inst.id
             row["source"] = "tenant"
@@ -202,9 +207,9 @@ def _resolve_assertions(db: Session) -> dict:
     for inst in instances:
         control_id = inst.control_instance_id if inst.control_instance_id is not None else inst.control_baseline_id
         cats = by_control.setdefault(control_id, set())
-        if inst.action == "add":
+        if inst.action == ASSERTION_ACTION_ADD:
             cats.add(inst.baseline_risk_category_id)
-        elif inst.action == "remove":
+        elif inst.action == ASSERTION_ACTION_REMOVE:
             cats.discard(inst.baseline_risk_category_id)
 
     return {
