@@ -107,6 +107,22 @@ tenant_id            uuid     NOT NULL
 회귀 방지 원칙(판별은 구조/타입으로) 부합 — `action`은 명시적 enum 성격의 값이며,
 NULL 여부라는 암묵 규약에 의존하지 않는다.
 
+**2026-08-24 실측 반영 (2-A-4-3 구현 중)** — 위 서술의 "명시적 enum 성격"은 **의미상 그렇다는 뜻이고,
+코드에는 enum 도 CHECK 제약도 없었다.** 실제로는 `String(10)` 컬럼 + 모델 주석
+(`# "adopt" | "exclude" | "override" | "add"`) + `control_resolver.py`·`api/rcm.py` 에 흩어진
+문자열 리터럴로만 존재했다. 즉 판정 근거로 삼을 **참조 가능한 정의가 없는 상태**였다.
+
+→ 본 작업에서 `app/models/rcm_baseline.py` 에 모듈 상수로 정의했다.
+
+| 집합 | 상수 | 대상 |
+|---|---|---|
+| `INSTANCE_ACTIONS` | `ACTION_ADOPT` / `ACTION_EXCLUDE` / `ACTION_OVERRIDE` / `ACTION_ADD` | 계층 overlay 4테이블 |
+| `ASSERTION_ACTIONS` | `ASSERTION_ACTION_ADD` / `ASSERTION_ACTION_REMOVE` | `control_assertion_instances` |
+
+두 집합은 값이 다르고 `"add"` 만 겹치므로 **접두사로 분리**한다(섞어 쓰면 값만으로는 구분되지 않는다).
+기존 리터럴도 전부 상수 참조로 교체했다 — 두 방식이 공존하면 무엇이 진실인지 판정할 수 없기 때문이다.
+DB 레벨 CHECK 제약 도입은 하지 않았다(마이그레이션 범위 밖, 별건).
+
 ---
 
 ## 3. 스키마상 유의점
@@ -124,6 +140,22 @@ NULL 여부라는 암묵 규약에 의존하지 않는다.
 
 2-A-4-3 구현 시 신규 추가 경로에서 **code 중복 검증을 명시적으로 수행할 것.**
 DB 제약에만 의존하면 에러 메시지가 사용자에게 의미 없는 형태로 노출된다.
+
+**2026-08-24 실측 반영 (2-A-4-3 구현 중)** — 위 표는 `process_instances` 만 실측한 것이었다.
+나머지 2개 계층도 **동일한 2개 제약을 보유**함을 확인했다. NULL 통과 문제는 3계층 공통이다.
+
+| 테이블 | `(tenant_id, baseline_*_id)` | `(tenant_id, code)` | single_parent CHECK |
+|---|---|---|---|
+| `process_instances` | ✅ | ✅ | — (최상위) |
+| `sub_process_instances` | ✅ | ✅ | ✅ |
+| `risk_instances` | ✅ | ✅ | ✅ |
+
+**추가로 확인된 사각지대**: `uq_*_tenant_code` 는 **instance 끼리의 충돌만** 막는다.
+회사가 추가한 항목의 `code` 가 **baseline 테이블의 `code` 와 겹치는 경우는 어떤 DB 제약도 막지 못한다**
+(서로 다른 테이블이라 제약이 걸치지 않는다). 이 경우 resolver 결과에 같은 code 가 둘 나온다.
+
+→ 핸들러 검증은 **baseline·instance 양쪽을 모두 조회**해야 한다. 본 작업의 `_assert_code_available`
+(`api/rcm.py`)이 두 곳을 모두 보고 409 를 반환한다. baseline 충돌과 instance 충돌의 메시지를 구분한다.
 
 ---
 
