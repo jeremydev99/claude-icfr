@@ -1555,6 +1555,12 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 - **skip 금지(후속 필수)**: 코드 마스터 테이블화(risk_level·assertion·통제유형·주기 등, 2번째 tenant 온보딩 전 반드시 실행 — 하드코딩 시 커스터마이징 봉쇄), source envelope 전 계층 공통 규약, 삭제 의미론(baseline→exclude, add→soft delete).
 - **결과**: 채택. 후속 구현(2-A~2-C)은 이 문서 위에 단계적으로 얹음. RCM API 응답이 병합 결과로 변경 — Regina 프론트는 스펙 확정 후 대응.
 
+### ADR-0029 (2026-08-24) — 계층 cascade 시맨틱 및 overlay 소유 경계
+- **배경**: baseline/overlay 구조가 Control 계층을 넘어 Process/SubProcess/Risk 상위 계층으로 확장되며, 상위 제외·복원이 하위 계층에 어떻게 전파되는지 규칙이 없었음.
+- **결정**: cascade는 DB에 저장하지 않고 조회 시점(`resolve_hierarchy`/`resolve_controls`)에 계산. 상위 exclude 시 하위도 함께 목록에서 빠지지만 하위 자체의 exclude 상태는 건드리지 않아, 상위 복원 시 하위 개별 제외가 그대로 보존된다. 통제 제외 시 그 통제의 어서션 연결도 같은 계산 경로로 함께 빠진다.
+- **대안**: 상위 제외 시 하위 instance에 exclude를 실제로 write — 상위 복원 시 하위 흔적을 되돌리기 어렵고 이중 관리 부담이 생겨 기각.
+- **결과**: 채택. 개별 파일(`docs/adr/ADR-0029-cascade-semantics.md`)로 관리(CLAUDE.md §3, 대형 설계 ADR 분리 기준). 구현은 2-A-4-3(상위 3계층 resolver·CRUD overlay 전환, 백엔드 2026-08-24 완료, 프론트 미착수)으로 착륙.
+
 ### (다음 ADR은 여기에 추가)
 
 ---
@@ -1802,9 +1808,13 @@ seed는 실제 데이터 시작행을 탐색하는 `_find_data_start`로 보정�
 
 **유지(기존 미결)**
 
-11. **2-A-4-3 (부분 완료)** — 상위 3계층 조회·CRUD 전환은 ✅ 완료(위 6번). **남은 범위는 어서션 junction CRUD(9번)와 upload-excel 파서 분리(10번)** 둘로 쪼개 관리한다. 남은 xfail 2건도 각각 그쪽에 붙어 있다(6건 중 4건은 6번 작업으로 해소).
+11. **2-A-4-3 (부분 완료)** — 상위 3계층 조회·CRUD 전환은 **백엔드만** ✅ 완료(위 6번, `cad62a9`는 `backend/app/api/rcm.py`만 변경·프론트 0건). **남은 범위 셋**: 어서션 junction CRUD(9번), upload-excel 파서 분리(10번), **상위 3계층 CRUD 프론트 배선(14번, 신규)**. 남은 xfail 2건은 9·10번에 각각 붙어 있다(6건 중 4건은 6번 작업으로 해소).
 12. **코드마스터 테이블화** — 미착수.
 13. **Regina NCP Sub Account** — `icfr-regina` / `icfr-view-only` 정책(ADR-0028 §2.7) 발급 미완.
+14. **상위 3계층 CRUD 프론트 배선 (미착수, 신규화면 필요 확정)** — 2026-08-31 read-only 조사(`prompts/ICFR-PROMPT-hierarchy-crud-survey.md`) 결론: process/sub_process/risk를 독립 목록으로 렌더링하는 화면이 프론트에 **없음** — 현재 `fetchProcesses`/`fetchSubProcesses`/`fetchRisksBySubProcessId`는 필터 드롭다운(`ControlSearchBar.tsx`)·control 폼 연쇄 select(`BasicInfoTab.tsx`) 채우는 용도로만 쓰임. CRUD 버튼을 얹을 목록 UI 자체가 없어 control의 UI 컴포넌트(`RcmPage.tsx`/`DeleteConfirmDialog.tsx`)를 그대로 재사용 불가(API 함수·mutation 훅·어댑터 패턴은 골격으로 재사용 가능). **Scoping 화면은 이 자리가 아님** — Scoping은 계정과목 정량·정성 중요성 판단(§4.3, `AccountBalance`/`Materiality`/`FinalScopeIn`) 개념이고, 여기서 다루는 baseline exclude/adopt/override(ADR-0029)와는 다른 개념. ADR-0029 문서에 FE/Scoping 언급 0건. **잠정 판별: (c) 신규 화면 필요.** 착수 전 아래 미결 결정 2건(15번) 확정 필요.
+15. **미결 결정 2건 (TrustBuilder 합의 대기, 14번 착수 전제조건)**:
+    1. 상위계층 관리 UI 위치·형태 — RCM 모듈 내부(예: 위험 매트릭스 화면 확장) vs 별도 신규 라우트.
+    2. `ProcessItem`/`SubProcessItem`/`RiskItem`의 `envelope` optional→required 전환 여부 — 현재 optional(`buildOptionalSourceEnvelope` 사용, control은 required). 목록 API가 이미 resolver 경유라 required 전환이 가능해 보이나 미결정.
 
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
@@ -1814,6 +1824,8 @@ seed는 실제 데이터 시작행을 탐색하는 `_find_data_start`로 보정�
 ## 14. 변경 로그 (Changelog)
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
+
+- **2026-08-31 / Regina + Claude** — **ADR-0029 배포 검증·로컬 재구축·2-A-4-3 프론트 잔여 조사** (`prompts/ICFR-PROMPT-hierarchy-crud-survey.md`, `prompts/ICFR-PROMPT-record-20260831.md`, 코드 변경 0건 — docs 커밋만). ①**배포 검증(조회)**: TrustBuilder의 ADR-0029 배포(상위 3계층 resolver/cascade 전환, 2026-08-24) 확인 — 배포 사이트(`icfr.synap.co.kr`)에서 프로세스 필터 드롭다운 8개 정상 노출, `EX` 필터 3건 확인. ②**로컬 운영상태 재구축**: 로컬 백엔드 8커밋 fast-forward pull(`d2b8618`→`8403a3b`, ADR-0029 코드 반영) → 도커 재빌드 → `seed_baseline.py --reset`(691행 재시드) → 카운트 검증(프로세스 8/하위프로세스 29/리스크 85/통제 93 기대값 일치). `rcm_baseline.py` 모델 변경(+26줄, action 허용값 모듈 상수화)은 ORM 레벨일 뿐 DB 스키마 불변임을 확인(alembic 마이그레이션 부재와 일치). ③**조사(read-only)**: 상위 3계층(process/sub_process/risk) exclude/scope 관련 UI가 프론트에 실제 배선돼 있는지 조사 → **미배선 확정**(control만 삭제 버튼 경유로 exclude/soft_delete 서버 분기가 간접 노출, 상위 3계층은 목록 UI 자체가 없음). 이어서 `ICFR-PROMPT-hierarchy-crud-survey.md`로 백엔드 API 규격(`rcm.py:236-390`, action 필드 없이 요청 종류로 서버 암묵 결정, control과 동일 flat envelope 계약)·Scoping 화면 설계 의도(계정과목 중요성 판단 개념 — baseline exclude와 무관, 이 자리 아님 확정)·control CRUD 재사용 가능 범위(API/훅/어댑터 골격 재사용 가능, UI 컴포넌트는 전용이라 불가)·조회 데이터 현재 배선 범위(필터 드롭다운·폼 select 용도뿐, 목록 화면 없음)를 확인. **결론: 2-A-4-3 프론트 잔여 작업 = 상위 3계층 관리 신규 화면 설계·배선**(13.14 참조), 미결 결정 2건(13.15) TrustBuilder 합의 대기 등록. §10에 ADR-0029 요약 신규 추가.
 
 - **2026-08-24 / TrustBuilder + Claude** — **2-A-4-3 상위 3계층 resolver 배선** (`prompts/ICFR_2A43_20260824.md`, **ADR-0029 채택**). 발단은 **Regina의 운영 화면 0건 신고** — `GET /api/rcm/processes` 가 200 OK / `items:[]` 를 반환하는데 통제 93건은 정상 표시. 조사 결과 **버그가 아니라 미배선**이었고(13.7 정정), 로컬에 남아 있던 Phase 0~1 레거시 데이터(`processes` 9 / `controls` 95)가 이를 가리고 있었다 — 운영은 `seed_baseline.py` 로만 구축돼 레거시가 0건이라 그대로 드러났다. ①**커밋 5건 분리**: `6ba94a4` action 허용값 모듈 상수화(실측 결과 enum·CHECK 없이 주석+리터럴로만 존재 — 계층 overlay 4값과 어서션 junction 2값을 접두사로 분리, 기존 리터럴 13곳 전량 교체, 동작 변경 0건을 기존 테스트로 증명) → `9401dd8` 조회 전환(`resolve_hierarchy` 신규로 cascade 판정 단일화, `resolve_controls` 내부에 묻혀 있던 alive 집합 계산을 추출해 동작 동일 유지, 3계층 응답에 통제와 **동일한 flat envelope** 확장) → `cad62a9` CRUD overlay 전환(`_apply_layer_update`/`_apply_layer_delete` 공통 함수 + code 중복 검증) → `0f9a9b1` cascade 검증 테스트 → `fc94ad4` ADR 실측 반영. ②**ADR-0029 §3 사각지대 발견**: `uq_*_tenant_code` 는 instance 끼리만 막고 **tenant add 의 code 가 baseline code 와 겹치는 것은 어떤 DB 제약도 막지 못한다**(다른 테이블) — `_assert_code_available` 이 양쪽을 조회해 409(메시지 구분) 반환. instance 3테이블이 동일 제약 보유함도 확인해 ADR 에 이력으로 기록. ③**xfail 6→2**: 상위 계층 POST 가 instance 로 전환되며 resolver 체인이 이어져 4건이 XPASS(strict) 자동 신호로 검출 → 마커 제거(`test_search_response_includes_process_code`·`_sub_process_code`·`_risk_level`·`test_search_no_n_plus_one`). 잔여 2건은 범위 밖(어서션 junction 쓰기, upload-excel 파서 — 13.9-9·10). ④**§5 검증 5개 + §2.2 직접 검증 1개 전부 통과**(`tests/test_rcm_cascade.py`) — 핵심은 `test_child_exclusion_survives_parent_restore`(하위 개별 제외 → 상위 제외 → 상위 복원 시 개별 제외 보존). `test_cascade_does_not_write_to_children` 은 상위 삭제 후 하위 instance 행 수 불변을 봐서 "제외 상태를 저장하지 않는다"(§2.2)를 저장 측면에서 잠근다. ⑤부수: `test_rcm_baseline.py` 의 `RiskInstance(action="add")` 픽스처 2곳이 `assessment_level` 을 비워 조회 전환 후 `RiskRead` 검증이 깨짐 — 선례대로 제품 코드 대신 픽스처를 규약("add 는 자체 필드 전부 채움")에 맞춰 수정. **로컬 `ruff` All checks passed / `pytest` 152 passed·2 xfailed·0 failed**, **운영 확인 2026-08-24**(이미지 `fc94ad46bda4de5c6f15cf966f8716b136e4fc8d` — 통제 93건 정상, 프로세스 컬럼 채워짐=resolver 체인 연결, 프로세스 필터 드롭다운 "EX — 경비관리" 3건 필터링). 다음: 어서션 junction CRUD(13.9-9) → upload-excel 파서 분리(13.9-10).
 
