@@ -23,10 +23,15 @@ from app.models.rcm_baseline import (
     ACTION_ADOPT,
     ACTION_EXCLUDE,
     ACTION_OVERRIDE,
+    ASSERTION_ACTION_ADD,
+    ASSERTION_ACTION_REMOVE,
     BaselineControl,
+    BaselineControlAssertion,
     BaselineProcess,
     BaselineRisk,
+    BaselineRiskCategory,
     BaselineSubProcess,
+    ControlAssertionInstance,
     ControlInstance,
     ProcessInstance,
     RiskInstance,
@@ -56,6 +61,7 @@ from app.schemas.rcm import (
     SubProcessUpdate,
 )
 from app.services.control_resolver import (
+    resolve_control_assertion_links,
     resolve_controls,
     resolve_hierarchy,
     resolve_processes,
@@ -394,9 +400,17 @@ def delete_risk(risk_id: UUID, user: CurrentUser = None, db: Session = Depends(g
 
 @router.get("/risk-categories")
 def list_risk_categories(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
-    q = db.query(RiskCategory).filter(RiskCategory.is_deleted == False)  # noqa: E712
+    """목록 — baseline_risk_categories 조회 (2-A-4-4, ADR-0029 §2.3).
+
+    어서션은 baseline 소유이고 overlay 계층이 없다(제도가 정하는 고정 집합). resolver 를
+    거치지 않고 baseline 을 직접 읽는 이유다. junction 쓰기가 요구하는 id 공간과 일치시킨다 —
+    전환 전에는 클라이언트가 유효한 baseline_risk_category_id 를 얻을 경로가 없었다.
+
+    쓰기 3개(POST/PATCH/DELETE)는 아직 legacy risk_categories 대상이다 — 13.9 부채 참조.
+    """
+    q = db.query(BaselineRiskCategory).filter(BaselineRiskCategory.is_deleted == False)  # noqa: E712
     total = q.count()
-    items = q.offset(skip).limit(limit).all()
+    items = q.order_by(BaselineRiskCategory.code).offset(skip).limit(limit).all()
     return {"items": [RiskCategoryRead.model_validate(i) for i in items], "total": total, "skip": skip, "limit": limit}
 
 
@@ -410,8 +424,12 @@ def create_risk_category(body: RiskCategoryCreate, user: CurrentUser = None, db:
 
 
 @router.get("/risk-categories/{rc_id}", response_model=RiskCategoryRead)
-def get_risk_category(rc_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> RiskCategory:
-    obj = db.query(RiskCategory).filter(RiskCategory.id == rc_id, RiskCategory.is_deleted == False).first()  # noqa: E712
+def get_risk_category(rc_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> BaselineRiskCategory:
+    """상세 — 목록과 같은 id 공간(baseline) (2-A-4-4, ADR-0029 §2.3)."""
+    obj = db.query(BaselineRiskCategory).filter(
+        BaselineRiskCategory.id == rc_id,
+        BaselineRiskCategory.is_deleted == False,  # noqa: E712
+    ).first()
     if not obj:
         raise HTTPException(status_code=404, detail="RiskCategory not found")
     return obj
@@ -726,29 +744,147 @@ def delete_control(control_id: UUID, user: CurrentUser = None, db: Session = Dep
 
 # ── Control Assertions ────────────────────────────────────
 
+# ── 어서션 junction overlay 헬퍼 (2-A-4-4, ADR-0029 §2.3) ──
+# 읽기(_resolve_assertions)와 **같은 이중 FK 규약**을 쓴다. 규약이 갈라지면 쓴 것이 읽히지 않는다.
+
+def _resolve_assertion_target(db: Session, control_id: UUID) -> tuple[UUID | None, UUID | None] | None:
+    """요청 control_id → (control_baseline_id, control_instance_id). 대상이 없으면 None.
+
+    baseline 유래 통제(adopt/override/exclude)의 정체성은 baseline 쪽 → control_baseline_id.
+    control_instance_id 는 회사 add 통제에만. (_resolve_assertions 의 읽기 규약과 대칭)
+
+    **제외(exclude)된 통제도 대상으로 인정한다** — 제외는 되돌릴 수 있는 상태이고, 제외 중
+    편집한 내용은 복원 시 살아나야 한다(ADR-0029 §2.2 복원 원칙). 조회에서 안 보이는 것과
+    편집 불가는 다른 문제다.
+    """
+    if db.query(BaselineControl).filter(BaselineControl.id == control_id).first() is not None:
+        return control_id, None
+    inst = db.query(ControlInstance).filter(
+        ControlInstance.id == control_id,
+        ControlInstance.action == ACTION_ADD,
+        ControlInstance.is_deleted == False,  # noqa: E712
+    ).first()
+    if inst is None:
+        return None
+    return None, inst.id
+
+
+def _find_assertion_instance(db: Session, cb_id: UUID | None, ci_id: UUID | None,
+                             rc_id: UUID) -> ControlAssertionInstance | None:
+    """한 쌍(통제, 어서션)의 overlay 행. **is_deleted 로 거르지 않는다.**
+
+    유니크 제약이 한 쌍당 1행을 강제하므로 소프트 삭제된 행이 그 자리를 계속 점유한다.
+    새로 만들지 않고 이 행을 재활성화해야 제약 위반을 피한다(_apply_control_delete 의
+    "instance 행 재사용" 선례와 같은 방식).
+    """
+    q = db.query(ControlAssertionInstance).filter(
+        ControlAssertionInstance.baseline_risk_category_id == rc_id,
+    )
+    if cb_id is not None:
+        q = q.filter(ControlAssertionInstance.control_baseline_id == cb_id)
+    else:
+        q = q.filter(ControlAssertionInstance.control_instance_id == ci_id)
+    return q.first()  # (tenant_id, 통제, 어서션) unique → 최대 1건
+
+
 @router.get("/control-assertions")
 def list_control_assertions(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
-    q = db.query(ControlAssertion).filter(ControlAssertion.is_deleted == False)  # noqa: E712
-    total = q.count()
-    items = q.offset(skip).limit(limit).all()
-    return {"items": [ControlAssertionRead.model_validate(i) for i in items], "total": total, "skip": skip, "limit": limit}
+    """목록 — resolver 경유 (2-A-4-4). 제외된 통제의 연결은 빠진다(ADR-0029 §2.4)."""
+    rows = resolve_control_assertion_links(db)
+    total = len(rows)
+    page = rows[skip: skip + limit]
+    return {"items": [ControlAssertionRead(**r) for r in page], "total": total, "skip": skip, "limit": limit}
 
 
 @router.post("/control-assertions", status_code=status.HTTP_201_CREATED, response_model=ControlAssertionRead)
-def create_control_assertion(body: ControlAssertionCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> ControlAssertion:
-    obj = ControlAssertion(**body.model_dump())
-    db.add(obj)
+def create_control_assertion(body: ControlAssertionCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> ControlAssertionRead:
+    """연결 추가 (2-A-4-4, ADR-0029 §2.3). risk_category_id 는 baseline_risk_categories.id.
+
+    - baseline 에 없는 연결 → add instance 생성
+    - baseline 에 있는 연결(= remove 로 떼어놨던 것) → **remove 행을 지운다**(소프트 삭제).
+      add 로 전환하지 않는다 — baseline 에 이미 있는 연결이 overlay 에도 표현되면 같은 상태를
+      두 가지로 적을 수 있게 된다. baseline 이 진실이고 overlay 는 차이만 담는다.
+    """
+    target = _resolve_assertion_target(db, body.control_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Control not found")
+    cb_id, ci_id = target
+    if db.query(BaselineRiskCategory).filter(
+        BaselineRiskCategory.id == body.risk_category_id,
+        BaselineRiskCategory.is_deleted == False,  # noqa: E712
+    ).first() is None:
+        raise HTTPException(status_code=404, detail="RiskCategory not found")
+
+    baseline_link = None
+    if cb_id is not None:  # baseline 연결은 baseline 통제에만 걸린다
+        baseline_link = db.query(BaselineControlAssertion).filter(
+            BaselineControlAssertion.baseline_control_id == cb_id,
+            BaselineControlAssertion.baseline_risk_category_id == body.risk_category_id,
+            BaselineControlAssertion.is_deleted == False,  # noqa: E712
+        ).first()
+
+    inst = _find_assertion_instance(db, cb_id, ci_id, body.risk_category_id)
+    if baseline_link is not None:
+        if inst is not None:
+            inst.is_deleted = True  # 차이 없음 = overlay 부재. 행은 재활성화 대상으로 남긴다
+        db.commit()
+        return ControlAssertionRead(
+            id=baseline_link.id, control_id=body.control_id,
+            risk_category_id=body.risk_category_id, created_at=baseline_link.created_at,
+        )
+
+    if inst is None:
+        inst = ControlAssertionInstance(
+            control_baseline_id=cb_id, control_instance_id=ci_id,
+            baseline_risk_category_id=body.risk_category_id,
+            action=ASSERTION_ACTION_ADD,
+        )
+        db.add(inst)
+    else:
+        inst.action = ASSERTION_ACTION_ADD
+        inst.is_deleted = False
     db.commit()
-    db.refresh(obj)
-    return obj
+    db.refresh(inst)
+    return ControlAssertionRead(
+        id=inst.id, control_id=body.control_id,
+        risk_category_id=body.risk_category_id, created_at=inst.created_at,
+    )
 
 
 @router.delete("/control-assertions/{ca_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_control_assertion(ca_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
-    obj = db.query(ControlAssertion).filter(ControlAssertion.id == ca_id, ControlAssertion.is_deleted == False).first()  # noqa: E712
-    if not obj:
+    """연결 삭제 (2-A-4-4, ADR-0029 §2.3). ca_id 는 목록이 준 연결 정체성 id.
+
+    - baseline 연결 → remove instance 생성/재활성화. **baseline_control_assertions 원본 불변.**
+    - 회사 add 연결 → instance soft delete.
+    """
+    link = db.query(BaselineControlAssertion).filter(
+        BaselineControlAssertion.id == ca_id,
+        BaselineControlAssertion.is_deleted == False,  # noqa: E712
+    ).first()
+    if link is not None:
+        inst = _find_assertion_instance(db, link.baseline_control_id, None, link.baseline_risk_category_id)
+        if inst is None:
+            inst = ControlAssertionInstance(
+                control_baseline_id=link.baseline_control_id,
+                baseline_risk_category_id=link.baseline_risk_category_id,
+                action=ASSERTION_ACTION_REMOVE,
+            )
+            db.add(inst)
+        else:
+            inst.action = ASSERTION_ACTION_REMOVE
+            inst.is_deleted = False
+        db.commit()
+        return
+
+    inst = db.query(ControlAssertionInstance).filter(
+        ControlAssertionInstance.id == ca_id,
+        ControlAssertionInstance.action == ASSERTION_ACTION_ADD,
+        ControlAssertionInstance.is_deleted == False,  # noqa: E712
+    ).first()
+    if inst is None:
         raise HTTPException(status_code=404, detail="ControlAssertion not found")
-    obj.is_deleted = True
+    inst.is_deleted = True
     db.commit()
 
 

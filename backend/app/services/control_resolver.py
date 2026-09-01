@@ -283,3 +283,58 @@ def resolve_controls(db: Session) -> list[dict]:
 
     result.sort(key=lambda r: r["code"] or "")
     return result
+
+
+def resolve_control_assertion_links(db: Session) -> list[dict]:
+    """활성 tenant 의 최종 통제-어서션 **연결 목록** = baseline 연결 − remove + add (2-A-4-4).
+
+    _resolve_assertions 가 통제별 코드 배열을 만드는 것과 달리, 이쪽은 연결 하나하나를
+    식별자와 함께 낸다(목록 API·삭제 대상 지정용). 정체성 id 규칙은 통제와 동일 —
+    baseline 유래는 baseline 연결 행 id, 회사 add 는 instance 행 id.
+
+    ADR-0029 §2.4 — 통제가 effective 제외면 그 연결도 제외된다. 연결 레코드를 건드리지 않고
+    조회 시점에 계산한다(§2.1·§2.2 와 동일 원칙).
+    """
+    alive_controls = {c["id"] for c in resolve_controls(db)}
+
+    instances = (
+        db.query(ControlAssertionInstance)
+        .filter(ControlAssertionInstance.is_deleted == False)  # noqa: E712
+        .all()
+    )
+    removed = set()
+    added = []
+    for inst in instances:
+        control_id = inst.control_instance_id if inst.control_instance_id is not None else inst.control_baseline_id
+        if inst.action == ASSERTION_ACTION_REMOVE:
+            removed.add((control_id, inst.baseline_risk_category_id))
+        elif inst.action == ASSERTION_ACTION_ADD:
+            added.append((control_id, inst))
+
+    rows: list[dict] = []
+    for link in (
+        db.query(BaselineControlAssertion)
+        .filter(BaselineControlAssertion.is_deleted == False)  # noqa: E712
+        .all()
+    ):
+        key = (link.baseline_control_id, link.baseline_risk_category_id)
+        if key in removed or link.baseline_control_id not in alive_controls:
+            continue
+        rows.append({
+            "id": link.id,
+            "control_id": link.baseline_control_id,
+            "risk_category_id": link.baseline_risk_category_id,
+            "created_at": link.created_at,
+        })
+    for control_id, inst in added:
+        if control_id not in alive_controls:
+            continue
+        rows.append({
+            "id": inst.id,
+            "control_id": control_id,
+            "risk_category_id": inst.baseline_risk_category_id,
+            "created_at": inst.created_at,
+        })
+
+    rows.sort(key=lambda r: (str(r["control_id"]), str(r["risk_category_id"])))
+    return rows
