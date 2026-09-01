@@ -1735,7 +1735,7 @@ DB 이관(2-A-2 재실행)은 백엔드(TrustBuilder) 소관 — 본 세션(Regi
 | `test_search_response_includes_process_code` / `..._sub_process_code` / `..._risk_level` | `POST /risks`가 legacy `risks`에 써서 `_resolve_risk_parent`가 `(None, None)` 반환 → add instance가 상위를 잃음 |
 | ~~`test_search_response_includes_assertions`~~ ✅ **해소 (2026-09-01, 2-A-4-4)** | `POST /control-assertions`가 legacy junction에 씀 → `control_assertion_instances` 전환. 테스트는 검증 대상 그대로 두고 **id 획득 경로만** baseline 카테고리로 교체(어서션 id 공간이 baseline 이므로) |
 | `test_search_no_n_plus_one` | 위와 동일(상위 계층) |
-| `test_excel_upload_commit` | **2-A-4-2에서 추가** — `GET /controls`를 resolver로 전환했는데 upload-excel은 아직 legacy 쓰기 |
+| `test_excel_upload_commit` (잔여 1건) | **2-A-4-2에서 추가** — `GET /controls`를 resolver로 전환했는데 upload-excel은 아직 legacy 쓰기. **2026-09-01 조사: 13.6 멀티헤더 버그와 무관한 별건**(이 테스트는 단일 헤더 픽스처를 쓰며 파싱은 성공한다). 13.9-10-b 참조 |
 
 ### 13.6 부수 발견 — upload-excel 다중 헤더행 미대응 (미수정)
 
@@ -1744,6 +1744,41 @@ DB 이관(2-A-2 재실행)은 백엔드(TrustBuilder) 소관 — 본 세션(Regi
 seed는 실제 데이터 시작행을 탐색하는 `_find_data_start`로 보정했고 **파서 자체는 무변경**이다. API 측 수정은 upload-excel 리팩터링(2-A-4-3) 범위로 남긴다.
 
 **2026-08-20 FE 조사 재확인** (`ICFR-13.6-excel-multiheader-investigate.md`, read-only): 파싱 주체가 전적으로 BE임을 FE 코드 기준으로 재확인(`frontend/src`에 xlsx/SheetJS import 0건, `uploadExcel.ts`는 원본 File을 가공 없이 FormData로 전달). 위 원인 서술과 신규 불일치 없음 — BE(TrustBuilder) 트랙 핸드오프 재확인, `EXCEL_UPLOAD_LOCKED` 잠금 유지. 상태 변경 없음(여전히 미수정).
+
+**2026-09-01 조사 — 재현 성공, 원인 지점 특정** (`prompts/ICFR_excel_probe_20260901.md`, **조사 전용·코드 변경 0건**).
+
+조사에 착수한 이유는 **이 시점까지 재현 파일이 특정된 적이 없었기 때문**이다. 13.6은 코드 독해로 서술됐고 실행 결과가 기록에 없었으며, 2026-08-20 FE 조사도 "파싱 주체가 BE"까지만 밝혔다. 재현하지 못하는 버그를 고치면 고쳤다고 믿고 넘어가게 된다.
+
+**전제 하나를 먼저 무효화한다 — 통제 93건은 파서 동작의 근거가 아니다.** 93건은 `seeds/seed_baseline.py` 경로로 들어갔고 `upload-excel` 과 무관하다. 두 경로가 같은 파일을 다르게 읽는다는 것이 이번 조사의 핵심이다.
+
+**대상 파일**: `backend/seeds/2026_설계평가_RCM_리스트.xlsx` (143,009바이트). Sheet1 = 100행 × 78열. 실측 구조 — 1행 `Company Name:` / 2행 `Update:` / 3~4행 공백 / 5행 상단 설명 밴드 / **6행 주헤더**(`프로세스번호`·`통제활동번호`·`통제활동이름` 매칭) / **7행 2차 헤더**(값이 50번째 열 이후에만 존재, `row[1]` 은 `None`) / **8~100행 데이터 93건**. **"멀티헤더"라는 서술은 이 파일에 실제로 해당한다.**
+
+**실행 결과** (TestClient 로 `POST /api/rcm/upload-excel` 엔드포인트 경유, `mode=preview`, 파서 직접 호출 아님):
+
+```
+HTTP 200
+{"summary": {"total_rows": 0, "valid_rows": 0, "errors": [], "warnings": []}, "preview": []}
+```
+
+**0건이 맞다. 그리고 에러도 경고도 없이 200 이다** — 사용자에게는 "업로드 성공, 0건"으로 보인다. 조용한 실패라는 점이 원래 기록에 없던 사실이다.
+
+**0이 되는 지점** — 헤더 인식 단계가 아니라 **행 순회의 첫 반복**이다.
+
+| 단계 | 결과 |
+|---|---|
+| `find_rcm_sheet(wb, max_row=15)` | ✅ 정상 — `Sheet1`, `header_row=6`, `mapping={'process_code': 1, 'control_code': 6, 'control_name': 16}` |
+| `_parse_rcm_sheet(ws, header_row=6, …)` | ❌ `min_row=header_row+1`(=7)부터 순회 → 7행 `row[1] is None` → 즉시 `break` → 0건 |
+
+**두 경로 대조** — 차이는 `_parse_rcm_sheet` 에 넘기는 `header_row` 인자 **한 곳**뿐이다.
+
+| 경로 | 코드 | 넘기는 값 | 결과 |
+|---|---|---|---|
+| seed | `seed_baseline.py:136-138` — `data_start = _find_data_start(ws, header_row, mapping["process_code"])` → `_parse_rcm_sheet(ws, data_start - 1, mapping)` | `8 - 1 = 7` | **93건** |
+| upload | `api/rcm.py:1097-1100` — `sheet_name, header_row, mapping = found` → `_parse_rcm_sheet(ws, header_row, mapping)` | `6` | **0건** |
+
+같은 파일·같은 파서로 `_parse_rcm_sheet(ws, 7, …)` = controls 93 / processes 8 / risks 85 / errors 0, `_parse_rcm_sheet(ws, 6, …)` = 전부 0 임을 직접 확인했다. 즉 **파서가 아니라 호출부의 인자 계산이 원인이다.** `seed_baseline.py:105` `_find_data_start` 가 하는 보정을 `upload-excel` 핸들러는 하지 않는다.
+
+**판정: 재현 성공(원인 특정 완료).** 수정은 별건(13.9-10) — `_find_data_start` 상당 로직을 `upload-excel` 경로에 반영하는 방향. 이번 조사에서는 고치지 않았다.
 
 ### 13.7 부수 발견 — processes 엔드포인트 resolver 미전환 (기록만)
 
@@ -1806,7 +1841,12 @@ seed는 실제 데이터 시작행을 탐색하는 `_find_data_start`로 보정�
 9. ~~**어서션 junction CRUD 전환**~~ ✅ **완료 (2026-09-01, 2-A-4-4)** — `POST`/`DELETE`/`GET /api/rcm/control-assertions` 를 `control_assertion_instances` 기반으로 전환. 읽기(`_resolve_assertions`)와 동일한 이중 FK 규약(baseline 유래는 `control_baseline_id`, add 통제만 `control_instance_id`). 커밋 `b11b8a9`(구현) + 테스트 커밋. xfail `test_search_response_includes_assertions` 해소(2건→1건). ADR-0029 §2.3·§2.4 쓰기 경로가 코드로 잠김. **로컬 검증만 완료 — 운영 미확인, push 대기.**
 
 9-1. **`/risk-categories` 읽기·쓰기 분리 (신규 부채, 2026-09-01 등록)** — 읽기는 `baseline_risk_categories`, 쓰기는 legacy `risk_categories` 로 분리된 상태. **카테고리 생성이 201로 성공하지만 목록에 나타나지 않는다.** 현재 FE 소비처 0건이라 발현되지 않으나, 사용 시 13.7과 동일한 종류의 결함이 된다. 처리 방향은 쓰기 API 제거(405)가 유력하며 별도 ADR 판단 필요. (읽기 전환 자체는 2-A-4-4에 필수였다 — junction 이 참조하는 `baseline_risk_categories.id` 를 노출하는 API 가 전환 전에는 하나도 없어, 어떤 클라이언트도 유효한 id 를 얻을 수 없었다.)
-10. **upload-excel 파서 분리 + 13.6 멀티헤더 0건 버그** — 2026-08-24 작업에서 의도적으로 제외했다(읽는 경로를 고치기 전에 쓰는 경로를 고치면 파서를 두 번 수정하게 됨). **읽는 경로 전환이 끝났으므로 이제 착수 가능하다.** 잔여 xfail: `test_excel_upload_commit` — 2-A-4-4 이후 **유일하게 남은 xfail 1건**이다. Excel 업로드 잠금(`EXCEL_UPLOAD_LOCKED`)도 여기서 해소된다.
+10. **upload-excel — 별개 결함 2건. 묶어서 관리하지 말 것** (2026-09-01 조사로 분리, `prompts/ICFR_excel_probe_20260901.md`). 이전 기록은 두 건을 한 항목으로 묶고 잔여 xfail 을 멀티헤더 버그에 붙였는데 **그 연결이 틀렸다.** 원인·재현 조건·검증 수단이 전부 다르다.
+
+    - **10-a. 멀티헤더 0건 (13.6)** — 재현 확인 완료. 원인은 `api/rcm.py:1100` 이 `_parse_rcm_sheet` 에 `header_row`(=6)를 그대로 넘기는 것. seed 는 `_find_data_start` 로 보정해 `data_start - 1`(=7)을 넘겨 93건을 얻는다. **파서가 아니라 호출부 인자 계산 문제.** `EXCEL_UPLOAD_LOCKED` 해소는 여기에 걸려 있다. **에러 없이 HTTP 200 / 0건을 반환**하므로 잠금을 풀기 전에 반드시 고쳐야 한다(사용자에게 성공으로 보인다). **커버하는 테스트가 하나도 없다** — Excel 테스트 8건 전부 단일 헤더 픽스처(`_make_test_excel`, 헤더 7행·데이터 8행)를 쓴다. 수정 시 멀티헤더 회귀 테스트를 함께 만들 것.
+    - **10-b. upload-excel 쓰기 경로 overlay 미전환** — 잔여 xfail `test_excel_upload_commit` 이 붙은 곳은 **이쪽이다.** 마커 사유도 `_XFAIL_SRC_SPLIT`(write=legacy `controls` / read=resolver)로 멀티헤더와 무관하다. 이 테스트는 단일 헤더 픽스처를 쓰므로 파싱은 성공하며(같은 픽스처를 쓰는 `test_excel_upload_preview` 는 통과), 깨지는 곳은 커밋 후 `GET /controls` 왕복이다. 즉 **10-a 를 고쳐도 이 xfail 은 해소되지 않는다.**
+
+    착수 순서는 10-a → 10-b 가 자연스럽다(파서를 두 번 만지지 않기 위해). 2026-08-24 작업에서 의도적으로 제외했던 사유(읽는 경로 선행)는 2-A-4-3·2-A-4-4 로 해소됐다.
 
 **유지(기존 미결)**
 
@@ -1826,6 +1866,8 @@ seed는 실제 데이터 시작행을 탐색하는 `_find_data_start`로 보정�
 ## 14. 변경 로그 (Changelog)
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
+
+- **2026-09-01 / TrustBuilder + Claude** — **13.6 upload-excel 파서 실동작 조사** (`prompts/ICFR_excel_probe_20260901.md`, **조사 전용 — 코드 변경 0건, 문서 커밋만**). 13.6은 코드 독해로 서술됐을 뿐 **재현 파일이 특정된 적도, 실행 결과가 기록된 적도 없었다.** ①**대상 파일 실측**: `seeds/2026_설계평가_RCM_리스트.xlsx` Sheet1 = 100행×78열, 6행 주헤더 + **7행 2차 헤더(값이 50열 이후에만 존재, `row[1]`은 `None`)** + 8~100행 데이터 93건 — "멀티헤더"라는 서술이 이 파일에 실제로 해당함을 확인. ②**엔드포인트 경유 실행**(TestClient, `mode=preview`, 파서 직접 호출 아님): `HTTP 200 / total_rows: 0 / errors: [] / warnings: []` — **0건 재현 성공. 그리고 에러 없이 200이라 사용자에게는 "업로드 성공"으로 보인다**(원래 기록에 없던 사실). ③**0이 되는 지점 특정**: 헤더 인식은 정상(`find_rcm_sheet` → `header_row=6`, mapping 3개 전부 매칭). 실패는 `_parse_rcm_sheet` 의 **행 순회 첫 반복** — `min_row=header_row+1`(=7)에서 `row[1] is None` → 즉시 `break`. ④**두 경로 대조**: 차이는 `_parse_rcm_sheet` 에 넘기는 인자 **한 곳**뿐 — seed(`seed_baseline.py:136-138`)는 `_find_data_start` 로 `8`을 찾아 `data_start-1=7`을 넘겨 **93건**, upload(`api/rcm.py:1097-1100`)는 `header_row=6`을 그대로 넘겨 **0건**. 같은 파일·같은 파서로 인자만 바꿔 93 vs 0 을 직접 확인 — **파서가 아니라 호출부 인자 계산이 원인**이다. ⑤**전제 무효화**: "통제 93건이 조회되므로 파서가 동작한다"는 거짓 — 93건은 `seed_baseline.py` 경로이며 `upload-excel` 과 무관하다. ⑥**xfail 사유가 13.6과 다른 건임을 확인**: `test_excel_upload_commit` 의 마커는 `_XFAIL_SRC_SPLIT`(write=legacy `controls` / read=resolver)이고, 이 테스트는 **단일 헤더 픽스처**(`_make_test_excel`, 헤더 7행·데이터 8행)를 써서 파싱은 성공한다(같은 픽스처의 `test_excel_upload_preview` 는 통과). **10-a 를 고쳐도 이 xfail 은 해소되지 않는다** — 13.9-10을 10-a(멀티헤더)/10-b(overlay 미전환) 두 항목으로 분리. ⑦**테스트 공백 발견**: Excel 테스트 8건 전부 단일 헤더 픽스처를 쓴다 — **멀티헤더를 커버하는 테스트가 0건**. 수정 시 회귀 테스트 동반 필요. **판정: 재현 성공(원인 특정 완료).** 지시대로 수정은 하지 않았다. 다음: 13.9-10-a 파서 호출부 수정 + 멀티헤더 회귀 테스트.
 
 - **2026-09-01 / TrustBuilder + Claude** — **2-A-4-4 어서션 junction CRUD overlay 전환** (`prompts/ICFR_2A44_20260824.md`, 커밋 `b11b8a9` 외 1건. **로컬 커밋까지만 — push 대기**). 13.9-9의 미완 구간(읽기는 resolver, 쓰기는 레거시 junction)을 닫았다. ①**STEP 0 실측 3건**: (a) `api/rcm.py` 에 물리 삭제(`db.delete()`) 선례 **0건** — baseline 유래는 instance 행을 재사용하며 `action` 만 전환하고, tenant `add` 는 `is_deleted=True`. 기존 instance 조회가 `is_deleted` 필터를 걸지 않는 것이 유니크 제약 충돌 회피 방식이었다. (b) `_resolve_assertions` 는 `control_instance_id` 우선·없으면 `control_baseline_id` 를 통제 정체성으로 읽는다 — 쓰기도 같은 규약으로 맞췄다. (c) 레거시 쓰기 핸들러는 `rcm.py:737/746`, FE 소비처 0건. ②**전제와 어긋난 실측 1건(작업 중 발견)**: junction 이 참조하는 `baseline_risk_categories.id` 를 **노출하는 API 가 하나도 없었다**(`/risk-categories` 전량 레거시) — 즉 어떤 클라이언트도 유효한 id 를 얻을 수 없는 상태였고, 운영 레거시 0건이라 13.7과 동일한 종류의 결손이었다. 사용자 판단으로 **읽기 2개만 baseline 으로 전환**하고 쓰기 3개는 부채 등록(13.9-9-1). ③**§3.1 문구 정정**: 지시서의 "`remove` 레코드를 **삭제**한다"는 물리 삭제가 아니라 **소프트 삭제 + 행 재사용**이다(위 실측 (a) 선례). 유니크 제약이 한 쌍당 1행을 강제하므로 재조작 시 새 행을 만들면 제약 위반 — ADR-0029 §2.3에 실측 반영으로 기록. ④**검증 8건 신규**(`tests/test_rcm_assertion_overlay.py`) — 핵심은 `test_remove_baseline_link_keeps_baseline_row`(baseline junction 불변)와 `test_readd_removed_link_drops_remove_record`(재부착 시 `add` 로 전환하지 않음 — 이게 없으면 잘못된 구현도 나머지를 전부 통과한다). 제약 회피가 실제로 지켜지는지 보는 `test_remove_after_readd_reuses_row` 를 §6 목록 밖에서 추가. ⑤**xfail 2→1**: `test_search_response_includes_assertions` 해소 — 검증 대상은 그대로 두고 **id 획득 경로만** baseline 카테고리로 교체했다. 잔여 1건은 `test_excel_upload_commit`(13.6·13.9-10). **로컬 `ruff` All checks passed / `pytest` 161 passed·1 xfailed·0 failed. 운영 검증은 미실시** — Regina 프론트 배선 중이라 API 동작 변경 사전 공유 후 push. 다음: upload-excel 파서 분리(13.9-10).
 
