@@ -5,6 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
+from app.models.rcm_baseline import BaselineRiskCategory
+from tests.conftest import TestingSessionLocal
+
 # 2-A-3(READ 전환) 후 write(legacy controls)→read(resolver) 소스 분리로 red 가 된 왕복 테스트.
 # strict=True — 2-A-4(POST→instance add) 전환으로 복구되면 xpass 가 실패로 떠서
 # "이 xfail 마킹을 제거하라"는 신호가 된다(부채가 조용히 남는 것 방지). 테스트 로직은 미수정.
@@ -516,14 +519,22 @@ def test_search_response_includes_risk_level(client: TestClient) -> None:
     assert resp.json()["items"][0]["risk_level"] == "HR"
 
 
-@_XFAIL_SRC_SPLIT
 def test_search_response_includes_assertions(client: TestClient) -> None:
     """search 응답에 assertions 배열 포함 (ControlAssertion → assertion_code 매핑)."""
     h = _headers(client)
     ids = _create_hierarchy(client, h, "SAS")
     # RiskCategory 생성 후 ControlAssertion 연결
-    rc = client.post("/api/rcm/risk-categories", json={"code": "TST", "name": "Test Assertion"}, headers=h)
-    client.post("/api/rcm/control-assertions", json={"control_id": ids["control_id"], "risk_category_id": rc.json()["id"]}, headers=h)
+    # 2-A-4-4 — 어서션은 baseline 소유(ADR-0029 §2.3)라 junction 이 참조하는 id 는
+    # baseline_risk_categories.id 다. 검증 대상은 그대로고 id 획득 경로만 바뀌었다.
+    db = TestingSessionLocal()
+    try:
+        rc = BaselineRiskCategory(code="TST", name="Test Assertion")
+        db.add(rc)
+        db.commit()
+        rc_id = str(rc.id)
+    finally:
+        db.close()
+    client.post("/api/rcm/control-assertions", json={"control_id": ids["control_id"], "risk_category_id": rc_id}, headers=h)
 
     resp = client.get("/api/rcm/controls/search", params={"q": "SAS 통제"}, headers=h)
     assert resp.status_code == 200

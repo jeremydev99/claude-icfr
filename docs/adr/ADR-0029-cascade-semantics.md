@@ -63,6 +63,41 @@ baseline/overlay 멀티테넌시에서 통제 계층은 2-A-3·2-A-4-2로 resolv
 어서션에 overlay 계층을 두면 제외·수정 로직을 한 벌 더 만들어야 하고,
 바뀔 일이 없는 대상에 대한 코드가 된다.
 
+**2026-09-01 실측 반영 (2-A-4-4 구현 중) — "연결을 지운다"는 물리 삭제가 아니다.**
+
+작업 지시서(`prompts/ICFR_2A44_20260824.md` §3.1)는 "떼었다 다시 붙이면 `remove` 레코드를
+**삭제**한다"고 적었다. 이 문구가 물리 삭제(`DELETE FROM`)로 읽히면 안 된다. 구현은
+**소프트 삭제 + 행 재사용**이며, 근거는 코드 실측이다.
+
+| 확인 | 결과 |
+|---|---|
+| `api/rcm.py` 전체의 물리 삭제(`db.delete()`) | **0건** — 선례 없음 |
+| baseline 유래 항목 삭제 | instance 행을 **재사용**하고 `action` 만 전환 (`_apply_control_delete` / `_apply_layer_delete`) |
+| tenant `add` 항목 삭제 | `is_deleted = True` |
+| 기존 instance 조회 | `is_deleted` 필터를 **걸지 않는다** — 그래서 같은 행이 항상 잡힌다 |
+
+junction 은 `(tenant_id, control_*_id, baseline_risk_category_id)` 유니크 제약이 한 쌍당 1행을
+강제한다. 소프트 삭제된 행도 그 자리를 계속 점유하므로, 같은 쌍을 다시 조작할 때 새 행을
+만들면 제약 위반이다. 따라서 규칙은 다음과 같다.
+
+- baseline 연결을 떼면 → `remove` 행 생성, **없으면 만들고 있으면 재활성화**
+- 뗐던 연결을 다시 붙이면 → 그 행을 `is_deleted=True` (resolver 가 `is_deleted==False` 로
+  거르므로 **조회상 부재** = overlay 없음 = baseline 그대로). `add` 로 전환하지 않는다 —
+  baseline 에 이미 있는 연결을 overlay 에도 적으면 같은 상태가 두 가지로 표현된다.
+- 다시 떼면 → 그 행을 재활성화(`is_deleted=False`, `action=remove`)
+
+`§2.2`(유도 가능한 값을 저장하지 않는다)와 어긋나지 않는다. 남는 것은 상태가 아니라
+**결정의 흔적**이고, 조회 결과는 전적으로 baseline − remove + add 로 계산된다.
+검증: `tests/test_rcm_assertion_overlay.py::test_remove_after_readd_reuses_row`.
+
+**부수 확인 — 어서션 id 공간.** `control_assertion_instances.baseline_risk_category_id` 는
+`baseline_risk_categories` 를 참조하는데, 전환 전에는 **그 id 를 노출하는 API 가 하나도 없었다**
+(`/risk-categories` 전량이 레거시 `risk_categories` 대상). 즉 어떤 클라이언트도 junction 쓰기에
+넣을 유효한 id 를 얻을 수 없었고, 운영 레거시 테이블은 0건이라 13.7 과 같은 종류의 결손이었다.
+본 작업에서 **읽기 2개(`GET /risk-categories`, `GET /risk-categories/{id}`)를 baseline 조회로
+전환**했다(§2.3 — 어서션은 baseline 소유, overlay 계층 없음). 쓰기 3개는 아직 레거시이며
+`ClaudeICFR.md` 13.9 에 부채로 등록했다.
+
 ### 2.4 통제와 어서션 연결은 동시에 움직인다
 
 통제가 제외되면 그 통제에 걸린 어서션 연결도 함께 제외된다.
@@ -231,3 +266,17 @@ DB 제약에만 의존하면 에러 메시지가 사용자에게 의미 없는 �
 §5 검증 조건 5개 + §2.2 직접 검증 1개 전부 통과(위 표).
 
 잔여 xfail 2건은 이 ADR 범위 밖이다 — `upload-excel` 파서(13.6)와 어서션 junction CRUD 전환.
+
+**2026-09-01 — §2.3·§2.4 쓰기 경로 구현 완료 (2-A-4-4).** 위 5건은 조회·계층 CRUD 검증이고,
+어서션 junction 은 읽기만 전환된 상태였다(쓰기는 레거시). 그 쓰기 경로를 전환하며 §2.3(baseline
+소유·overlay 기록)과 §2.4(통제 제외 시 연결도 제외)를 코드로 잠갔다. 검증
+`tests/test_rcm_assertion_overlay.py` 8건 — 특히 다음 둘이 핵심이다.
+
+| 대상 | 테스트 |
+|---|---|
+| §2.3 baseline junction 불변 | `test_remove_baseline_link_keeps_baseline_row` |
+| §2.3 재부착 시 add 전환 금지 | `test_readd_removed_link_drops_remove_record` |
+| §2.4 제외 통제의 연결 제외 | `test_excluded_control_links_drop_from_list` |
+| §2.2 제외 중 편집의 복원 | `test_link_edit_on_excluded_control_survives_restore` |
+
+이로써 잔여 xfail 은 `test_excel_upload_commit` 1건(13.6)만 남는다.
