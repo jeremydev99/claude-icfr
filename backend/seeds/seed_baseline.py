@@ -29,6 +29,8 @@
 - 다만 이 엑셀은 헤더가 6~7행 2단이라 `_parse_rcm_sheet` 가 쓰는 "header_row+1 = 데이터 시작"
   가정이 어긋난다(7행이 2차 헤더 → 즉시 break → 0건). 실제 데이터 시작행을 찾아
   `header_row` 인자에 (데이터시작 - 1) 을 넘겨 보정한다. 파서 자체는 무변경.
+  보정 함수 `find_data_start_row` 는 `services/excel_parser` 에 있고 upload-excel 과 공용이다
+  (13.9-10-a — 이 보정을 seed 만 하고 upload 는 하지 않아 결함이 생겼다).
 """
 from __future__ import annotations
 
@@ -48,7 +50,7 @@ from app.models.rcm_baseline import (
     BaselineRiskCategory,
     BaselineSubProcess,
 )
-from app.services.excel_parser import find_rcm_sheet
+from app.services.excel_parser import find_data_start_row, find_rcm_sheet
 
 # 표준 원천 — repo 내 고정 경로. 모든 환경이 같은 파일을 본다.
 EXCEL_PATH = Path(__file__).resolve().parent / "2026_설계평가_RCM_리스트.xlsx"
@@ -102,22 +104,6 @@ _CONTROL_FIELDS = [
 ]
 
 
-def _find_data_start(ws, header_row: int, p_col: int, max_scan: int = 10) -> int:
-    """헤더행 다음에서 첫 데이터 행(프로세스번호가 채워진 행) 번호를 찾는다.
-
-    다중 헤더행(이 엑셀은 6행 주헤더 + 7행 2차 헤더) 대응. 상단 docstring 참조.
-    """
-    for row_idx, row in enumerate(
-        ws.iter_rows(min_row=header_row + 1, max_row=header_row + max_scan, values_only=True),
-        start=header_row + 1,
-    ):
-        if len(row) > p_col and row[p_col] is not None:
-            return row_idx
-    raise SystemExit(
-        f"[중단] 헤더행 {header_row} 다음 {max_scan}행 안에서 데이터 시작행을 찾지 못했습니다."
-    )
-
-
 def _load_excel():
     """엑셀 → 파싱 결과(_ParsedRCM). 순수 변환만 사용."""
     if not EXCEL_PATH.exists():
@@ -133,7 +119,12 @@ def _load_excel():
             raise SystemExit(f"[중단] RCM 헤더를 찾지 못했습니다: 시트 {wb.sheetnames}")
         sheet_name, header_row, mapping = found
         ws = wb[sheet_name]
-        data_start = _find_data_start(ws, header_row, mapping["process_code"])
+        scan = 10
+        data_start = find_data_start_row(ws, header_row, mapping["process_code"], max_scan=scan)
+        if data_start is None:
+            raise SystemExit(
+                f"[중단] 헤더행 {header_row} 다음 {scan}행 안에서 데이터 시작행을 찾지 못했습니다."
+            )
         print(f"  원천: {EXCEL_PATH.name} / 시트 {sheet_name} / 헤더 {header_row}행 / 데이터 {data_start}행~")
         parsed = _parse_rcm_sheet(ws, data_start - 1, mapping)
     finally:

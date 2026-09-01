@@ -92,3 +92,22 @@ def find_rcm_sheet(wb, max_row: int = 15) -> tuple[str, int, dict[str, int]] | N
             header_row, mapping = result
             return sheet_name, header_row, mapping
     return None
+
+
+def find_data_start_row(ws, header_row: int, p_col: int, max_scan: int = 10) -> int | None:
+    """헤더행 다음에서 첫 데이터 행(필수 열이 채워진 행) 번호. 못 찾으면 None.
+
+    다중 헤더행 대응 — 헤더가 2단 이상이면 `header_row + 1` 이 데이터가 아니다.
+    2차 헤더 행은 필수 열이 비어 있어, 보정 없이 파싱하면 첫 반복에서 그대로 멈춘다
+    (13.6 — 93건짜리 RCM 이 0건으로 파싱되던 원인).
+
+    실패를 어떻게 알릴지는 호출 계층마다 다르므로(seed 는 중단, API 는 응답) 여기서는
+    None 만 돌려준다. **호출부마다 따로 계산하지 말 것** — 계산이 갈린 것이 결함의 원인이었다.
+    """
+    for row_idx, row in enumerate(
+        ws.iter_rows(min_row=header_row + 1, max_row=header_row + max_scan, values_only=True),
+        start=header_row + 1,
+    ):
+        if len(row) > p_col and row[p_col] is not None:
+            return row_idx
+    return None
