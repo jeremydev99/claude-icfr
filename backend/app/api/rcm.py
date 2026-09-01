@@ -66,7 +66,7 @@ from app.services.control_resolver import (
     resolve_hierarchy,
     resolve_processes,
 )
-from app.services.excel_parser import find_rcm_sheet
+from app.services.excel_parser import find_data_start_row, find_rcm_sheet
 
 router = APIRouter(prefix="/api/rcm", tags=["rcm"])
 
@@ -1064,6 +1064,38 @@ def _build_not_found_response(sheet_names: list[str], current_range: int) -> JSO
     )
 
 
+def _build_no_rows_response(sheet_name: str, header_row: int, reason: str,
+                            parse_errors: list[str]) -> JSONResponse:
+    """헤더는 찾았으나 통제가 0건 — 422 (13.9-10-a).
+
+    0건을 200 으로 돌려주면 사용자에게 "업로드 성공"으로 보인다. 93건짜리 RCM 을 올리고도
+    아무것도 안 들어간 채 성공 표시가 뜨는 것이 이 결함의 실제 피해였다. 원인(다중 헤더)을
+    고치는 것과 별개로, 다른 이유로 0건이 되어도 성공으로 새지 않도록 여기서 막는다.
+
+    실패 형태는 이 엔드포인트의 기존 규약(`header_not_found`)과 동일하게 맞춘다 —
+    422 + status 키. 이 건만 다른 규약을 쓰면 프론트가 따로 분기해야 한다.
+    """
+    return JSONResponse(
+        status_code=422,
+        content={
+            "status": "no_data_rows",
+            "error": (
+                f"시트 '{sheet_name}' 의 헤더는 {header_row}행에서 인식했으나 "
+                "데이터를 한 건도 읽지 못했습니다."
+            ),
+            "reason": reason,
+            "sheet": sheet_name,
+            "header_row": header_row,
+            "parse_errors": parse_errors[:10],
+            "suggestion": (
+                "헤더 아래에 데이터 행이 있는지, 필수 열(프로세스번호·통제활동번호·통제활동이름)이 "
+                "채워져 있는지 확인하세요. 헤더가 여러 단인 양식은 데이터 시작행을 자동 탐색하지만, "
+                "헤더 다음 10행 안에 데이터가 없으면 찾지 못합니다."
+            ),
+        },
+    )
+
+
 @router.post("/upload-excel")
 async def upload_excel(
     file: UploadFile = File(...),
@@ -1096,12 +1128,30 @@ async def upload_excel(
 
     sheet_name, header_row, mapping = found
     ws = wb[sheet_name]
+
+    # 다중 헤더행 보정 (13.9-10-a) — `_parse_rcm_sheet` 는 header_row+1 을 데이터 시작으로 보는데,
+    # 헤더가 2단인 양식은 그 행이 2차 헤더라 첫 반복에서 break 되어 0건이 된다.
+    # seed 경로와 **같은 함수**로 시작행을 찾아 넘긴다(계산이 갈린 것이 이 결함의 원인이었다).
+    data_start = find_data_start_row(ws, header_row, mapping["process_code"])
+    if data_start is None:
+        wb.close()
+        return _build_no_rows_response(
+            sheet_name, header_row,
+            f"헤더행 {header_row} 다음 10행 안에서 데이터 시작행을 찾지 못했습니다.", [],
+        )
+
     try:
-        parsed = _parse_rcm_sheet(ws, header_row, mapping)
+        parsed = _parse_rcm_sheet(ws, data_start - 1, mapping)
     except Exception as e:
         wb.close()
         raise HTTPException(status_code=400, detail=f"Excel 파싱 오류: {e}")
     wb.close()
+
+    if not parsed.controls:
+        return _build_no_rows_response(
+            sheet_name, header_row,
+            f"데이터 시작행({data_start})을 찾았으나 유효한 통제가 0건입니다.", parsed.errors,
+        )
 
     summary = {
         "total_rows": len(parsed.controls) + len(parsed.errors),
