@@ -13,7 +13,10 @@ code 유니크도 전역 단일 컬럼이라 **두 번째 테넌트가 온보딩
 2. code 유니크 4개를 (tenant_id, code) 로 전환
 3. baseline 4테이블에 (id, tenant_id) 유니크 — 복합 FK 의 참조 대상
 4. instance→baseline FK 8개를 복합 FK 로 전환 (테넌트 격리를 DB 가 보장, §2.3)
-5. baseline_control_assertions 유니크에 tenant_id 포함
+5. **baseline 내부 FK 4개도 복합 FK 로 전환** — instance 경로만 막고 baseline 끼리의
+   참조를 열어두면 "격리를 DB 가 구조적으로 보장한다"가 참이 아니다. A 사 하위프로세스가
+   B 사 프로세스를 가리키는 조합이 남는다. 같은 종류의 구멍을 두 번에 나눠 막지 않는다.
+6. baseline_control_assertions 유니크에 tenant_id 포함
 
 baseline_risk_categories 는 전역 유지 — 제도가 정하는 고정 집합이며 회사가 바꿀 대상이
 아니다(ADR-0029 §2.3, ADR-0030 §2.1). 이를 참조하는 FK 도 변경하지 않는다.
@@ -76,6 +79,20 @@ COMPOSITE_FKS = [
      'fk_control_assertion_instances_control_baseline_tenant'),
 ]
 
+# baseline 내부 참조 4개 — 위 8개와 같은 방식으로 막는다 (§2.3 사각지대, 2026-09-01 추가).
+# 주의: baseline_controls.risk_id 만 nullable 이다(나머지 3개는 NOT NULL). 그 컬럼이 NULL 인
+# 행은 MATCH SIMPLE 상 검사 대상이 아니며, 이는 "상위 없는 통제"를 허용해온 기존 규약과 일치한다.
+BASELINE_INTERNAL_FKS = [
+    ('baseline_sub_processes', 'process_id', 'baseline_processes',
+     'fk_baseline_sub_processes_process_tenant'),
+    ('baseline_risks', 'sub_process_id', 'baseline_sub_processes',
+     'fk_baseline_risks_sub_process_tenant'),
+    ('baseline_controls', 'risk_id', 'baseline_risks',
+     'fk_baseline_controls_risk_tenant'),
+    ('baseline_control_assertions', 'baseline_control_id', 'baseline_controls',
+     'fk_baseline_control_assertions_control_tenant'),
+]
+
 _ASSERTION_UQ = 'uq_baseline_control_assertions_control_category'
 
 
@@ -128,8 +145,9 @@ def upgrade() -> None:
     for t in CODED_TABLES:
         op.create_unique_constraint(f'uq_{t}_id_tenant', t, ['id', 'tenant_id'])
 
-    # ── 7~8. instance→baseline FK 8개를 복합 FK 로 ─────────────────────
-    for table, column, target, name in COMPOSITE_FKS:
+    # ── 7~8. instance→baseline + baseline 내부 FK 를 복합 FK 로 ────────
+    # 반드시 6 이후여야 한다 — 참조 대상의 (id, tenant_id) 유니크가 먼저 있어야 한다.
+    for table, column, target, name in COMPOSITE_FKS + BASELINE_INTERNAL_FKS:
         old = _find_fk_name(inspector, table, column, target)
         if old:
             op.drop_constraint(old, table, type_='foreignkey')
@@ -153,8 +171,9 @@ def downgrade() -> None:
         ['baseline_control_id', 'baseline_risk_category_id'],
     )
 
-    # 8~7 역순 — 복합 FK 제거 후 단순 FK 복원(이름은 DB 자동 명명에 맡긴다)
-    for table, column, target, name in COMPOSITE_FKS:
+    # 8~7 역순 — 복합 FK 제거 후 단순 FK 복원(이름은 DB 자동 명명에 맡긴다).
+    # baseline 내부 FK 를 먼저 되돌린다 — (id, tenant_id) 유니크 삭제보다 앞서야 한다.
+    for table, column, target, name in BASELINE_INTERNAL_FKS + COMPOSITE_FKS:
         op.drop_constraint(name, table, type_='foreignkey')
         op.create_foreign_key(None, table, target, [column], ['id'])
 

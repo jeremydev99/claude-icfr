@@ -91,6 +91,22 @@ A사 overlay가 B사 baseline을 가리키는 상태가 구조적으로 가능�
 instance가 `(baseline_*_id, tenant_id)`로 참조하는 복합 FK.
 같은 테넌트가 아니면 DB 레벨에서 삽입이 거부된다.
 
+**2026-09-01 범위 확장 — baseline 내부 참조 4개도 포함한다(총 12개).**
+초안은 instance→baseline 8개만 다뤘다. 그러면 baseline끼리의 참조가 열린 채 남아
+**A사 하위프로세스가 B사 프로세스를 가리키는 조합이 가능하다.** 같은 종류의 구멍이므로
+"격리를 DB가 구조적으로 보장한다"는 이 절의 주장이 instance 경로에 한정해서만 참이 된다.
+
+```
+baseline_sub_processes.process_id                → baseline_processes
+baseline_risks.sub_process_id                    → baseline_sub_processes
+baseline_controls.risk_id                        → baseline_risks
+baseline_control_assertions.baseline_control_id  → baseline_controls
+```
+
+같은 리비전(`c9d0e1f2a3b4`)에 넣는다 — 새 리비전을 추가하지 않는다. 운영 미적용 상태인
+지금이 가장 싸고, **스키마 변경은 횟수 자체가 위험**이기 때문이다.
+`baseline_risk_categories`를 참조하는 FK는 전역이므로 변경하지 않는다.
+
 **기각한 대안 — 애플리케이션 검증**
 resolver와 CRUD에서 `tenant_id`를 대조하는 방식. 마이그레이션은 가볍다.
 그러나 새 쿼리를 추가할 때마다 사람이 기억해야 하고, 누락되면 조용히 뚫린다.
@@ -101,7 +117,14 @@ risk-categories 읽기). 사람의 기억에 의존하는 격리는 이 프로�
 
 **2026-09-01 실측 반영 — NULL 조합은 검사 대상이 아니며, 그것이 의도한 동작이다.**
 
-복합 FK 대상 8개 컬럼은 전부 nullable이다(`action='add'`인 행은 baseline 부모가 없다).
+복합 FK 대상 12개 중 **9개가 nullable**이다 — instance 8개 전부(`action='add'`인 행은
+baseline 부모가 없다)와 baseline 내부의 `baseline_controls.risk_id` 하나. 나머지 baseline
+내부 3개(`baseline_sub_processes.process_id`, `baseline_risks.sub_process_id`,
+`baseline_control_assertions.baseline_control_id`)는 NOT NULL이라 NULL 예외가 없다.
+
+`baseline_controls.risk_id`가 nullable인 것은 "상위 없는 통제"를 허용해온 기존 규약이며
+(resolver도 `risk_id`가 NULL이면 cascade에서 제외하지 않는다), 운영 데이터에는 현재
+NULL이 **0건**이다(로컬 실측 93건 전부 채워짐).
 PostgreSQL의 기본 `MATCH SIMPLE`에서 **참조 컬럼 중 하나라도 NULL이면 제약을 검사하지 않는다.**
 `tenant_id`는 NOT NULL이므로, `baseline_*_id IS NULL`인 add 행이 그 경우에 해당한다.
 
@@ -112,9 +135,13 @@ PostgreSQL의 기본 `MATCH SIMPLE`에서 **참조 컬럼 중 하나라도 NULL�
 
 | 삽입 | 결과 |
 |---|---|
-| B사 instance → A사 baseline 참조 | `ERROR: violates foreign key constraint "fk_control_instances_baseline_tenant"` |
+| B사 instance → A사 baseline 참조 | `ERROR: ... "fk_control_instances_baseline_tenant"` |
 | B사 instance → B사 baseline 참조 | 성공 |
 | B사 instance, `baseline_control_id IS NULL` (add) | 성공 |
+| B사 `baseline_sub_processes` → A사 `baseline_processes` | `ERROR: ... "fk_baseline_sub_processes_process_tenant"` |
+| B사 `baseline_controls` → A사 `baseline_risks` | `ERROR: ... "fk_baseline_controls_risk_tenant"` |
+| B사 `baseline_sub_processes` → B사 `baseline_processes` | 성공 |
+| B사 `baseline_controls`, `risk_id IS NULL` | 성공 |
 
 **`(id, tenant_id)` 유니크는 4테이블에만 둔다** — §3 표는 5테이블로 적었으나, 이 제약은
 복합 FK의 참조 대상이 되기 위한 것이다. 아무도 참조하지 않는 `baseline_control_assertions`에는
@@ -143,7 +170,7 @@ PostgreSQL의 기본 `MATCH SIMPLE`에서 **참조 컬럼 중 하나라도 NULL�
 | 스키마 | `baseline_*` 5테이블에 `tenant_id` 추가(NOT NULL) |
 | 인덱스 | code 유니크 4개를 `(tenant_id, code)`로 전환 |
 | 제약 | baseline 5테이블에 `(id, tenant_id)` 유니크 추가 |
-| 제약 | instance→baseline FK 8개를 복합 FK로 전환 |
+| 제약 | FK 12개를 복합 FK로 전환 — instance→baseline 8개 + baseline 내부 4개 |
 | 제약 | `baseline_control_assertions` 유니크에 `tenant_id` 포함 |
 | `control_resolver.py` | **변경 없음** — 아래 정정 참조 |
 | `seed_baseline.py` | 대상 테넌트 지정 필요 |
@@ -185,11 +212,14 @@ class AuditedBase(IdentityBase, TenantMixin)   # = IdentityBase + tenant_id
    (현재 구조에서는 실패하는 케이스)
 4. A테넌트 instance가 B테넌트 baseline을 참조하도록 삽입 시도 → **DB가 거부**
 5. 기존 resolver 조회가 자기 테넌트 데이터만 반환
-6. 전체 pytest 통과
+6. **A테넌트 baseline 하위계층이 B테넌트 baseline 상위를 참조하도록 삽입 시도 → DB가 거부**
+   (2026-09-01 추가. 4번이 instance 경로라면 이쪽은 baseline 내부 경로다)
+7. 전체 pytest 통과
 
 **3번과 4번이 이 ADR의 핵심 검증이다.**
 3번은 §2.2가, 4번은 §2.3이 실제로 구현됐는지 본다.
 4번이 없으면 복합 FK 없이 단순 FK로도 통과해버린다.
+**6번이 없으면 instance 경로만 막힌 반쪽 격리가 통과한다.**
 
 ## 5. 위험과 대응
 
@@ -202,8 +232,10 @@ class AuditedBase(IdentityBase, TenantMixin)   # = IdentityBase + tenant_id
 
 ## 6. 미해결
 
-- **baseline 내부 FK 4개는 단순 FK로 남았다 (2026-09-01 발견, §2.3의 사각지대)** —
-  §2.3이 다룬 것은 instance→baseline 8개뿐이다. baseline끼리의 참조는 그대로다.
+- ~~**baseline 내부 FK 4개는 단순 FK로 남았다 (2026-09-01 발견, §2.3의 사각지대)**~~
+  ✅ **해소 (2026-09-01, 같은 리비전에 포함)** — §2.3 범위 확장 참조. 아래는 발견 당시 기록.
+
+  §2.3이 다룬 것은 instance→baseline 8개뿐이었다. baseline끼리의 참조는 그대로였다.
 
   | FK | 위험 |
   |---|---|
@@ -212,10 +244,10 @@ class AuditedBase(IdentityBase, TenantMixin)   # = IdentityBase + tenant_id
   | `baseline_controls.risk_id → baseline_risks` | 〃 |
   | `baseline_control_assertions.baseline_control_id → baseline_controls` | 〃 |
 
-  같은 종류의 구멍이므로 "테넌트 격리는 복합 FK로 DB가 보장한다"는 §2.3의 서술은
-  **현재 instance 경로에 한정해서만 참이다.** 이번 범위(지시서 §1)에 없어 포함하지 않았다.
-  같은 마이그레이션에 넣는 편이 비용이 낮으므로, 운영 적용 전에 판단할 것.
-  seed는 한 트랜잭션에서 한 테넌트만 쓰므로 현재 데이터에는 위반이 없다.
+  같은 종류의 구멍이므로 "테넌트 격리는 복합 FK로 DB가 보장한다"는 §2.3의 서술이
+  instance 경로에 한정해서만 참이 되는 상태였다. 지시서 §1 범위에 없어 1차 구현에서
+  빠졌고, 마스터 판단으로 **같은 리비전에 포함**했다(운영 미적용 상태가 가장 싸고,
+  스키마 변경은 횟수 자체가 위험이다).
 
 - 산업별 템플릿 계층 설계 (§2.4)
 - 템플릿 → 고객사 baseline 복사 시점의 버전 관리

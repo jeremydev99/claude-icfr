@@ -96,6 +96,13 @@ class BaselineSubProcess(AuditedBase):
     """회사별 표준 하위프로세스. SubProcess 미러링. (ADR-0030)"""
     __tablename__ = "baseline_sub_processes"
     __table_args__ = (
+        # baseline 내부 참조도 테넌트를 넘지 못하게 한다 (ADR-0030 §2.3).
+        # instance 경로만 막고 여기를 열어두면 "격리를 DB 가 보장한다"가 참이 아니다 —
+        # A 사 하위계층이 B 사 상위를 가리키는 조합이 남는다.
+        ForeignKeyConstraint(
+            ["process_id", "tenant_id"], ["baseline_processes.id", "baseline_processes.tenant_id"],
+            name="fk_baseline_sub_processes_process_tenant",
+        ),
         UniqueConstraint("tenant_id", "code", name="uq_baseline_sub_processes_tenant_code"),
         UniqueConstraint("id", "tenant_id", name="uq_baseline_sub_processes_id_tenant"),
     )
@@ -103,7 +110,7 @@ class BaselineSubProcess(AuditedBase):
     code: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     process_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("baseline_processes.id"), nullable=False, index=True
+        PG_UUID(as_uuid=True), nullable=False, index=True  # FK 는 아래 복합 FK
     )
     # baseline 콘텐츠 개정 회차 (row_version 낙관적 잠금과 별개 개념 — 모듈 docstring 참조)
     baseline_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
@@ -120,6 +127,13 @@ class BaselineRisk(AuditedBase):
     """회사별 표준 위험. Risk 미러링. (ADR-0030)"""
     __tablename__ = "baseline_risks"
     __table_args__ = (
+        # baseline 내부 참조도 테넌트를 넘지 못하게 한다 (ADR-0030 §2.3).
+        # instance 경로만 막고 여기를 열어두면 "격리를 DB 가 보장한다"가 참이 아니다 —
+        # A 사 하위계층이 B 사 상위를 가리키는 조합이 남는다.
+        ForeignKeyConstraint(
+            ["sub_process_id", "tenant_id"], ["baseline_sub_processes.id", "baseline_sub_processes.tenant_id"],
+            name="fk_baseline_risks_sub_process_tenant",
+        ),
         UniqueConstraint("tenant_id", "code", name="uq_baseline_risks_tenant_code"),
         UniqueConstraint("id", "tenant_id", name="uq_baseline_risks_id_tenant"),
     )
@@ -129,7 +143,7 @@ class BaselineRisk(AuditedBase):
     assessment_level: Mapped[str] = mapped_column(String(5), nullable=False, default="LR")
     # "LR" (Low), "MR" (Medium), "HR" (High), "SR" (Significant)
     sub_process_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("baseline_sub_processes.id"), nullable=False, index=True
+        PG_UUID(as_uuid=True), nullable=False, index=True  # FK 는 아래 복합 FK
     )
     # baseline 콘텐츠 개정 회차 (row_version 낙관적 잠금과 별개 개념 — 모듈 docstring 참조)
     baseline_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
@@ -157,6 +171,13 @@ class BaselineControl(AuditedBase):
     """회사별 표준 통제. code 는 (tenant_id, code) 유니크. (ADR-0030)"""
     __tablename__ = "baseline_controls"
     __table_args__ = (
+        # baseline 내부 참조도 테넌트를 넘지 못하게 한다 (ADR-0030 §2.3).
+        # instance 경로만 막고 여기를 열어두면 "격리를 DB 가 보장한다"가 참이 아니다 —
+        # A 사 하위계층이 B 사 상위를 가리키는 조합이 남는다.
+        ForeignKeyConstraint(
+            ["risk_id", "tenant_id"], ["baseline_risks.id", "baseline_risks.tenant_id"],
+            name="fk_baseline_controls_risk_tenant",
+        ),
         UniqueConstraint("tenant_id", "code", name="uq_baseline_controls_tenant_code"),
         UniqueConstraint("id", "tenant_id", name="uq_baseline_controls_id_tenant"),
     )
@@ -166,7 +187,7 @@ class BaselineControl(AuditedBase):
     name: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     risk_id: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("baseline_risks.id"), nullable=True, index=True
+        PG_UUID(as_uuid=True), nullable=True, index=True  # FK 는 아래 복합 FK
     )
 
     # 그룹 2: 담당자·목적
@@ -433,6 +454,13 @@ class BaselineControlAssertion(AuditedBase):
     baseline_risk_categories 참조면 충분."""
     __tablename__ = "baseline_control_assertions"
     __table_args__ = (
+        # baseline 내부 참조도 테넌트를 넘지 못하게 한다 (ADR-0030 §2.3).
+        # instance 경로만 막고 여기를 열어두면 "격리를 DB 가 보장한다"가 참이 아니다 —
+        # A 사 하위계층이 B 사 상위를 가리키는 조합이 남는다.
+        ForeignKeyConstraint(
+            ["baseline_control_id", "tenant_id"], ["baseline_controls.id", "baseline_controls.tenant_id"],
+            name="fk_baseline_control_assertions_control_tenant",
+        ),
         UniqueConstraint(
             "tenant_id", "baseline_control_id", "baseline_risk_category_id",
             name="uq_baseline_control_assertions_control_category",
@@ -440,7 +468,7 @@ class BaselineControlAssertion(AuditedBase):
     )
 
     baseline_control_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("baseline_controls.id"), nullable=False, index=True
+        PG_UUID(as_uuid=True), nullable=False, index=True  # FK 는 아래 복합 FK
     )
     baseline_risk_category_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("baseline_risk_categories.id"), nullable=False, index=True

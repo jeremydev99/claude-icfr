@@ -188,13 +188,18 @@ def test_other_tenant_exclusion_does_not_leak(app):
 # ── sqlite 의 한계를 사실로 고정한다 ────────────────────────────────
 
 def test_composite_fk_is_declared_on_models():
-    """복합 FK 8개가 모델에 선언돼 있다 (ADR-0030 §2.3).
+    """복합 FK 12개가 모델에 선언돼 있다 (ADR-0030 §2.3).
+
+    instance→baseline 8개 + **baseline 내부 4개**. instance 경로만 막고 baseline 끼리의
+    참조를 열어두면 "격리를 DB 가 구조적으로 보장한다"가 참이 아니다 — A 사 하위프로세스가
+    B 사 프로세스를 가리키는 조합이 남는다.
 
     sqlite 가 FK 를 강제하지 않으므로 **거부 동작 자체는 여기서 검증할 수 없다.**
     선언 여부만이라도 고정해 두면, 누군가 단순 FK 로 되돌렸을 때 이 테스트가 깨진다.
-    실제 거부는 postgres 에서 확인한다(ADR-0030 §4-4, 운영 적용 절차 §6.4).
+    실제 거부는 postgres 에서 확인한다(ADR-0030 §4-4·§4-6, 운영 적용 절차 §6.4).
     """
     from app.models.rcm_baseline import (
+        BaselineControlAssertion,
         ControlAssertionInstance,
         ProcessInstance,
         RiskInstance,
@@ -202,11 +207,17 @@ def test_composite_fk_is_declared_on_models():
     )
 
     expected = {
+        # instance → baseline (8)
         ProcessInstance: 1,
         SubProcessInstance: 2,
         RiskInstance: 2,
         ControlInstance: 2,
         ControlAssertionInstance: 1,
+        # baseline 내부 (4) — baseline_processes 는 최상위라 참조가 없다
+        BaselineSubProcess: 1,
+        BaselineRisk: 1,
+        BaselineControl: 1,
+        BaselineControlAssertion: 1,
     }
     for model, count in expected.items():
         composite = [
@@ -236,9 +247,22 @@ def test_cross_tenant_reference_is_not_guarded_by_sqlite(app):
 
 @pytest.mark.skip(reason="postgres 전용 — sqlite 는 FK 미강제(위 테스트 참조). ADR-0030 §6.4 에서 수동 확인")
 def test_cross_tenant_reference_rejected_postgres():
-    """A 테넌트 baseline 을 B 테넌트 instance 가 참조 → DB 가 거부 (ADR-0030 §4-4).
+    """교차 테넌트 참조를 DB 가 거부한다 (ADR-0030 §4-4·§4-6).
 
-    2026-09-01 로컬 postgres 실측 결과(에러 원문):
+    2026-09-01 로컬 postgres 실측 — 세 경로 모두 거부됨(에러 원문):
+
+        instance → baseline
         ERROR: insert or update on table "control_instances" violates foreign key
         constraint "fk_control_instances_baseline_tenant"
+
+        baseline 내부 (하위 → 상위)
+        ERROR: insert or update on table "baseline_sub_processes" violates foreign key
+        constraint "fk_baseline_sub_processes_process_tenant"
+
+        baseline 내부 (통제 → 위험)
+        ERROR: insert or update on table "baseline_controls" violates foreign key
+        constraint "fk_baseline_controls_risk_tenant"
+
+    같은 실행에서 대조군(자기 테넌트 참조)과 NULL 참조(add 행, baseline_controls.risk_id)는
+    통과함을 확인했다 — MATCH SIMPLE 이 의도대로 동작한다.
     """
