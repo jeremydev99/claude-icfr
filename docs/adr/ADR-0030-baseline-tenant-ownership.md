@@ -99,6 +99,27 @@ risk-categories 읽기). 사람의 기억에 의존하는 격리는 이 프로�
 
 회귀 방지 원칙 1번(판별은 구조/타입으로) 부합.
 
+**2026-09-01 실측 반영 — NULL 조합은 검사 대상이 아니며, 그것이 의도한 동작이다.**
+
+복합 FK 대상 8개 컬럼은 전부 nullable이다(`action='add'`인 행은 baseline 부모가 없다).
+PostgreSQL의 기본 `MATCH SIMPLE`에서 **참조 컬럼 중 하나라도 NULL이면 제약을 검사하지 않는다.**
+`tenant_id`는 NOT NULL이므로, `baseline_*_id IS NULL`인 add 행이 그 경우에 해당한다.
+
+이것이 의도한 동작이다 — add 행은 가리킬 baseline이 없으므로 검사할 대상 자체가 없다.
+`MATCH FULL`은 "일부만 NULL"을 거부하므로 add 행을 전부 막아버린다. 쓰면 안 된다.
+
+로컬 postgres 실측(2026-09-01)에서 세 경우를 모두 확인했다.
+
+| 삽입 | 결과 |
+|---|---|
+| B사 instance → A사 baseline 참조 | `ERROR: violates foreign key constraint "fk_control_instances_baseline_tenant"` |
+| B사 instance → B사 baseline 참조 | 성공 |
+| B사 instance, `baseline_control_id IS NULL` (add) | 성공 |
+
+**`(id, tenant_id)` 유니크는 4테이블에만 둔다** — §3 표는 5테이블로 적었으나, 이 제약은
+복합 FK의 참조 대상이 되기 위한 것이다. 아무도 참조하지 않는 `baseline_control_assertions`에는
+두지 않는다(`id`가 이미 PK라 유일성 측면에서 더하는 것이 없다).
+
 ### 2.4 산업별 템플릿은 별도 계층으로 두되 이번 범위에서 제외한다
 
 산업별 표준 RCM은 **템플릿**으로 제공하고, 온보딩 시점에 고객사 baseline으로 **복사**한다.
@@ -124,11 +145,37 @@ risk-categories 읽기). 사람의 기억에 의존하는 격리는 이 프로�
 | 제약 | baseline 5테이블에 `(id, tenant_id)` 유니크 추가 |
 | 제약 | instance→baseline FK 8개를 복합 FK로 전환 |
 | 제약 | `baseline_control_assertions` 유니크에 `tenant_id` 포함 |
-| `control_resolver.py` | baseline 조회에 tenant 필터 추가 |
+| `control_resolver.py` | **변경 없음** — 아래 정정 참조 |
 | `seed_baseline.py` | 대상 테넌트 지정 필요 |
 | 마이그레이션 | alembic. 기존 93건 tenant 귀속 포함 |
 
 `baseline_risk_categories`와 이를 참조하는 FK는 변경하지 않는다.
+
+**2026-09-01 정정: resolver 수동 필터는 ADR-0025 위반.**
+`AuditedBase` 전환만으로 `with_loader_criteria`가 baseline SELECT를 자동 필터한다.
+resolver 코드 변경 0건.
+
+초안은 "`control_resolver.py` — baseline 조회에 tenant 필터 추가"로 적었다. ADR-0025를
+확인하지 않고 쓴 지시 오류다. `app/core/tenant_context.py`는 각 쿼리에
+`.filter(tenant_id == ...)`를 수동으로 거는 방식을 **금지**한다(한 곳만 빠뜨려도 누출).
+`control_resolver.py`의 docstring에 있던 "baseline은 전역(IdentityBase)이라 격리 대상이
+아님" 서술도 함께 정정했다.
+
+자동 격리는 **코드에 흔적이 남지 않는다** — diff만 봐서는 격리가 깨져도 보이지 않는다.
+따라서 테스트로 고정하는 것이 필수다(`tests/test_tenant_isolation.py`, §4 검증 조건 참조).
+
+**2026-09-01 실측: `IdentityBase` → `AuditedBase` 전환에 부작용이 없다.**
+초안은 이 전환이 가능한지 미확인 상태로 쓰였고, "`AuditedBase`에 `is_deleted`·`row_version`·
+감사 컬럼이 딸려온다"는 우려가 있었다. 실측 결과 그 우려는 해당되지 않는다.
+
+```python
+class IdentityBase(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, VersionMixin)
+class AuditedBase(IdentityBase, TenantMixin)   # = IdentityBase + tenant_id
+```
+
+`AuditedBase`는 `IdentityBase`를 상속하고 `TenantMixin`만 더한다. 딸려온다고 우려한 컬럼들은
+이미 `IdentityBase`에 있고 baseline 5테이블이 이미 보유·사용 중이다(`is_deleted`,
+`baseline_version` 등). **추가되는 컬럼은 `tenant_id` 하나뿐이다.**
 
 ## 4. 검증 조건
 
@@ -154,6 +201,21 @@ risk-categories 읽기). 사람의 기억에 의존하는 격리는 이 프로�
   운영은 postgres이며 복합 FK 동작이 다를 수 있다. 운영 적용 후 §4 재확인
 
 ## 6. 미해결
+
+- **baseline 내부 FK 4개는 단순 FK로 남았다 (2026-09-01 발견, §2.3의 사각지대)** —
+  §2.3이 다룬 것은 instance→baseline 8개뿐이다. baseline끼리의 참조는 그대로다.
+
+  | FK | 위험 |
+  |---|---|
+  | `baseline_sub_processes.process_id → baseline_processes` | A사 하위프로세스가 B사 프로세스를 가리킬 수 있다 |
+  | `baseline_risks.sub_process_id → baseline_sub_processes` | 〃 |
+  | `baseline_controls.risk_id → baseline_risks` | 〃 |
+  | `baseline_control_assertions.baseline_control_id → baseline_controls` | 〃 |
+
+  같은 종류의 구멍이므로 "테넌트 격리는 복합 FK로 DB가 보장한다"는 §2.3의 서술은
+  **현재 instance 경로에 한정해서만 참이다.** 이번 범위(지시서 §1)에 없어 포함하지 않았다.
+  같은 마이그레이션에 넣는 편이 비용이 낮으므로, 운영 적용 전에 판단할 것.
+  seed는 한 트랜잭션에서 한 테넌트만 쓰므로 현재 데이터에는 위반이 없다.
 
 - 산업별 템플릿 계층 설계 (§2.4)
 - 템플릿 → 고객사 baseline 복사 시점의 버전 관리

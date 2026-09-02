@@ -185,20 +185,23 @@ def test_resolve_tenant_isolation(app):
     """tenant B 의 exclude/add 는 기본 tenant 의 resolve 결과에 영향이 없다."""
     db = TestingSessionLocal()
     try:
-        tenant_b = db.query(Tenant).filter(Tenant.code == "TENANT_BL_B").first()
-        if not tenant_b:
-            tenant_b = Tenant(name="회사B-baseline", code="TENANT_BL_B", is_active=True)
-            db.add(tenant_b)
-            db.commit()
+        tenant_b = _get_tenant(db, "TENANT_BL_B", "회사B-baseline")
 
-        tok = set_active_tenant(None)
+        # ADR-0030 — baseline 도 테넌트 소유다. **각 회사가 자기 baseline 을 갖는다.**
+        # 전환 전에는 전역 baseline 하나를 두 회사가 공유했고, B 가 A 의 baseline 을
+        # exclude 하는 것이 가능했다. 이제 그 조합은 복합 FK 가 거부한다.
+        # 두 회사가 **같은 code** 를 쓸 수 있다는 것도 여기서 함께 고정한다((tenant_id, code) 유니크).
+        tok = set_active_tenant(DEFAULT_TENANT_ID)
+        b_default = _make_baseline(db, "BL-ISO-1")
         reset_active_tenant(tok)
-        b = _make_baseline(db, "BL-ISO-1")  # baseline 은 전역 (컨텍스트 무관)
 
-        # tenant B: exclude + 자체 add
         tok = set_active_tenant(tenant_b.id)
+        b_b = _make_baseline(db, "BL-ISO-1")      # 같은 code, 다른 회사 → 허용
+        assert b_b.id != b_default.id
+
+        # tenant B: 자기 baseline 을 exclude + 자체 add
         db.add_all([
-            ControlInstance(baseline_control_id=b.id, action="exclude"),
+            ControlInstance(baseline_control_id=b_b.id, action="exclude"),
             ControlInstance(baseline_control_id=None, action="add", code="CI-ISO-B", name="B사 통제",
                             **_ADD_ACTIVITIES, **_ADD_ATTRS),
         ])
@@ -208,10 +211,10 @@ def test_resolve_tenant_isolation(app):
         assert "CI-ISO-B" in rows_b
         reset_active_tenant(tok)
 
-        # 기본 tenant: baseline 그대로 보이고 B 의 add 는 안 보임
+        # 기본 tenant: 자기 baseline 그대로 보이고 B 의 결정은 안 보임
         tok = set_active_tenant(DEFAULT_TENANT_ID)
         rows_d = _resolve_codes(db)
-        assert "BL-ISO-1" in rows_d
+        assert "BL-ISO-1" in rows_d        # B 의 exclude 가 전파되지 않는다
         assert "CI-ISO-B" not in rows_d
         reset_active_tenant(tok)
     finally:
@@ -266,30 +269,37 @@ def test_baseline_fk_chain_join(app):
         db.close()
 
 
-def test_baseline_hierarchy_is_global(app):
-    """baseline 계층은 전역 — tenant 컨텍스트가 무엇이든(없든) 동일하게 조회된다."""
+def test_baseline_hierarchy_is_tenant_scoped(app):
+    """baseline 계층은 **테넌트 소유** — 다른 회사 컨텍스트에서는 보이지 않는다 (ADR-0030).
+
+    2026-09-01 계약 전환. 이전 이름은 `test_baseline_hierarchy_is_global` 이었고
+    "tenant 컨텍스트가 무엇이든 동일하게 조회된다"를 고정했다. 그 서술이 결함이었다 —
+    운영 baseline 93건은 사이냅소프트 한 회사의 RCM인데 전역으로 공유되고 있었다.
+    테넌트가 1개뿐이라 드러나지 않았을 뿐이다.
+
+    자동 격리(ADR-0025 with_loader_criteria)는 코드에 흔적이 남지 않으므로 여기서 고정한다.
+    """
     db = TestingSessionLocal()
     try:
         tok = set_active_tenant(DEFAULT_TENANT_ID)
-        _make_baseline_chain(db, "GLOB1")
+        _make_baseline_chain(db, "SCOPE1")
+        # 자기 컨텍스트에서는 전부 보인다
+        assert db.query(BaselineProcess).filter(BaselineProcess.code == "BP-SCOPE1").count() == 1
+        assert db.query(BaselineControl).filter(BaselineControl.code == "BC-SCOPE1").count() == 1
         reset_active_tenant(tok)
 
-        tenant_b = db.query(Tenant).filter(Tenant.code == "TENANT_BL_G").first()
-        if not tenant_b:
-            tenant_b = Tenant(name="회사B-global", code="TENANT_BL_G", is_active=True)
-            db.add(tenant_b)
-            db.commit()
+        tenant_b = _get_tenant(db, "TENANT_BL_G", "회사B-scope")
 
-        # 다른 tenant 컨텍스트에서도 체인 전체가 보인다
+        # 다른 tenant 컨텍스트에서는 체인 전체가 보이지 않는다
         tok = set_active_tenant(tenant_b.id)
-        assert db.query(BaselineProcess).filter(BaselineProcess.code == "BP-GLOB1").count() == 1
-        assert db.query(BaselineSubProcess).filter(BaselineSubProcess.code == "BSP-GLOB1").count() == 1
-        assert db.query(BaselineRisk).filter(BaselineRisk.code == "BR-GLOB1").count() == 1
-        assert db.query(BaselineControl).filter(BaselineControl.code == "BC-GLOB1").count() == 1
+        assert db.query(BaselineProcess).filter(BaselineProcess.code == "BP-SCOPE1").count() == 0
+        assert db.query(BaselineSubProcess).filter(BaselineSubProcess.code == "BSP-SCOPE1").count() == 0
+        assert db.query(BaselineRisk).filter(BaselineRisk.code == "BR-SCOPE1").count() == 0
+        assert db.query(BaselineControl).filter(BaselineControl.code == "BC-SCOPE1").count() == 0
         reset_active_tenant(tok)
 
-        # tenant 컨텍스트가 아예 없어도 조회된다
-        assert db.query(BaselineRisk).filter(BaselineRisk.code == "BR-GLOB1").count() == 1
+        # 컨텍스트가 없으면(시스템/마이그레이션 맥락) 필터가 걸리지 않는다 — 기존 동작 유지
+        assert db.query(BaselineRisk).filter(BaselineRisk.code == "BR-SCOPE1").count() == 1
     finally:
         set_active_tenant(None)
         db.close()
@@ -647,7 +657,10 @@ def test_resolve_upper_layers_actions(app):
     db = TestingSessionLocal()
     t = _get_tenant(db, "TENANT_2B4_L", "회사-layers")
     try:
-        tok = set_active_tenant(DEFAULT_TENANT_ID)
+        # ADR-0030 — baseline 도 테넌트 소유다. instance 와 **같은 테넌트**에 만든다.
+        # (전환 전에는 baseline 을 DEFAULT 에 만들고 다른 테넌트에서 참조했다 — 이제
+        #  복합 FK 가 그 조합을 거부하고, 자동 격리가 조회에서도 걸러낸다.)
+        tok = set_active_tenant(t.id)
         pa = BaselineProcess(code="B4P-A", name="채택")
         px = BaselineProcess(code="B4P-X", name="제외")
         po = BaselineProcess(code="B4P-O", name="표준명")
@@ -737,7 +750,10 @@ def test_resolve_assertions_merge(app):
     db = TestingSessionLocal()
     t = _get_tenant(db, "TENANT_2B4_AST", "회사-ast")
     try:
-        tok = set_active_tenant(DEFAULT_TENANT_ID)
+        # ADR-0030 — baseline 도 테넌트 소유다. instance 와 **같은 테넌트**에 만든다.
+        # (전환 전에는 baseline 을 DEFAULT 에 만들고 다른 테넌트에서 참조했다 — 이제
+        #  복합 FK 가 그 조합을 거부하고, 자동 격리가 조회에서도 걸러낸다.)
+        tok = set_active_tenant(t.id)
         b = _make_baseline(db, "BC-2B4AST")   # risk NULL → cascade 통과
         ce = _make_category(db, "2B4-E")
         cc = _make_category(db, "2B4-C")
@@ -760,10 +776,10 @@ def test_resolve_assertions_merge(app):
         assert row["assertions"] == ["2B4-C", "2B4-V"]
         reset_active_tenant(tok)
 
-        # DEFAULT: 표준 그대로 {C, E}
+        # DEFAULT: 이 통제는 t 소유이므로 아예 보이지 않는다 (ADR-0030).
+        # 전환 전에는 baseline 이 전역이라 "표준 그대로 {C, E}" 를 보는 것이 맞았다.
         tok = set_active_tenant(DEFAULT_TENANT_ID)
-        row_d = {x["code"]: x for x in resolve_controls(db)}["BC-2B4AST"]
-        assert row_d["assertions"] == ["2B4-C", "2B4-E"]
+        assert "BC-2B4AST" not in {x["code"] for x in resolve_controls(db)}
         reset_active_tenant(tok)
     finally:
         set_active_tenant(None)
@@ -792,7 +808,10 @@ def test_resolve_overridden_parent_keeps_baseline_identity(app):
     db = TestingSessionLocal()
     t = _get_tenant(db, "TENANT_2B4_OVR", "회사-ovr")
     try:
-        tok = set_active_tenant(DEFAULT_TENANT_ID)
+        # ADR-0030 — baseline 도 테넌트 소유다. instance 와 **같은 테넌트**에 만든다.
+        # (전환 전에는 baseline 을 DEFAULT 에 만들고 다른 테넌트에서 참조했다 — 이제
+        #  복합 FK 가 그 조합을 거부하고, 자동 격리가 조회에서도 걸러낸다.)
+        tok = set_active_tenant(t.id)
         p, sp, r, c = _make_baseline_chain(db, "2B4OVR")
         reset_active_tenant(tok)
 
@@ -821,7 +840,10 @@ def test_resolve_control_source_envelope(app):
     db = TestingSessionLocal()
     t = _get_tenant(db, "TENANT_2B4_ENV", "회사-env")
     try:
-        tok = set_active_tenant(DEFAULT_TENANT_ID)
+        # ADR-0030 — baseline 도 테넌트 소유다. instance 와 **같은 테넌트**에 만든다.
+        # (전환 전에는 baseline 을 DEFAULT 에 만들고 다른 테넌트에서 참조했다 — 이제
+        #  복합 FK 가 그 조합을 거부하고, 자동 격리가 조회에서도 걸러낸다.)
+        tok = set_active_tenant(t.id)
         b_ad = _make_baseline(db, "BC-2B4-AD")
         b_ov = _make_baseline(db, "BC-2B4-OV", name="표준명")
         reset_active_tenant(tok)

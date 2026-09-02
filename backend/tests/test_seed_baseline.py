@@ -11,6 +11,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401 — 모든 모델을 Base.metadata 에 등록
+from app.core.tenant_context import (
+    DEFAULT_TENANT_CODE,
+    DEFAULT_TENANT_ID,
+    DEFAULT_TENANT_NAME,
+    reset_active_tenant,
+    set_active_tenant,
+)
 from app.models.base import Base
 from app.models.rcm_baseline import (
     BaselineControl,
@@ -25,11 +32,13 @@ from app.models.rcm_baseline import (
     RiskInstance,
     SubProcessInstance,
 )
+from app.models.tenant import Tenant
 from seeds.seed_baseline import (
     ASSERTION_MASTER,
     EXCEL_PATH,
     _assert_baseline_empty,
     _load_excel,
+    _resolve_tenant,
     _seed,
 )
 
@@ -40,11 +49,22 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def seeded(tmp_path_factory):
-    """격리 sqlite 에 엑셀을 시드하고 (session, parsed) 반환."""
+    """격리 sqlite 에 엑셀을 시드하고 (session, parsed) 반환.
+
+    ADR-0030 — baseline 이 테넌트 소유가 되면서 대상 테넌트가 필수 전제가 됐다.
+    tenants 행을 만들고 활성 tenant 를 걸어야 before_flush 가 tenant_id 를 stamp 한다
+    (수동 지정 금지 — ADR-0025).
+    """
     db_path = tmp_path_factory.mktemp("seed") / "seed.db"
     engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
     db = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
+
+    db.add(Tenant(id=DEFAULT_TENANT_ID, name=DEFAULT_TENANT_NAME,
+                  code=DEFAULT_TENANT_CODE, is_active=True))
+    db.commit()
+    tenant_id, _ = _resolve_tenant(db, DEFAULT_TENANT_CODE)
+    tok = set_active_tenant(tenant_id)
 
     parsed = _load_excel()
     _seed(db, parsed)
@@ -52,6 +72,7 @@ def seeded(tmp_path_factory):
     try:
         yield db, parsed
     finally:
+        reset_active_tenant(tok)
         db.close()
         Base.metadata.drop_all(bind=engine)
         engine.dispose()
