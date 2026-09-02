@@ -41,6 +41,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -71,11 +72,16 @@ ASSERTION_ACTION_REMOVE = "remove"
 ASSERTION_ACTIONS = (ASSERTION_ACTION_ADD, ASSERTION_ACTION_REMOVE)
 
 
-class BaselineProcess(IdentityBase):
-    """표준 프로세스 (전역). Process 미러링."""
+class BaselineProcess(AuditedBase):
+    """회사별 표준 프로세스. Process 미러링. (ADR-0030 — 전역에서 테넌트 소유로 전환)"""
     __tablename__ = "baseline_processes"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_baseline_processes_tenant_code"),
+        # 복합 FK 참조 대상 (ADR-0030 §2.3) — instance 가 (baseline_id, tenant_id) 로 가리킨다
+        UniqueConstraint("id", "tenant_id", name="uq_baseline_processes_id_tenant"),
+    )
 
-    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # baseline 콘텐츠 개정 회차 (row_version 낙관적 잠금과 별개 개념 — 모듈 docstring 참조)
@@ -86,11 +92,15 @@ class BaselineProcess(IdentityBase):
     )
 
 
-class BaselineSubProcess(IdentityBase):
-    """표준 하위프로세스 (전역). SubProcess 미러링."""
+class BaselineSubProcess(AuditedBase):
+    """회사별 표준 하위프로세스. SubProcess 미러링. (ADR-0030)"""
     __tablename__ = "baseline_sub_processes"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_baseline_sub_processes_tenant_code"),
+        UniqueConstraint("id", "tenant_id", name="uq_baseline_sub_processes_id_tenant"),
+    )
 
-    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     process_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("baseline_processes.id"), nullable=False, index=True
@@ -106,11 +116,15 @@ class BaselineSubProcess(IdentityBase):
     )
 
 
-class BaselineRisk(IdentityBase):
-    """표준 위험 (전역). Risk 미러링."""
+class BaselineRisk(AuditedBase):
+    """회사별 표준 위험. Risk 미러링. (ADR-0030)"""
     __tablename__ = "baseline_risks"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_baseline_risks_tenant_code"),
+        UniqueConstraint("id", "tenant_id", name="uq_baseline_risks_id_tenant"),
+    )
 
-    code: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     assessment_level: Mapped[str] = mapped_column(String(5), nullable=False, default="LR")
     # "LR" (Low), "MR" (Medium), "HR" (High), "SR" (Significant)
@@ -139,12 +153,16 @@ class BaselineRiskCategory(IdentityBase):
     baseline_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
 
-class BaselineControl(IdentityBase):
-    """표준 통제 (전역 — 모든 tenant 공통). code 전역 unique."""
+class BaselineControl(AuditedBase):
+    """회사별 표준 통제. code 는 (tenant_id, code) 유니크. (ADR-0030)"""
     __tablename__ = "baseline_controls"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_baseline_controls_tenant_code"),
+        UniqueConstraint("id", "tenant_id", name="uq_baseline_controls_id_tenant"),
+    )
 
     # 기본 식별자 — Control 미러링
-    code: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     risk_id: Mapped[UUID | None] = mapped_column(
@@ -199,13 +217,20 @@ class ProcessInstance(AuditedBase):
     """
     __tablename__ = "process_instances"
     __table_args__ = (
+        # 테넌트 격리는 DB 가 보장한다 (ADR-0030 §2.3) — 단순 FK 는 다른 회사의 baseline 참조를
+        # 통과시킨다. tenant_id 를 함께 건 복합 FK 로 삽입 자체를 거부시킨다. baseline_*_id 가
+        # NULL 인 행(action='add')은 MATCH SIMPLE 기본 동작상 검사 대상이 아니다 — 의도된 동작이다.
+        ForeignKeyConstraint(
+            ["baseline_process_id", "tenant_id"], ["baseline_processes.id", "baseline_processes.tenant_id"],
+            name="fk_process_instances_baseline_tenant",
+        ),
         UniqueConstraint("tenant_id", "code", name="uq_process_instances_tenant_code"),
         UniqueConstraint("tenant_id", "baseline_process_id", name="uq_process_instances_tenant_baseline"),
         Index("ix_process_instances_code", "code"),
     )
 
     baseline_process_id: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("baseline_processes.id"), nullable=True, index=True
+        PG_UUID(as_uuid=True), nullable=True, index=True  # FK 는 __table_args__ 복합 FK
     )
     action: Mapped[str] = mapped_column(String(10), nullable=False)
     # INSTANCE_ACTIONS 참조 (adopt | exclude | override | add)
@@ -234,6 +259,17 @@ class SubProcessInstance(AuditedBase):
     """
     __tablename__ = "sub_process_instances"
     __table_args__ = (
+        # 테넌트 격리는 DB 가 보장한다 (ADR-0030 §2.3) — 단순 FK 는 다른 회사의 baseline 참조를
+        # 통과시킨다. tenant_id 를 함께 건 복합 FK 로 삽입 자체를 거부시킨다. baseline_*_id 가
+        # NULL 인 행(action='add')은 MATCH SIMPLE 기본 동작상 검사 대상이 아니다 — 의도된 동작이다.
+        ForeignKeyConstraint(
+            ["baseline_sub_process_id", "tenant_id"], ["baseline_sub_processes.id", "baseline_sub_processes.tenant_id"],
+            name="fk_sub_process_instances_baseline_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["process_baseline_id", "tenant_id"], ["baseline_processes.id", "baseline_processes.tenant_id"],
+            name="fk_sub_process_instances_process_baseline_tenant",
+        ),
         UniqueConstraint("tenant_id", "code", name="uq_sub_process_instances_tenant_code"),
         UniqueConstraint("tenant_id", "baseline_sub_process_id", name="uq_sub_process_instances_tenant_baseline"),
         Index("ix_sub_process_instances_code", "code"),
@@ -244,7 +280,7 @@ class SubProcessInstance(AuditedBase):
     )
 
     baseline_sub_process_id: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("baseline_sub_processes.id"), nullable=True, index=True
+        PG_UUID(as_uuid=True), nullable=True, index=True  # FK 는 아래 복합 FK
     )
     action: Mapped[str] = mapped_column(String(10), nullable=False)
     # INSTANCE_ACTIONS 참조 (adopt | exclude | override | add)
@@ -255,7 +291,7 @@ class SubProcessInstance(AuditedBase):
 
     # ── 상위 참조 (이중 nullable FK — 상단 docstring 정합 규칙 참조) ──
     process_baseline_id: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("baseline_processes.id"), nullable=True, index=True
+        PG_UUID(as_uuid=True), nullable=True, index=True  # FK 는 아래 복합 FK
     )
     process_instance_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("process_instances.id"), nullable=True, index=True
@@ -269,6 +305,17 @@ class RiskInstance(AuditedBase):
     (상위 = sub_process)."""
     __tablename__ = "risk_instances"
     __table_args__ = (
+        # 테넌트 격리는 DB 가 보장한다 (ADR-0030 §2.3) — 단순 FK 는 다른 회사의 baseline 참조를
+        # 통과시킨다. tenant_id 를 함께 건 복합 FK 로 삽입 자체를 거부시킨다. baseline_*_id 가
+        # NULL 인 행(action='add')은 MATCH SIMPLE 기본 동작상 검사 대상이 아니다 — 의도된 동작이다.
+        ForeignKeyConstraint(
+            ["baseline_risk_id", "tenant_id"], ["baseline_risks.id", "baseline_risks.tenant_id"],
+            name="fk_risk_instances_baseline_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["sub_process_baseline_id", "tenant_id"], ["baseline_sub_processes.id", "baseline_sub_processes.tenant_id"],
+            name="fk_risk_instances_sub_process_baseline_tenant",
+        ),
         UniqueConstraint("tenant_id", "code", name="uq_risk_instances_tenant_code"),
         UniqueConstraint("tenant_id", "baseline_risk_id", name="uq_risk_instances_tenant_baseline"),
         Index("ix_risk_instances_code", "code"),
@@ -279,7 +326,7 @@ class RiskInstance(AuditedBase):
     )
 
     baseline_risk_id: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("baseline_risks.id"), nullable=True, index=True
+        PG_UUID(as_uuid=True), nullable=True, index=True  # FK 는 아래 복합 FK
     )
     action: Mapped[str] = mapped_column(String(10), nullable=False)
     # INSTANCE_ACTIONS 참조 (adopt | exclude | override | add)
@@ -291,7 +338,7 @@ class RiskInstance(AuditedBase):
 
     # ── 상위 참조 (이중 nullable FK) ──
     sub_process_baseline_id: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("baseline_sub_processes.id"), nullable=True, index=True
+        PG_UUID(as_uuid=True), nullable=True, index=True  # FK 는 아래 복합 FK
     )
     sub_process_instance_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("sub_process_instances.id"), nullable=True, index=True
@@ -313,6 +360,17 @@ class ControlInstance(AuditedBase):
     """
     __tablename__ = "control_instances"
     __table_args__ = (
+        # 테넌트 격리는 DB 가 보장한다 (ADR-0030 §2.3) — 단순 FK 는 다른 회사의 baseline 참조를
+        # 통과시킨다. tenant_id 를 함께 건 복합 FK 로 삽입 자체를 거부시킨다. baseline_*_id 가
+        # NULL 인 행(action='add')은 MATCH SIMPLE 기본 동작상 검사 대상이 아니다 — 의도된 동작이다.
+        ForeignKeyConstraint(
+            ["baseline_control_id", "tenant_id"], ["baseline_controls.id", "baseline_controls.tenant_id"],
+            name="fk_control_instances_baseline_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["risk_baseline_id", "tenant_id"], ["baseline_risks.id", "baseline_risks.tenant_id"],
+            name="fk_control_instances_risk_baseline_tenant",
+        ),
         # instance 자체 code (add·override 시). NULL 다수 허용(adopt/exclude).
         UniqueConstraint("tenant_id", "code", name="uq_control_instances_tenant_code"),
         # 한 tenant 가 같은 baseline 에 두 개의 결정을 갖는 모순 차단 (NULL=add 는 다수 허용).
@@ -325,7 +383,7 @@ class ControlInstance(AuditedBase):
     )
 
     baseline_control_id: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("baseline_controls.id"), nullable=True, index=True
+        PG_UUID(as_uuid=True), nullable=True, index=True  # FK 는 아래 복합 FK
     )
     action: Mapped[str] = mapped_column(String(10), nullable=False)
     # INSTANCE_ACTIONS 참조 (adopt | exclude | override | add)
@@ -337,7 +395,7 @@ class ControlInstance(AuditedBase):
 
     # ── 상위 참조 (이중 nullable FK — 2-B-2 에서 risk_id(FK→risks) 대체) ──
     risk_baseline_id: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("baseline_risks.id"), nullable=True, index=True
+        PG_UUID(as_uuid=True), nullable=True, index=True  # FK 는 아래 복합 FK
     )
     risk_instance_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("risk_instances.id"), nullable=True, index=True
@@ -368,7 +426,7 @@ class ControlInstance(AuditedBase):
     )
 
 
-class BaselineControlAssertion(IdentityBase):
+class BaselineControlAssertion(AuditedBase):
     """표준 통제 ↔ 표준 어서션 N:M junction (전역). 기존 ControlAssertion 미러링.
 
     어서션 쪽은 단일 FK — RiskCategory 는 baseline-only(2-B-1 결정)이므로
@@ -376,7 +434,7 @@ class BaselineControlAssertion(IdentityBase):
     __tablename__ = "baseline_control_assertions"
     __table_args__ = (
         UniqueConstraint(
-            "baseline_control_id", "baseline_risk_category_id",
+            "tenant_id", "baseline_control_id", "baseline_risk_category_id",
             name="uq_baseline_control_assertions_control_category",
         ),
     )
@@ -411,6 +469,13 @@ class ControlAssertionInstance(AuditedBase):
     """
     __tablename__ = "control_assertion_instances"
     __table_args__ = (
+        # 테넌트 격리는 DB 가 보장한다 (ADR-0030 §2.3) — 단순 FK 는 다른 회사의 baseline 참조를
+        # 통과시킨다. tenant_id 를 함께 건 복합 FK 로 삽입 자체를 거부시킨다. baseline_*_id 가
+        # NULL 인 행(action='add')은 MATCH SIMPLE 기본 동작상 검사 대상이 아니다 — 의도된 동작이다.
+        ForeignKeyConstraint(
+            ["control_baseline_id", "tenant_id"], ["baseline_controls.id", "baseline_controls.tenant_id"],
+            name="fk_control_assertion_instances_control_baseline_tenant",
+        ),
         UniqueConstraint(
             "tenant_id", "control_baseline_id", "baseline_risk_category_id",
             name="uq_control_assertion_instances_tenant_baseline_rc",
@@ -430,7 +495,7 @@ class ControlAssertionInstance(AuditedBase):
 
     # ── 대상 통제 (이중 nullable FK) ──
     control_baseline_id: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("baseline_controls.id"), nullable=True, index=True
+        PG_UUID(as_uuid=True), nullable=True, index=True  # FK 는 아래 복합 FK
     )
     control_instance_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("control_instances.id"), nullable=True, index=True
