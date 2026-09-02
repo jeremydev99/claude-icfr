@@ -150,10 +150,15 @@ prompts/ICFR_setup_1_20260515.md 대로 작업해줘
 ### 7.3 작업 완료 후 Git 자동화 절차
 1. `git status` — 변경 파일 확인
 2. 커밋 메시지(안)을 사용자에게 제시
-3. **사용자 OK 확인 후** `git add . → git commit -m "..." → git push` 순서로 실행
+3. **사용자 OK 확인 후** `git add . → git commit -m "..."` 실행
+4. **push 전 `git log origin/main..HEAD` 로 대기 커밋을 확인한다.
+   승인 범위 밖 커밋이 있으면 push하지 않고 보고한다.**
+5. `git push`
 
 > 사용자 OK 없이 commit·push 절대 금지.  
-> 커밋 메시지는 Conventional Commits 형식 준수 (섹션 2.2 참조).
+> 커밋 메시지는 Conventional Commits 형식 준수 (섹션 2.2 참조).  
+> **push 승인은 커밋이 아니라 브랜치에 적용된다** — 대기 커밋이 함께 올라가므로
+> "이 커밋만 push"는 성립하지 않는다. 경위는 `ClaudeICFR.md` 13.9 참조.
 
 ---
 
