@@ -42,6 +42,11 @@ from sqlalchemy import text
 
 from app.api.rcm import _parse_rcm_sheet
 from app.core.database import SessionLocal
+from app.core.tenant_context import (
+    DEFAULT_TENANT_CODE,
+    reset_active_tenant,
+    set_active_tenant,
+)
 from app.models.rcm_baseline import (
     BaselineControl,
     BaselineControlAssertion,
@@ -50,6 +55,7 @@ from app.models.rcm_baseline import (
     BaselineRiskCategory,
     BaselineSubProcess,
 )
+from app.models.tenant import Tenant
 from app.services.excel_parser import find_data_start_row, find_rcm_sheet
 
 # 표준 원천 — repo 내 고정 경로. 모든 환경이 같은 파일을 본다.
@@ -157,6 +163,21 @@ def _assert_baseline_empty(db) -> None:
         )
 
 
+def _resolve_tenant(db, code: str):
+    """대상 테넌트 code → id. 없으면 중단 (ADR-0030 §2.5 — 하드코딩 금지, DB 조회).
+
+    baseline 이 테넌트 소유가 되면서 "어느 회사의 표준을 시드하는가"가 필수 정보가 됐다.
+    id 를 코드에 박지 않고 `tenants` 에서 조회한다 — 환경마다 id 가 다를 수 있다.
+    """
+    tenant = db.query(Tenant).filter(Tenant.code == code).first()
+    if tenant is None:
+        existing = [t.code for t in db.query(Tenant).all()]
+        raise SystemExit(
+            f"[중단] 테넌트 코드 '{code}' 를 찾을 수 없습니다. 존재하는 코드: {existing}"
+        )
+    return tenant.id, tenant.name
+
+
 def _reset(db) -> None:
     """baseline_* + 그에 연결된 instance 를 비운다. 구 스키마는 대상 아님."""
     before = _count_tables(db, _RESET_TABLES)
@@ -248,7 +269,7 @@ def _seed(db, parsed) -> dict[str, int]:
     }
 
 
-def seed(reset: bool = False) -> None:
+def seed(reset: bool = False, tenant_code: str = DEFAULT_TENANT_CODE) -> None:
     parsed = _load_excel()
     print(
         f"  파싱: 프로세스 {len(parsed.processes)} / 하위프로세스 {len(parsed.sub_processes)} / "
@@ -256,7 +277,14 @@ def seed(reset: bool = False) -> None:
     )
 
     db = SessionLocal()
+    tok = None
     try:
+        tenant_id, tenant_name = _resolve_tenant(db, tenant_code)
+        print(f"  대상 테넌트: {tenant_name} ({tenant_code}) / {tenant_id}")
+        # 활성 tenant 설정 → before_flush 가 baseline 행에 tenant_id 를 자동 stamp 한다
+        # (ADR-0025 자동 격리. 수동 지정 금지 — ADR-0030 전환으로 baseline 도 대상이 됐다).
+        tok = set_active_tenant(tenant_id)
+
         legacy_before = _count_tables(db, _LEGACY_TABLES)
 
         if reset:
@@ -311,6 +339,8 @@ def seed(reset: bool = False) -> None:
         print("[에러] 예외 발생 — 전체 롤백했습니다.")
         raise
     finally:
+        if tok is not None:
+            reset_active_tenant(tok)
         db.close()
 
 
@@ -321,4 +351,10 @@ if __name__ == "__main__":
         action="store_true",
         help="기존 baseline_* 와 연결된 instance 를 비우고 재삽입 (실데이터 삭제 경로)",
     )
-    seed(reset=ap.parse_args().reset)
+    ap.add_argument(
+        "--tenant",
+        default=DEFAULT_TENANT_CODE,
+        help=f"baseline 을 귀속시킬 테넌트 code (기본 {DEFAULT_TENANT_CODE}). id 는 DB 에서 조회한다",
+    )
+    args = ap.parse_args()
+    seed(reset=args.reset, tenant_code=args.tenant)

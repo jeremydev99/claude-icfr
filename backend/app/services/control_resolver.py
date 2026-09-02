@@ -4,8 +4,15 @@ resolve_controls 가 "모든 회사의 통제 = 표준(baseline) ± 회사결정
 단일 지점. 후속 단계(2-A-3)에서 모든 RCM 조회 API 가 이 함수를 거친다.
 
 tenant 는 인자로 받지 않는다 — ADR-0025 자동 격리(활성 tenant ContextVar)가
-instance 조회를 이미 필터하며, 수동 tenant 필터는 금지(한 곳만 빠뜨려도 누출).
-baseline 은 전역(IdentityBase)이라 격리 대상이 아님.
+조회를 이미 필터하며, 수동 tenant 필터는 금지(한 곳만 빠뜨려도 누출).
+
+**2026-09-01 정정 (ADR-0030)** — 이전 서술은 "baseline 은 전역(IdentityBase)이라 격리 대상이
+아님"이었다. baseline 5테이블이 `AuditedBase`(TenantMixin)로 전환되어 **baseline 도 자동 격리
+대상**이다. 이 파일의 baseline 조회에 수동 필터를 넣지 말 것 — with_loader_criteria 가 이미
+건다. `baseline_risk_categories` 만 전역(IdentityBase) 유지 — 제도가 정하는 고정 집합이라
+회사가 바꿀 대상이 아니다(ADR-0029 §2.3, ADR-0030 §2.1).
+
+자동 격리는 코드에 흔적이 남지 않으므로 `tests/test_tenant_isolation.py` 가 이를 고정한다.
 
 ── 2-B-4 확장 ────────────────────────────────────────────────────────────
 1. 상위 계층 resolve: resolve_processes / resolve_sub_processes / resolve_risks.
