@@ -52,13 +52,15 @@ export interface ControlListResponseDto {
   sort?: string
 }
 
+// source envelope(flat) — 2-A-4-3 조회 전환 완료(process/sub_process/risk 모두 resolver 경유), required.
+// baseline_id는 필드 존재는 required 이나 값 자체는 nullable(add 항목은 baseline_id=null).
 export interface ProcessItemDto {
   id: string
   code: string
   name: string
-  source?: SourceEnvelope['source']
-  baseline_id?: string | null
-  is_overridden?: boolean
+  source: SourceEnvelope['source']
+  baseline_id: string | null
+  is_overridden: boolean
 }
 
 export interface SubProcessItemDto {
@@ -66,9 +68,9 @@ export interface SubProcessItemDto {
   code: string
   name: string
   process_id: string
-  source?: SourceEnvelope['source']
-  baseline_id?: string | null
-  is_overridden?: boolean
+  source: SourceEnvelope['source']
+  baseline_id: string | null
+  is_overridden: boolean
 }
 
 export interface RiskItemDto {
@@ -77,9 +79,9 @@ export interface RiskItemDto {
   description: string
   assessment_level: RiskLevel
   sub_process_id: string
-  source?: SourceEnvelope['source']
-  baseline_id?: string | null
-  is_overridden?: boolean
+  source: SourceEnvelope['source']
+  baseline_id: string | null
+  is_overridden: boolean
 }
 
 // ── RAWC (ControlRiskAssessment) ──────────────────────────

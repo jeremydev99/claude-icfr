@@ -106,7 +106,7 @@ export interface ProcessItem {
   id: string
   code: string
   name: string
-  envelope?: SourceEnvelope
+  envelope: SourceEnvelope
 }
 
 export interface SubProcessItem {
@@ -114,7 +114,7 @@ export interface SubProcessItem {
   code: string
   name: string
   process_id: string
-  envelope?: SourceEnvelope
+  envelope: SourceEnvelope
 }
 
 export interface RiskItem {
@@ -123,7 +123,7 @@ export interface RiskItem {
   description: string
   assessment_level: RiskLevel
   sub_process_id: string
-  envelope?: SourceEnvelope
+  envelope: SourceEnvelope
 }
 
 // ── RAWC (ControlRiskAssessment) ──────────────────────────
