@@ -1,6 +1,6 @@
 # ADR-0030: baseline 테넌트 소유권 및 격리 보장
 
-- 상태: 제안 (초안)
+- 상태: **채택** (2026-09-02 — 제안(초안)에서 전환. 근거는 §7)
 - 작성일: 2026-09-01
 - 관련: ADR-0029(cascade 시맨틱), ADR-0020(제로 추상화), 13.9 코드마스터 테이블화
 - 배경 실측: `baseline_*` 6테이블 제약 (운영 서버 psql, 2026-09-01)
@@ -253,3 +253,42 @@ class AuditedBase(IdentityBase, TenantMixin)   # = IdentityBase + tenant_id
 - 템플릿 → 고객사 baseline 복사 시점의 버전 관리
   (템플릿이 개정되면 이미 복사된 고객사는 어떻게 되는가)
 - 코드마스터 테이블화와의 관계 — 코드 체계가 테넌트별이면 마스터도 테넌트별인가
+
+---
+
+## 7. 채택 근거 (2026-09-02)
+
+제안(초안) → **채택**. 운영 적용과 검증이 끝났다.
+
+**구현** — 커밋 4건
+
+| 해시 | 내용 |
+|---|---|
+| `ceae2d6` | baseline 5테이블 `tenant_id` + code 유니크 전환 + instance→baseline 복합 FK 8개 (alembic `c9d0e1f2a3b4`) |
+| `136dd3f` | resolver 서술 정정(수동 필터 금지) + `seed_baseline.py` 대상 테넌트 인자 |
+| `fd5c8b1` | 테넌트 격리 검증 `tests/test_tenant_isolation.py` |
+| `3911578` | baseline 내부 FK 4개도 복합 FK 로 — §2.3 사각지대, 같은 리비전에 포함 |
+
+**운영 적용** — 2026-09-02, 이미지 `391157891f41d4f0cd726c3ea199c9e7dd04b097`
+
+적용 전 백업(§5 필수 절차)을 먼저 수행했다.
+`db/2026/09/icfr_db_20260902_105250.sql.gz.age` (35,145바이트)
+
+**운영 psql 검증**
+
+| 항목 | 결과 |
+|---|---|
+| baseline 5테이블 건수 | 8 / 29 / 85 / 93 / 469 — **불변** |
+| 모든 baseline 행의 `tenant_id` | NULL **0건** |
+| 복합 FK | **12개** 생성 확인 (instance 8 + baseline 내부 4) |
+
+**운영 화면 검증** — RCM 관리 93건 정상 표시, 프로세스·어서션 컬럼 정상.
+resolver 가 자동 격리(ADR-0025) 아래에서 기존과 동일한 결과를 낸다는 뜻이다.
+
+**로컬 postgres** — §4 검증 조건 확장분 포함 8개 전부 통과.
+`ruff check .` All checks passed / `pytest` 173 passed · 1 skipped · 1 xfailed · 0 failed.
+skip 1건은 교차 테넌트 거부 검증이다 — sqlite 가 FK 를 강제하지 않아 postgres 전용이며,
+그 사실 자체를 `test_cross_tenant_reference_is_not_guarded_by_sqlite` 가 고정한다.
+
+**이로써 두 번째 테넌트 온보딩 차단이 해제됐다** (§1.2 — code 전역 유니크).
+남은 미해결은 §6(산업별 템플릿 계층, 템플릿 개정 시 버전 관리, 코드마스터 관계)이다.

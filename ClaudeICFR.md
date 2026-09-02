@@ -1624,7 +1624,7 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 
 비고: TrustBuilder는 1·2·3·6 영역, Regina는 4·5 영역 담당
 
-### 12.3 운영 환경 현황 (2026-08-19 기준)
+### 12.3 운영 환경 현황 (2026-09-02 기준)
 
 | 항목 | 상태 | 실측 근거 |
 |---|---|---|
@@ -1634,8 +1634,10 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 | 컨테이너 | postgres·minio·backend·frontend 4개 healthy | 〃 |
 | 배포 | GitHub Actions → GHCR → self-hosted runner (`icfr-prod`) | Deploy #4·#5 실행 |
 | baseline 데이터 | 8 / 29 / 85 / 93 / 469 (psql 직접 조회) | 〃 |
+| baseline 스키마 | **테넌트 소유 (2026-09-02, ADR-0030 채택)** — `baseline_*` 5테이블에 `tenant_id`(NOT NULL), code 유니크 `(tenant_id, code)`, **복합 FK 12개**로 교차 테넌트 참조를 DB 가 거부. `baseline_risk_categories` 만 전역 유지. alembic `c9d0e1f2a3b4` | 운영 psql — 건수 불변·`tenant_id` NULL 0건·복합 FK 12개, 이미지 `391157891f41d4f0cd726c3ea199c9e7dd04b097` |
+| 마지막 스키마 변경 | 2026-09-02 `c9d0e1f2a3b4`. 적용 전 백업 `db/2026/09/icfr_db_20260902_105250.sql.gz.age`(35,145바이트) | ADR-0030 §7 |
 | 백업 | pg_dump→gzip→age→Object Storage, cron 03:00 KST, 보존 90일. 복구 리허설 통과 | ADR-0028 §2.8.1 |
-| CI | `ruff check .` All checks passed / pytest 128 passed·6 xfailed | GitHub Actions run 32210302492 |
+| CI | `ruff check .` All checks passed / pytest **173 passed·1 skipped·1 xfailed** (로컬 기준) | skip 1건은 교차 테넌트 거부 검증 — sqlite 가 FK 미강제라 postgres 전용 |
 
 ---
 
@@ -1863,7 +1865,7 @@ HTTP 200
 10. **upload-excel — 별개 결함 2건. 묶어서 관리하지 말 것** (2026-09-01 조사로 분리, `prompts/ICFR_excel_probe_20260901.md`). 이전 기록은 두 건을 한 항목으로 묶고 잔여 xfail 을 멀티헤더 버그에 붙였는데 **그 연결이 틀렸다.** 원인·재현 조건·검증 수단이 전부 다르다.
 
     - ~~**10-a. 멀티헤더 0건 (13.6)**~~ ✅ **완료 (2026-09-01, `prompts/ICFR_excel_fix_20260901.md`)** — 보정 함수를 `services/excel_parser.find_data_start_row` 로 공용화(`7c30290`, 동작 변경 0건) → `upload-excel` 호출부 보정 + 0건 실패 처리(`ffdea99`, 엔드포인트 실측 0→93건) → 멀티헤더 회귀 테스트 6건 신설(`e78c8f4`, 합성 픽스처 + 실파일). 테스트 공백(Excel 8건 전부 단일 헤더 픽스처)도 함께 해소. **로컬 검증만 완료 — 운영 미확인.**
-    - **10-b. upload-excel 쓰기 경로 overlay 미전환** — **선행 조건: ADR-0030(16번) 완료 후 착수.** 고객사 엑셀을 **어디에 쓸지**가 baseline 소유 구조에 달려 있다(전역 baseline 이면 쓸 곳이 없고, 테넌트 소유 baseline 이면 그쪽이 목적지 후보가 된다). 소유 구조를 정하기 전에 쓰기 경로를 배선하면 두 번 고치게 된다. 잔여 xfail `test_excel_upload_commit` 이 붙은 곳은 **이쪽이다.** 마커 사유도 `_XFAIL_SRC_SPLIT`(write=legacy `controls` / read=resolver)로 멀티헤더와 무관하다. 이 테스트는 단일 헤더 픽스처를 쓰므로 파싱은 성공하며(같은 픽스처를 쓰는 `test_excel_upload_preview` 는 통과), 깨지는 곳은 커밋 후 `GET /controls` 왕복이다. 즉 **10-a 를 고쳐도 이 xfail 은 해소되지 않는다.**
+    - **10-b. upload-excel 쓰기 경로 overlay 미전환** — **선행 조건 충족(2026-09-02) — 착수 가능.** ADR-0030(16번)이 운영 적용되어 baseline 이 테넌트 소유가 됐다. 고객사 엑셀을 **어디에 쓸지**가 baseline 소유 구조에 달려 있었고(전역 baseline 이면 쓸 곳이 없다), 이제 그 회사의 baseline 이 목적지 후보로 정해졌다. 다만 "baseline 에 직접 쓰는가 / instance(add)로 쓰는가"는 이 작업에서 결정할 사항이다. 잔여 xfail `test_excel_upload_commit` 이 붙은 곳은 **이쪽이다.** 마커 사유도 `_XFAIL_SRC_SPLIT`(write=legacy `controls` / read=resolver)로 멀티헤더와 무관하다. 이 테스트는 단일 헤더 픽스처를 쓰므로 파싱은 성공하며(같은 픽스처를 쓰는 `test_excel_upload_preview` 는 통과), 깨지는 곳은 커밋 후 `GET /controls` 왕복이다. 즉 **10-a 를 고쳐도 이 xfail 은 해소되지 않는다.**
 
     착수 순서는 10-a → 10-b 가 자연스럽다(파서를 두 번 만지지 않기 위해). 2026-08-24 작업에서 의도적으로 제외했던 사유(읽는 경로 선행)는 2-A-4-3·2-A-4-4 로 해소됐다. **10-a 는 2026-09-01 완료 — 남은 것은 10-b 뿐이다.** `EXCEL_UPLOAD_LOCKED` 해제도 10-b 이후 판단한다(파싱은 고쳐졌으나 커밋 경로가 아직 레거시 `controls` 에 쓴다).
 
@@ -1877,9 +1879,11 @@ HTTP 200
     1. 상위계층 관리 UI 위치·형태 — RCM 모듈 내부(예: 위험 매트릭스 화면 확장) vs 별도 신규 라우트.
     2. `ProcessItem`/`SubProcessItem`/`RiskItem`의 `envelope` optional→required 전환 여부 — 현재 optional(`buildOptionalSourceEnvelope` 사용, control은 required). 목록 API가 이미 resolver 경유라 required 전환이 가능해 보이나 미결정.
 
-**차단 항목 (2026-09-01 등록)**
+**차단 항목 (2026-09-01 등록) — ✅ 2026-09-02 해소**
 
-16. **baseline 테넌트 소유권 전환 (ADR-0030, 제안(초안))** — **두 번째 테넌트 온보딩 전 필수.** 현재 `baseline_*` 테이블은 `IdentityBase`(테넌트 비종속, 전역 공유)인데 운영 baseline 93건은 **사이냅소프트 한 회사의 RCM**이다. 게다가 `baseline_processes`/`_sub_processes`/`_risks`/`_controls` 4개의 **code 유니크가 단일 컬럼(전역)**이라, 회사마다 유사한 코드 체계(`EL-010-10-10` 등)를 쓰는 실무를 감안하면 **현재 구조에서는 두 번째 테넌트가 온보딩되지 않는다.** 결정 요지는 baseline 5테이블 테넌트 소유 전환(`baseline_risk_categories` 는 제도 고정 집합이므로 전역 유지) + code 유니크 `(tenant_id, code)` 전환 + **instance→baseline FK 8개를 복합 FK로 전환해 격리를 DB가 보장**(애플리케이션 검증은 기각 — 누락되면 조용히 뚫린다). 실데이터 이관이 함께 가는 되돌리기 어려운 작업이라 **운영 실행은 마스터가 직접 한다**(ADR-0030 §2.5·§5). 상태는 마이그레이션 운영 적용 후 "채택"으로 전환한다. 상세는 `docs/adr/ADR-0030-baseline-tenant-ownership.md`.
+16. ~~**baseline 테넌트 소유권 전환 (ADR-0030)**~~ ✅ **완료 (2026-09-02 운영 적용, ADR-0030 채택)** — **두 번째 테넌트 온보딩 차단이 해제됐다.** 커밋 4건(`ceae2d6`·`136dd3f`·`fd5c8b1`·`3911578`), alembic `c9d0e1f2a3b4`, 운영 이미지 `391157891f41d4f0cd726c3ea199c9e7dd04b097`. 운영 psql 검증 — baseline 5테이블 건수 불변(8/29/85/93/469), `tenant_id` NULL 0건, **복합 FK 12개**(instance→baseline 8 + baseline 내부 4). 운영 화면 — RCM 93건·프로세스·어서션 컬럼 정상. 적용 전 백업 `db/2026/09/icfr_db_20260902_105250.sql.gz.age`(35,145바이트). 아래는 등록 당시 기록.
+
+    **두 번째 테넌트 온보딩 전 필수.** 현재 `baseline_*` 테이블은 `IdentityBase`(테넌트 비종속, 전역 공유)인데 운영 baseline 93건은 **사이냅소프트 한 회사의 RCM**이다. 게다가 `baseline_processes`/`_sub_processes`/`_risks`/`_controls` 4개의 **code 유니크가 단일 컬럼(전역)**이라, 회사마다 유사한 코드 체계(`EL-010-10-10` 등)를 쓰는 실무를 감안하면 **현재 구조에서는 두 번째 테넌트가 온보딩되지 않는다.** 결정 요지는 baseline 5테이블 테넌트 소유 전환(`baseline_risk_categories` 는 제도 고정 집합이므로 전역 유지) + code 유니크 `(tenant_id, code)` 전환 + **instance→baseline FK 8개를 복합 FK로 전환해 격리를 DB가 보장**(애플리케이션 검증은 기각 — 누락되면 조용히 뚫린다). 실데이터 이관이 함께 가는 되돌리기 어려운 작업이라 **운영 실행은 마스터가 직접 한다**(ADR-0030 §2.5·§5). 상태는 마이그레이션 운영 적용 후 "채택"으로 전환한다. 상세는 `docs/adr/ADR-0030-baseline-tenant-ownership.md`.
 
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
@@ -1889,6 +1893,8 @@ HTTP 200
 ## 14. 변경 로그 (Changelog)
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
+
+- **2026-09-02 / TrustBuilder + Claude** — **ADR-0030 운영 적용 — baseline 테넌트 소유권 전환 + 격리 복합 FK** (`prompts/ICFR_adr0030_migration_20260901.md`, 커밋 4건, **ADR-0030 제안(초안) → 채택**). 지금까지 한 작업 중 가장 위험한 축이었다 — 스키마 변경과 실데이터 이관이 함께 갔다. ①**전환 내용**: `baseline_*` 5테이블 `IdentityBase` → `AuditedBase`(전역 공유 → 테넌트 소유), code 유니크 4개 `(tenant_id, code)` 전환, **복합 FK 12개**로 교차 테넌트 참조를 DB 가 거부. `baseline_risk_categories` 는 전역 유지(제도가 정하는 고정 집합, ADR-0029 §2.3). alembic 단일 리비전 `c9d0e1f2a3b4`. ②**STEP 0 실측이 지시를 두 번 정정했다**: (a) `AuditedBase = IdentityBase + TenantMixin` 이라 **추가 컬럼은 `tenant_id` 하나뿐** — 초안이 우려한 `is_deleted`·`row_version`·감사 컬럼은 이미 `IdentityBase` 에 있고 baseline 이 보유 중이었다. (b) ADR-0030 §3 의 "`control_resolver.py` baseline 조회에 tenant 필터 추가"는 **ADR-0025 위반**이다 — `tenant_context.py` 가 쿼리별 수동 필터를 명시적으로 금지하고 `with_loader_criteria` 가 자동으로 건다. **resolver 코드 변경 0건**으로 처리하고 docstring 의 "baseline 은 전역이라 격리 대상이 아님" 서술을 정정했다(마스터 확인 후 ADR 정정). ③**조사 중 사각지대 발견 — 같은 리비전에 포함**: 초안이 다룬 것은 instance→baseline FK 8개뿐이라 **baseline 끼리의 참조 4개가 열린 채 남았다**(A사 하위프로세스가 B사 프로세스를 가리킬 수 있다). 같은 종류의 구멍을 두 번에 나눠 막지 않기로 하고 **새 리비전을 추가하지 않고 `c9d0e1f2a3b4` 를 수정**했다 — 운영 미적용 상태가 가장 싸고, **스키마 변경은 횟수 자체가 위험**이기 때문이다(커밋 `3911578`). nullable 실측: 4개 중 `baseline_controls.risk_id` 만 nullable(나머지 3개 NOT NULL)이며 "상위 없는 통제"를 허용해온 기존 규약이고 실데이터 NULL 0건. ④**격리는 코드에 흔적이 남지 않는다** — resolver 어디에도 `tenant_id` 필터가 없어 깨져도 diff 에 안 보인다. 그래서 `tests/test_tenant_isolation.py` 로 계약을 고정했다(자기 테넌트만 반환·같은 code 공존·자동 stamp·overlay 누출 없음·복합 FK 12개 선언). **sqlite 가 FK 를 강제하지 않는다는 사실 자체도 테스트로 남겼다** — 로컬 통과를 §2.3 격리의 검증으로 오인하는 것을 막기 위해서다. ⑤**계약이 뒤집힌 기존 테스트 전환**: `test_baseline_hierarchy_is_global` → `_is_tenant_scoped`(서술 자체가 결함이었다), `test_resolve_tenant_isolation` 을 "각 회사가 자기 baseline 을 갖는" 형태로 재구성, 2-B-4 테스트 4건은 baseline 을 instance 와 같은 테넌트에 생성하도록 수정, seed 픽스처에 tenants 행·활성 tenant 추가. ⑥**로컬 postgres 검증 8개 전부 통과** — 건수 불변, `tenant_id` NULL 0건, 2번째 테넌트 동일 code 삽입 성공, instance·baseline 내부 **양방향 교차 참조 거부**(에러 원문 ADR §2.3 표), 자기 테넌트 참조·NULL 참조 통과(MATCH SIMPLE 의도 확인), downgrade 후 데이터 손실 0·스키마 완전 원복, `ruff` All checks passed / `pytest` 173 passed·1 skipped·1 xfailed. ⑦**운영 적용 2026-09-02** — 이미지 `391157891f41d4f0cd726c3ea199c9e7dd04b097`. 적용 전 백업 `db/2026/09/icfr_db_20260902_105250.sql.gz.age`(35,145바이트) 선행. 운영 psql: 건수 8/29/85/93/469 불변, `tenant_id` NULL 0건, 복합 FK 12개 확인. 운영 화면: RCM 93건·프로세스·어서션 컬럼 정상. **두 번째 테넌트 온보딩 차단 해제**(13.9-16 해소). 다음: 13.9-10-b(upload-excel 쓰기 경로) 선행 조건 충족 — 착수 가능.
 
 - **2026-09-01 / TrustBuilder + Claude** — **ADR-0030 작성** (`docs/adr/ADR-0030-baseline-tenant-ownership.md`, **상태 제안(초안)** — 마이그레이션 운영 적용 후 채택 전환. 문서만, 코드 변경 0건). **발단은 13.9-10-b(upload-excel 쓰기 경로) 설계 중 baseline 소유 개념 혼동을 발견한 것이다.** 고객사 엑셀을 어디에 쓸지 정하려다, **운영 baseline 93건은 사이냅소프트 한 회사의 RCM인데 `baseline_*` 테이블은 `IdentityBase`(테넌트 비종속, 전역 공유)로 정의돼 있음**을 확인했다. 테넌트가 1개뿐이라 이 불일치가 드러나지 않았다 — **2026-08-24에 로컬 레거시 잔존 데이터가 상위 계층 미배선을 가린 것(13.7 정정)과 동일한 패턴이다.** 조건이 하나뿐이라 구조적 결함이 은폐된 것. 실측으로 확인한 두 번째 문제는 `baseline_processes`/`_sub_processes`/`_risks`/`_controls` 4개의 **code 유니크가 단일 컬럼(전역)** 이라는 점 — 회사마다 유사 코드 체계를 쓰는 실무상 **현재 구조에서는 두 번째 테넌트가 온보딩되지 않는다.** 결정 요지: baseline 5테이블 테넌트 소유 전환(`baseline_risk_categories` 는 제도가 정하는 고정 집합이라 전역 유지 — ADR-0029 §2.3과 같은 판단) / code 유니크 `(tenant_id, code)` 전환 / **instance→baseline FK 8개를 복합 FK로 전환해 테넌트 격리를 DB가 보장**. 애플리케이션 검증 안은 기각했다 — 새 쿼리마다 사람이 기억해야 하고 누락되면 조용히 뚫리는데, 2026-08-24 하루에만 읽기/쓰기 분리 누락을 세 곳(상위 3계층·어서션 junction·risk-categories 읽기)에서 발견한 실적이 있다. 산업별 템플릿 계층은 §2.4로 범위 제외(두 번째 고객사가 없어 검증 대상이 없고, `tenant_id` 전환과 섞으면 원인 분리가 안 된다). **실데이터 이관이 함께 가는 되돌리기 어려운 작업이라 운영 실행은 마스터가 직접 한다**(§2.5·§5, 실행 전 `backup_db.sh` 수동 1회). 13.9에 차단 항목 16번으로 등록하고, **13.9-10-b 는 ADR-0030 완료 후 착수**로 선행 조건을 명시, 12번(코드마스터 테이블화)은 ADR-0030 §6 미해결(코드 체계가 테넌트별이면 마스터도 테넌트별인가)과 연결했다. `CLAUDE.md`·`README.md` 의 ADR 분리 기준 문구에 0030 추가.
 
