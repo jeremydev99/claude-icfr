@@ -1,6 +1,6 @@
 # 상위 3계층 CRUD API 계약 (Process / SubProcess / Risk)
 
-> **스냅샷 문서 — 기준 커밋 `af4c247` / 2026-09-02 시점. API 변경 시 갱신 필요.**
+> **스냅샷 문서 — 기준 커밋 `f3b0f29` / 2026-09-03 시점. API 변경 시 갱신 필요.**
 >
 > 자동 생성 문서(FastAPI `/docs`)가 API 스펙의 단일 진실 공급원이다(ADR-0017 §19).
 > 이 문서는 그것이 드러내지 못하는 것 — **계층마다 다른 검증 동작, 계약에 없는 것** — 을
@@ -9,8 +9,8 @@
 > 근거 파일: `backend/app/schemas/rcm.py`, `backend/app/api/rcm.py`,
 > `backend/app/services/control_resolver.py`
 >
-> **⚠ 이 문서에는 미해결 결함이 하나 반영돼 있다(§6-①). 그것이 고쳐지면 이 문서는 틀리게 된다.**
-> 해당 절에 표시해 두었으니 수정 시 함께 갱신할 것.
+> 이전 판(`af4c247` / 2026-09-02)은 통제의 code 중복 검증 누락을 미해결로 기술했다.
+> `f3b0f29` 에서 해소되어 **4계층이 같은 검증·같은 메시지 구조를 쓴다**(§5·§6-①).
 
 작성 배경: 프론트 배선 전 계약 확인 요청(Regina). 추정 없이 맞추기 위한 것이므로
 **코드에서 실제로 읽은 것만** 적었다. "동일할 것" 같은 추정 서술은 넣지 않았다.
@@ -148,14 +148,17 @@ def _resolve_process_parent(db, process_id):
 | 인증 없음 | 401 | 401 |
 | 바디 검증 실패(길이·패턴·타입) | `422 {"detail": [...]}` | 동일 |
 | 대상 없음 (GET/PATCH/DELETE) | `404 {"detail": "Process not found"}` 등 | `404 {"detail": "Control not found"}` |
-| **code 중복 — baseline과 충돌** | **`409 {"detail": "프로세스 코드 'X' 는 표준(baseline)에 이미 있습니다"}`** | **검증 없음 → 201로 생성됨** (§6-①) |
-| **code 중복 — 같은 tenant add와 충돌** | **`409 {"detail": "프로세스 코드 'X' 는 이미 사용 중입니다"}`** | **`409 {"detail": "데이터 무결성 제약 위반 (중복 또는 참조 오류)"}`** |
+| code 중복 — baseline과 충돌 | `409 {"detail": "프로세스 코드 'X' 는 표준(baseline)에 이미 있습니다"}` | `409 {"detail": "통제 코드 'X' 는 표준(baseline)에 이미 있습니다"}` |
+| code 중복 — 같은 tenant add와 충돌 | `409 {"detail": "프로세스 코드 'X' 는 이미 사용 중입니다"}` | `409 {"detail": "통제 코드 'X' 는 이미 사용 중입니다"}` |
 | 존재하지 않는 상위 참조 | 에러 없음 — 201, 상위 `null` | 동일 |
 | 낙관적 잠금 충돌 | **없음** | **없음** |
 
-409 메시지는 `_assert_code_available`(`rcm.py:106`)이 생성하며 `{label}`은 계층별로
-`"프로세스"` / `"하위프로세스"` / `"위험"`이다.
-**사용자 노출용으로 작성돼 있으니 `detail`을 그대로 표시해도 된다.**
+409 메시지는 `_assert_code_available`(`rcm.py:106`)이 4계층 공통으로 생성하며 `{label}`만
+계층별로 `"프로세스"` / `"하위프로세스"` / `"위험"` / `"통제"`로 갈린다. 구조는
+`{라벨} 코드 '{code}' 는 {사유}`로 동일하다.
+**사용자 노출용으로 작성돼 있으니 `detail`을 그대로 표시해도 되고, 409 처리를 4계층 공통
+코드로 통합할 수 있다.** 충돌 종류를 구분해야 하면 `"표준"` / `"사용 중"` 포함 여부로
+판별 가능하나, 문자열 매칭이라 백엔드 문구가 바뀌면 깨진다는 점은 감안할 것.
 
 **낙관적 잠금은 API 계약에 없다.** `row_version` 컬럼은 모델(`VersionMixin`)에 있으나
 `schemas/rcm.py`·`api/rcm.py`에 **언급이 0건**이다. 요청에 버전을 실을 곳도, 409를 받을
@@ -163,26 +166,30 @@ def _resolve_process_parent(db, process_id):
 
 ## 6. Control과 다른 지점
 
-### ① code 중복 검증 — 상위 3계층에만 있다 (차이 있음, **미해결**)
+### ① code 중복 검증 — ✅ 해소 (2026-09-03, 커밋 `f3b0f29`)
 
-> **⚠ 미해결 항목 — `ClaudeICFR.md` 13.9-17 에 등록됨.**
-> **이 결함이 고쳐지면 위 §5 표의 Control 열과 이 절이 함께 틀리게 된다. 반드시 같이 갱신할 것.**
+**4계층이 같은 검증을 쓴다.** `_assert_code_available` 호출처는
+`rcm.py:255`(processes), `310`(sub-processes), `363`(risks), `693`(controls) 4곳이다.
+메시지 구조가 동일하고 `{label}`만 갈리므로 **FE 는 409 처리를 공통 코드로 쓸 수 있다**(§5).
 
-`_assert_code_available` 호출처는 `rcm.py:255`(processes), `310`(sub-processes),
-`363`(risks) **3곳뿐**이고 `create_control`(`rcm.py:692`)에는 없다. 결과:
+**해소 전 상태 (이전 판 `af4c247` 기록)** — 왜 이 검증이 필요한지 남긴다.
 
-- 3계층: 409 + 어느 쪽과 충돌했는지 구분된 한국어 메시지
-- Control: **baseline code와 겹치면 아무 에러 없이 201** → resolver 결과에 같은 code가 둘.
-  instance끼리 겹치면 DB 유니크 위반 → 전역 핸들러가 409 + 일반 문구
+`_assert_code_available` 은 2-A-4-3(`cad62a9`)에서 신설되며 상위 3계층에만 적용되고
+`create_control` 로 소급되지 않았다. 그래서 통제는:
 
-**판단: 2-A-4-3 작업의 소급 누락이다.** `_assert_code_available` docstring이
-*"baseline 테이블의 code 와 겹치는 경우는 어떤 제약도 막지 못하므로 여기서 함께 본다"*라고
-적고 있는데, 이 논리는 control에 그대로 해당한다. control CRUD는 2-A-4-1(더 이전)에
-만들어졌고 이 헬퍼는 2-A-4-3(`cad62a9`)에 신설되면서 control로 소급되지 않았다.
-**의도된 차이로 보이지 않는다.**
+- **baseline code 와 겹쳐도 아무 에러 없이 201** → resolver 결과에 같은 code 가 둘
+- instance 끼리 겹칠 때만 DB 유니크 위반 → 전역 핸들러가 409 + 일반 문구
+  (`"데이터 무결성 제약 위반 (중복 또는 참조 오류)"`)
 
-**FE 영향**: 통제 생성 폼과 상위 3계층 폼의 409 처리를 같은 코드로 쓰면 안 된다.
-3계층은 `detail`을 그대로 노출해도 되지만, 통제는 일반 문구라 별도 안내가 필요하다.
+baseline 충돌을 DB 가 못 막는 이유는 `_assert_code_available` docstring 이 적고 있다 —
+*"baseline 테이블의 code 와 겹치는 경우는 어떤 제약도 막지 못하므로 여기서 함께 본다"*.
+**서로 다른 테이블이라 제약이 걸치지 않는다**(ADR-0029 §3 의 사각지대와 같은 구조).
+에러가 나지 않아 발견이 늦는 것이 이 결함의 성질이었다.
+
+회귀 방지: `tests/test_rcm_crud_overlay.py` 의
+`test_create_control_rejects_code_duplicate_against_baseline` /
+`..._against_instance` / `test_create_control_with_new_code_still_succeeds`.
+상위 3계층 대응 케이스는 `tests/test_rcm_hierarchy_api.py` 에 있다.
 
 ### ② 그 외 계약은 차이 없음 — 단언한다
 
