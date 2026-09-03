@@ -695,7 +695,13 @@ def create_control(body: ControlCreate, user: CurrentUser = None, db: Session = 
 
     tenant_id 는 before_flush 자동 stamp(ADR-0026, 수동 지정 금지).
     상위 risk 참조는 이중 FK 규칙으로 baseline/instance 중 하나에 매핑.
+
+    code 중복 검증은 2-A-4-3 에서 상위 3계층에만 들어가고 이쪽으로 소급되지 않았다
+    (13.9-17). baseline code 와 겹치는 경우는 어떤 DB 제약도 막지 못해 — 서로 다른
+    테이블이라 제약이 걸치지 않는다 — 에러 없이 201 로 생성되고 resolver 결과에 같은
+    code 가 둘 나왔다.
     """
+    _assert_code_available(db, BaselineControl, ControlInstance, body.code, "통제")
     data = body.model_dump()
     risk_id = data.pop("risk_id")
     rb, ri = _resolve_risk_parent(db, risk_id)

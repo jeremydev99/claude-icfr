@@ -442,3 +442,46 @@ def test_list_controls_excludes_deleted(client: TestClient) -> None:
     assert "C42-LDEL-1" in _codes()
     client.delete(f"/api/rcm/controls/{bid}", headers=h)
     assert "C42-LDEL-1" not in _codes()
+
+
+# ── code 중복 검증 (13.9-17) ──────────────────────────────
+# 상위 3계층에는 2-A-4-3 에서 들어갔으나 통제에는 소급되지 않아, baseline 과 code 가
+# 겹쳐도 에러 없이 201 이었다(resolver 결과에 같은 code 가 둘). 대응 케이스는
+# test_rcm_hierarchy_api.py 의 test_create_rejects_code_duplicate_against_* 다.
+
+def test_create_control_rejects_code_duplicate_against_baseline(client: TestClient) -> None:
+    """통제 code 가 baseline code 와 겹치면 409 — DB 제약이 못 막는 구간(다른 테이블)."""
+    h = _headers(client)
+    _seed_baseline_control("C43-DUP-1", name="표준통제")
+    rid = _seed_baseline_risk("dup1")
+
+    resp = client.post("/api/rcm/controls", headers=h, json={
+        "code": "C43-DUP-1", "name": "중복 통제", "risk_id": rid,
+    })
+    assert resp.status_code == 409, resp.text
+    assert "표준" in resp.json()["detail"]
+    assert "통제" in resp.json()["detail"]   # label 이 계층별로 구분된다
+
+
+def test_create_control_rejects_code_duplicate_against_instance(client: TestClient) -> None:
+    """add 끼리 겹쳐도 409 — IntegrityError 일반 문구가 아니라 의미 있는 메시지."""
+    h = _headers(client)
+    rid = _seed_baseline_risk("dup2")
+    body = {"code": "C43-DUP-2", "name": "회사 통제", "risk_id": rid}
+
+    assert client.post("/api/rcm/controls", headers=h, json=body).status_code == 201
+    resp = client.post("/api/rcm/controls", headers=h, json=body)
+    assert resp.status_code == 409, resp.text
+    assert "사용 중" in resp.json()["detail"]
+
+
+def test_create_control_with_new_code_still_succeeds(client: TestClient) -> None:
+    """정상 code 는 그대로 201 — 검증 추가로 인한 회귀가 없다."""
+    h = _headers(client)
+    rid = _seed_baseline_risk("dup3")
+    resp = client.post("/api/rcm/controls", headers=h, json={
+        "code": "C43-OK-1", "name": "정상 통제", "risk_id": rid,
+    })
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["code"] == "C43-OK-1"
+    assert resp.json()["source"] == "tenant"
