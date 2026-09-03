@@ -58,7 +58,11 @@ ICFR/
 ├─ docs/
 │   ├─ diagrams/           ← 다이어그램 산출물(mmd/svg/png, ClaudeICFR.md §2에서 참조)
 │   ├─ adr/                ← ADR-0028부터 개별 파일 사용 시작. 분리 기준: 운영·인프라 및 대형 설계 ADR은 개별 파일(0028 인프라, 0029 cascade 시맨틱, 0030 baseline 테넌트 소유권), 코드 설계 ADR은 ClaudeICFR.md §10 요약 유지.
-│   ├─ api/openapi.yaml (예정) ← API 스펙은 현재 FastAPI 자동 생성 문서가 단일 진실 공급원(ADR-0017 §19). 파일 export는 미착수.
+│   ├─ api/                ← `rcm-hierarchy-contract.md`(상위 3계층 CRUD 계약 스냅샷, 2026-09-02) 존재.
+│   │                        API 스펙 자체는 FastAPI 자동 생성 문서가 단일 진실 공급원(ADR-0017 §19) —
+│   │                        `openapi.yaml` 파일 export는 여전히 미착수. 여기의 스냅샷 문서는 자동 문서가
+│   │                        드러내지 못하는 것(계층별 검증 차이·계약에 없는 것)을 보완하며, 상단에 기준
+│   │                        커밋을 명시하고 API 변경 시 갱신한다.
 │   └─ erd/ (예정)         ← ERD는 현재 ClaudeICFR.md §5에 인라인. 별도 다이어그램 소스 분리는 미착수.
 ├─ backend/
 ├─ frontend/
