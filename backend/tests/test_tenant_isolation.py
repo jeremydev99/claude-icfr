@@ -30,7 +30,7 @@ from tests.conftest import TestingSessionLocal, engine
 
 _ADD_ATTRS = {   # add 는 baseline 이 없으므로 자체 필드를 채운다 (models 규약, 13.5 교훈)
     "is_key_control": True, "preventive_detective": "P", "auto_manual": "M",
-    "frequency": "A", "ipe_relevant": "N/A",
+    "frequency": "A", "assessment_frequency": "annual", "ipe_relevant": "N/A",
     "activity_approval": False, "activity_verification": False, "activity_physical": False,
     "activity_master_data": False, "activity_reconciliation": False, "activity_supervision": False,
 }

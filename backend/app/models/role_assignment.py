@@ -140,6 +140,14 @@ CROSS_LAYER_CONFLICT_PAIRS = (
 # control_owner=dept_approver 는 충돌이 아니므로 금지 설정 대상도 아니다(위 정정).
 POLICY_DEPT_APPROVAL_ENABLED = "dept_approval_enabled"
 
+# 회계연도 시작월 (1~12, 기본 1). 3월 결산 회사면 3 — 1분기가 4/1~6/30 으로 제안된다.
+# **제안값일 뿐 강제하지 않는다**(ADR-0032 §2.2) — 담당자가 조정할 수 있다.
+# 전용 컬럼을 만들지 않은 이유: 3-3 에서 항목이 더 붙는데(증빙 편집 토글·보존기간)
+# 그때마다 마이그레이션이 필요하다. 스키마 변경은 횟수 자체가 위험이다(ADR-0030 경험).
+# Report 모듈도 쓸 값이라 정책 테이블이 자연스럽다.
+POLICY_FISCAL_YEAR_START_MONTH = "fiscal_year_start_month"
+DEFAULT_FISCAL_YEAR_START_MONTH = 1
+
 
 def conflict_key(role_a: str, role_b: str) -> str:
     """충돌 조합 키. 순서를 고정해 같은 조합이 두 문자열로 갈리지 않게 한다."""

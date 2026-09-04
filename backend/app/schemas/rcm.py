@@ -132,6 +132,8 @@ class ControlBase(BaseModel):
     # 그룹 5
     related_accounts: str | None = None
     frequency: str = Field(default="A", pattern="^(O|D|W|M|Q|A)$")
+    # 평가주기 — frequency(통제 수행 주기)와 다른 개념. 일 단위 미지원(ADR-0032 §2.1)
+    assessment_frequency: str = Field(default="annual", pattern="^(weekly|monthly|quarterly|semiannual|annual)$")
     ipe_relevant: str = Field(default="N/A", pattern="^(Y|N|N/A)$")
     related_systems: str | None = None
     euc_description: str | None = None
@@ -155,6 +157,7 @@ class ControlUpdate(BaseModel):
     activity_supervision: bool | None = None
     related_accounts: str | None = None
     frequency: str | None = Field(None, pattern="^(O|D|W|M|Q|A)$")
+    assessment_frequency: str | None = Field(None, pattern="^(weekly|monthly|quarterly|semiannual|annual)$")
     ipe_relevant: str | None = Field(None, pattern="^(Y|N|N/A)$")
     related_systems: str | None = None
     euc_description: str | None = None

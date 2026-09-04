@@ -48,6 +48,7 @@ _ADD_ATTRS = {
     "preventive_detective": "P",
     "auto_manual": "M",
     "frequency": "A",
+    "assessment_frequency": "annual",   # 3-2 에서 추가된 필수 필드
     "ipe_relevant": "N/A",
 }
 
@@ -142,7 +143,8 @@ def test_resolve_add(app):
         db.add(ControlInstance(
             baseline_control_id=None, action="add",
             code="CI-ADD-1", name="회사 고유 통제", is_key_control=True,
-            preventive_detective="D", auto_manual="M", frequency="M", ipe_relevant="N",
+            preventive_detective="D", auto_manual="M", frequency="M",
+            assessment_frequency="annual", ipe_relevant="N",
             **_ADD_ACTIVITIES,
         ))
         db.commit()

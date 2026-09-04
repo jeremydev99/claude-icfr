@@ -67,6 +67,19 @@ ACTION_OVERRIDE = "override"
 ACTION_ADD = "add"
 INSTANCE_ACTIONS = (ACTION_ADOPT, ACTION_EXCLUDE, ACTION_OVERRIDE, ACTION_ADD)
 
+# ── 평가주기 (ADR-0032 §2.1) ──────────────────────────────────────
+# 주가 최소 단위다. 일 단위는 지원하지 않는다 — 시스템이 지원해도 실무가 쓰지 않으면
+# 유지 비용만 남는다. 매일 발생하는 통제는 주 단위 회차에서 표본을 추출해 테스트한다.
+ASSESSMENT_WEEKLY = "weekly"
+ASSESSMENT_MONTHLY = "monthly"
+ASSESSMENT_QUARTERLY = "quarterly"
+ASSESSMENT_SEMIANNUAL = "semiannual"
+ASSESSMENT_ANNUAL = "annual"
+ASSESSMENT_FREQUENCIES = (
+    ASSESSMENT_WEEKLY, ASSESSMENT_MONTHLY, ASSESSMENT_QUARTERLY,
+    ASSESSMENT_SEMIANNUAL, ASSESSMENT_ANNUAL,
+)
+
 ASSERTION_ACTION_ADD = "add"
 ASSERTION_ACTION_REMOVE = "remove"
 ASSERTION_ACTIONS = (ASSERTION_ACTION_ADD, ASSERTION_ACTION_REMOVE)
@@ -210,6 +223,14 @@ class BaselineControl(AuditedBase):
     # 그룹 5: 통제 환경·시스템
     related_accounts: Mapped[str | None] = mapped_column(Text, nullable=True)
     frequency: Mapped[str] = mapped_column(String(2), nullable=False, default="A")
+    # 평가주기 — **통제 수행 주기(frequency)와 다른 개념이다.**
+    # frequency 는 "통제를 얼마나 자주 수행하는가"(O/D/W/M/Q/A), 이쪽은 "얼마나 자주
+    # 평가하는가"다. 원천 엑셀에도 별도 열(`평가주기`)로 존재한다.
+    # 일 단위는 지원하지 않는다 — 회차를 매일 생성·증빙 등록해야 해서 실무가 감당할 수
+    # 없다(ADR-0032 §2.1). 최소 단위는 주.
+    assessment_frequency: Mapped[str] = mapped_column(
+        String(12), nullable=False, default="annual"
+    )
     ipe_relevant: Mapped[str] = mapped_column(String(5), nullable=False, default="N/A")
     related_systems: Mapped[str | None] = mapped_column(Text, nullable=True)
     euc_description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -438,6 +459,8 @@ class ControlInstance(AuditedBase):
 
     related_accounts: Mapped[str | None] = mapped_column(Text, nullable=True)
     frequency: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    # 평가주기 override — NULL 이면 baseline 을 따른다 (2-A-4-1 미러링 규약)
+    assessment_frequency: Mapped[str | None] = mapped_column(String(12), nullable=True)
     ipe_relevant: Mapped[str | None] = mapped_column(String(5), nullable=True)
     related_systems: Mapped[str | None] = mapped_column(Text, nullable=True)
     euc_description: Mapped[str | None] = mapped_column(Text, nullable=True)
