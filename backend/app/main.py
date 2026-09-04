@@ -14,9 +14,11 @@ from app.api import (
     health,
     iuc,
     notification,
+    org,
     rcm,
     remediation,
     report,
+    role_assignment,
     schedule,
     scoping,
     system,
@@ -118,6 +120,8 @@ def create_app() -> FastAPI:
     app.include_router(remediation.router)
     app.include_router(evidence.router)
     app.include_router(user_mgmt.router)
+    app.include_router(org.router)
+    app.include_router(role_assignment.router)
     app.include_router(notification.router)
     app.include_router(report.router)
     app.include_router(test_module.router)
