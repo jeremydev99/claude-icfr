@@ -127,6 +127,21 @@ def resolve_roles_for_control(
     return rows
 
 
+def is_dept_approval_skipped(resolved: list[dict]) -> bool:
+    """부서승인 단계가 성립하지 않는가 — 통제책임자가 곧 부서 책임자인 경우.
+
+    **이것은 이해상충이 아니다**(2026-09-04 정정, ADR-0031 §2.4). 부서승인은
+    "상급자가 검토한다"는 뜻인데 통제책임자가 팀장 본인이면 그 위 단계가 없다.
+    겸직이 아니라 단계가 없는 것이므로 경고 대신 스킵으로 표시한다.
+
+    **`derived` 유래에 한정하지 않는다.** 통제별로 통제책임자 본인을 부서승인자로
+    명시 지정한 경우도 같은 상황이다 — 어느 경로로 같아졌든 검토 단계는 없다.
+    """
+    by_role = {r["role_name"]: r["user_id"] for r in resolved if r["user_id"]}
+    owner = by_role.get(ROLE_CONTROL_OWNER)
+    return owner is not None and by_role.get(ROLE_DEPT_APPROVER) == owner
+
+
 def detect_conflicts(resolved: list[dict], tenant_role_users: dict[str, set[UUID]] | None = None,
                      ) -> list[str]:
     """해석된 역할에서 이해상충 조합을 찾는다. **판정은 통제 단위다**(ADR-0031 §2.4).
@@ -136,6 +151,11 @@ def detect_conflicts(resolved: list[dict], tenant_role_users: dict[str, set[UUID
 
     `tenant_role_users` 는 테넌트 단위 역할(`icfr_manager`)의 보유자 집합.
     그쪽은 `user_roles` 에 있어(ADR-0031 §3.1) 검사 방식이 다르다.
+
+    **`control_owner = dept_approver` 는 여기서 잡지 않는다**(2026-09-04 정정).
+    충돌이 아니라 부서승인 단계 부재이며 `is_dept_approval_skipped` 가 다룬다.
+    다만 `derived` 유래 값 자체는 계속 판정 대상이다 — 유도값도 실제 승인자가 되므로
+    다른 조합에서는 그대로 본다.
     """
     by_role = {r["role_name"]: r["user_id"] for r in resolved if r["user_id"]}
     found = [

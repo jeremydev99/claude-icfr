@@ -14,9 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser
-from app.core.permissions import require_icfr_manager, require_write, tenant_roles
+from app.core.permissions import require_icfr_manager, require_write
 from app.models.role_assignment import (
-    ROLE_ICFR_MANAGER,
     SCOPE_CONTROL,
     SCOPE_PROCESS,
     ConflictAcknowledgement,
@@ -39,6 +38,7 @@ from app.services.role_resolver import (
     _assignments_by_target,
     _primary_department_manager,
     detect_conflicts,
+    is_dept_approval_skipped,
     resolve_roles_for_control,
 )
 
@@ -145,7 +145,8 @@ def create_assignment(body: RoleAssignmentCreate, user: User = Depends(require_w
 
     if conflicts:
         for key in conflicts:
-            if _policy_blocks(db, f"conflict_{key.replace('=', '_')}_blocked"):
+            role_a, role_b = key.split("=")
+            if _policy_blocks(db, conflict_policy_key(role_a, role_b)):
                 raise HTTPException(
                     status_code=409,
                     detail=f"정책상 금지된 겸직 조합입니다: {key}",
@@ -220,6 +221,7 @@ def get_control_roles(control_id: UUID, user: CurrentUser = None,
         owner_name=control.get("owner_name"),
         roles=[ResolvedRole(**r) for r in resolved],
         conflicts=detect_conflicts(resolved, _tenant_role_users(db)),
+        dept_approval_skipped=is_dept_approval_skipped(resolved),
     )
 
 
@@ -252,4 +254,3 @@ def upsert_policy(body: TenantPolicyUpsert, user: User = Depends(require_icfr_ma
     return TenantPolicyRead.model_validate(obj)
 
 
-__all__ = ["router", "conflict_policy_key", "ROLE_ICFR_MANAGER", "tenant_roles"]

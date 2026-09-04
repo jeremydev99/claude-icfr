@@ -112,6 +112,16 @@ class ControlRolesRead(BaseModel):
     owner_name: str | None = None
     roles: list[ResolvedRole]
     conflicts: list[str] = []
+    # 부서승인 단계가 성립하지 않는가 — 통제책임자가 곧 부서 책임자인 경우.
+    # **이해상충이 아니다**(2026-09-04 정정, ADR-0031 §2.4). 승인 단계가 없는 것이지
+    # 겸직이 아니므로 `conflicts` 에 넣지 않고 별도로 표시한다.
+    #
+    # `source` 에 "skipped" 를 넣지 않은 이유 — `source` 는 "값이 어디서 왔는가"라는
+    # 단일 의미이고 스킵은 상태다. 섞으면 RCM source envelope 과도 개념이 어긋나고,
+    # 스킵일 때 유도된 부서 책임자가 누구인지 표현할 자리가 없어진다.
+    # 스킵이어도 `roles[]` 의 dept_approver 는 그대로 남으며 user_id 는 control_owner
+    # 와 같다 — 별도 승인자가 아니라는 뜻이다.
+    dept_approval_skipped: bool = False
 
 
 # ── 정책 ──────────────────────────────────────────────────

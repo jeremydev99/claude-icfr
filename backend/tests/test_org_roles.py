@@ -317,14 +317,21 @@ def test_policy_toggle_blocks_conflict(client: TestClient, org_ctx) -> None:
         "policy_key": "conflict_assessor_control_owner_blocked", "policy_value": "true"})
     assert resp.status_code == 200, resp.text
 
-    client.post("/api/org/assignments", headers=h, json={
-        "scope": "control", "target_id": str(ctrl_id),
-        "role_name": "control_owner", "user_id": uid})
-    blocked = client.post("/api/org/assignments", headers=h, json={
-        "scope": "control", "target_id": str(ctrl_id), "role_name": "assessor",
-        "user_id": uid, "conflict_reason": "사유가 있어도 금지면 막힌다"})
-    assert blocked.status_code == 409
-    assert "정책상 금지" in blocked.json()["detail"]
+    try:
+        client.post("/api/org/assignments", headers=h, json={
+            "scope": "control", "target_id": str(ctrl_id),
+            "role_name": "control_owner", "user_id": uid})
+        blocked = client.post("/api/org/assignments", headers=h, json={
+            "scope": "control", "target_id": str(ctrl_id), "role_name": "assessor",
+            "user_id": uid, "conflict_reason": "사유가 있어도 금지면 막힌다"})
+        assert blocked.status_code == 409
+        assert "정책상 금지" in blocked.json()["detail"]
+    finally:
+        # 정책은 **테넌트 전역 상태**다. 남기면 이후 테스트가 전부 "정책상 금지" 를 받는다
+        # (공용 세션 DB 를 쓰므로). 켠 테스트가 되돌린다.
+        client.put("/api/org/policies", headers=h, json={
+            "policy_key": "conflict_assessor_control_owner_blocked",
+            "policy_value": "false"})
 
 
 # ── §6-10·11 dept_approver 유도 ───────────────────────────
@@ -455,3 +462,97 @@ def test_role_assignment_is_tenant_scoped(client: TestClient, org_ctx) -> None:
             RoleAssignment.target_id == ctrl_id).count() == 0
     finally:
         reset_active_tenant(tok)
+
+
+# ── 부서승인 스킵 (2026-09-04 정정) ────────────────────────
+
+def test_owner_who_is_dept_manager_is_not_a_conflict(client: TestClient, org_ctx) -> None:
+    """통제책임자가 자기 부서의 책임자면 **충돌이 아니다** — 저장이 그대로 성공한다.
+
+    2026-09-04 정정. 부서승인은 "상급자가 검토한다"는 뜻인데 통제책임자가 팀장
+    본인이면 그 위 단계가 없다. 겸직이 아니라 단계가 없는 것이다(ADR-0031 §2.4 정정).
+    **팀장이 통제책임자인 통제는 전부 이 형태라, 경고로 두면 대부분의 통제에
+    사유 입력을 요구하게 된다.**
+    """
+    h, db = org_ctx
+    boss = str(_make_user(db, "selfboss@acme.example", "팀장겸통제책임자"))
+    _, ctrl_id = _chain(db, "S1")
+
+    dept = client.post("/api/org/departments", headers=h,
+                       json={"name": "자금팀-S1", "manager_id": boss}).json()
+    client.post("/api/org/memberships", headers=h, json={
+        "user_id": boss, "department_id": dept["id"], "is_primary": True})
+
+    # 사유 없이 저장해도 201 — 충돌로 잡히지 않는다
+    resp = client.post("/api/org/assignments", headers=h, json={
+        "scope": "control", "target_id": str(ctrl_id),
+        "role_name": "control_owner", "user_id": boss})
+    assert resp.status_code == 201, resp.text
+
+    body = client.get(f"/api/org/controls/{ctrl_id}/roles", headers=h).json()
+    assert body["conflicts"] == []
+
+
+def test_dept_approval_skipped_is_reported(client: TestClient, org_ctx) -> None:
+    """스킵 상태가 해석 응답에 표시된다 — FE 가 "부서승인 없음"을 표시할 수 있어야 한다.
+
+    스킵이어도 `roles[]` 의 dept_approver 는 남으며 `user_id` 가 control_owner 와
+    같다 — 별도 승인자가 아니라는 뜻이다.
+    """
+    h, db = org_ctx
+    boss = str(_make_user(db, "skipboss@acme.example", "팀장"))
+    _, ctrl_id = _chain(db, "S2")
+
+    dept = client.post("/api/org/departments", headers=h,
+                       json={"name": "회계팀-S2", "manager_id": boss}).json()
+    client.post("/api/org/memberships", headers=h, json={
+        "user_id": boss, "department_id": dept["id"], "is_primary": True})
+    client.post("/api/org/assignments", headers=h, json={
+        "scope": "control", "target_id": str(ctrl_id),
+        "role_name": "control_owner", "user_id": boss})
+
+    body = client.get(f"/api/org/controls/{ctrl_id}/roles", headers=h).json()
+    assert body["dept_approval_skipped"] is True
+    approver = next(r for r in body["roles"] if r["role_name"] == "dept_approver")
+    assert approver["user_id"] == boss          # control_owner 와 같은 사람
+    assert approver["source"] == "derived"      # source 는 출처 의미를 유지한다
+
+
+def test_dept_approval_not_skipped_when_approver_differs(client: TestClient, org_ctx) -> None:
+    """통제책임자와 부서 책임자가 다르면 스킵이 아니다 — 회귀 가드."""
+    h, db = org_ctx
+    owner = str(_make_user(db, "owner-s3@acme.example", "담당자"))
+    boss = str(_make_user(db, "boss-s3@acme.example", "팀장S3"))
+    _, ctrl_id = _chain(db, "S3")
+
+    dept = client.post("/api/org/departments", headers=h,
+                       json={"name": "영업1팀-S3", "manager_id": boss}).json()
+    client.post("/api/org/memberships", headers=h, json={
+        "user_id": owner, "department_id": dept["id"], "is_primary": True})
+    client.post("/api/org/assignments", headers=h, json={
+        "scope": "control", "target_id": str(ctrl_id),
+        "role_name": "control_owner", "user_id": owner})
+
+    body = client.get(f"/api/org/controls/{ctrl_id}/roles", headers=h).json()
+    assert body["dept_approval_skipped"] is False
+    assert body["conflicts"] == []
+
+
+def test_owner_assessor_conflict_still_detected(client: TestClient, org_ctx) -> None:
+    """control_owner = assessor 는 **여전히 충돌**이다 — 이번 정정의 회귀 가드.
+
+    dept_approver 조합만 제외했지 이해상충 판정 자체를 약화시킨 것이 아니다.
+    """
+    h, db = org_ctx
+    uid = str(_make_user(db, "still@acme.example", "여전히충돌"))
+    _, ctrl_id = _chain(db, "S4")
+
+    client.post("/api/org/assignments", headers=h, json={
+        "scope": "control", "target_id": str(ctrl_id),
+        "role_name": "control_owner", "user_id": uid})
+    resp = client.post("/api/org/assignments", headers=h, json={
+        "scope": "control", "target_id": str(ctrl_id),
+        "role_name": "assessor", "user_id": uid})
+    assert resp.status_code == 409
+    assert "사유" in resp.json()["detail"]
+    assert "assessor=control_owner" in resp.json()["detail"]

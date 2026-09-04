@@ -115,9 +115,15 @@ class TenantPolicy(AuditedBase):
 
 # ── 이해상충 조합 (§2.5) ──────────────────────────────────────────
 # (역할A, 역할B) — 같은 사람이 한 통제에서 두 역할을 겸하면 경고.
+#
+# **2026-09-04 정정 — control_owner = dept_approver 는 여기서 뺐다.**
+# 부서승인은 "상급자가 검토한다"는 뜻인데, 통제책임자가 팀장 본인이면 그 위 단계가
+# 없는 것이다. 겸직이 아니라 **부서승인 단계가 성립하지 않는 상황**이며
+# ADR-0031 §2.6(부서승인은 선택 단계)의 연장선이다. 대신 자동 스킵으로 표시한다
+# (`dept_approval_skipped`). 팀장이 통제책임자인 통제는 전부 이 형태라 경고로 두면
+# 실무에서 대부분의 통제에 사유 입력을 요구하게 된다.
 CONFLICT_PAIRS = (
     (ROLE_CONTROL_OWNER, ROLE_ASSESSOR),
-    (ROLE_CONTROL_OWNER, ROLE_DEPT_APPROVER),
 )
 
 # 계층을 넘는 조합 — 통제 단위 assessor 와 **테넌트 단위** icfr_manager 다.
@@ -130,6 +136,8 @@ CROSS_LAYER_CONFLICT_PAIRS = (
 )
 
 # 정책 키 — 금지로 켜면 저장 자체를 거부한다(409). 기본은 허용(경고+사유).
+# 금지 토글의 대상은 CONFLICT_PAIRS + CROSS_LAYER_CONFLICT_PAIRS 뿐이다 —
+# control_owner=dept_approver 는 충돌이 아니므로 금지 설정 대상도 아니다(위 정정).
 POLICY_DEPT_APPROVAL_ENABLED = "dept_approval_enabled"
 
 
