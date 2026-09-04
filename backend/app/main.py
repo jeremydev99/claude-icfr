@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from app.api import (
+    assessment,
     auth,
     euc,
     evidence,
@@ -122,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(user_mgmt.router)
     app.include_router(org.router)
     app.include_router(role_assignment.router)
+    app.include_router(assessment.router)
     app.include_router(notification.router)
     app.include_router(report.router)
     app.include_router(test_module.router)
