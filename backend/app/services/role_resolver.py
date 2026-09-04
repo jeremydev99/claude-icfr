@@ -127,6 +127,24 @@ def resolve_roles_for_control(
     return rows
 
 
+def resolve_control_process_id(db: Session, control_id: UUID) -> UUID | None:
+    """통제의 상위 프로세스 정체성 id. 배정 해석·권한 검사 양쪽이 쓴다.
+
+    `resolve_controls` 가 `process_code` 만 주므로 코드로 되짚는다.
+    **3-1 에서는 `api/role_assignment.py` 에 있었다** — 3-2 가 같은 판정을 해야 해서
+    이쪽으로 옮겼다. API 모듈에 두면 다른 API 가 쓰려고 서로를 import 하게 된다.
+    """
+    from app.services.control_resolver import resolve_controls, resolve_processes
+
+    control = next((c for c in resolve_controls(db) if c["id"] == control_id), None)
+    if control is None:
+        return None
+    code = control.get("process_code")
+    if not code:
+        return None
+    return next((p["id"] for p in resolve_processes(db) if p["code"] == code), None)
+
+
 def is_dept_approval_skipped(resolved: list[dict]) -> bool:
     """부서승인 단계가 성립하지 않는가 — 통제책임자가 곧 부서 책임자인 경우.
 

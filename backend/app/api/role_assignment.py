@@ -39,6 +39,7 @@ from app.services.role_resolver import (
     _primary_department_manager,
     detect_conflicts,
     is_dept_approval_skipped,
+    resolve_control_process_id,
     resolve_roles_for_control,
 )
 
@@ -130,7 +131,7 @@ def create_assignment(body: RoleAssignmentCreate, user: User = Depends(require_w
 
     if body.scope == SCOPE_CONTROL:
         control = next((c for c in resolve_controls(db) if c["id"] == body.target_id), None)
-        process_id = _process_of(db, control) if control else None
+        process_id = resolve_control_process_id(db, body.target_id) if control else None
         resolved = resolve_roles_for_control(
             db, body.target_id, process_id, assignments=assignments,
             primary_dept=_primary_department_manager(db), user_names={},
@@ -194,14 +195,6 @@ def delete_assignment(assignment_id: UUID, user: User = Depends(require_write),
 
 # ── 해석 ──────────────────────────────────────────────────
 
-def _process_of(db: Session, control: dict) -> UUID | None:
-    """통제의 프로세스 정체성 id. resolve_controls 가 `process_code` 만 주므로 코드로 찾는다."""
-    code = control.get("process_code")
-    if not code:
-        return None
-    return next((p["id"] for p in resolve_processes(db) if p["code"] == code), None)
-
-
 @router.get("/controls/{control_id}/roles", response_model=ControlRolesRead)
 def get_control_roles(control_id: UUID, user: CurrentUser = None,
                       db: Session = Depends(get_db)) -> ControlRolesRead:
@@ -214,7 +207,7 @@ def get_control_roles(control_id: UUID, user: CurrentUser = None,
     control = next((c for c in resolve_controls(db) if c["id"] == control_id), None)
     if control is None:
         raise HTTPException(status_code=404, detail="Control not found")
-    process_id = _process_of(db, control)
+    process_id = resolve_control_process_id(db, control_id)
     resolved = resolve_roles_for_control(db, control_id, process_id)
     return ControlRolesRead(
         control_id=control_id, control_code=control.get("code"), process_id=process_id,
