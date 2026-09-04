@@ -19,8 +19,12 @@ export const queryKeys = {
       ['tenant', tenantSegment(tenantId), 'rcm', 'processes'] as const,
     subProcesses: (tenantId: TenantId, processId?: string) =>
       ['tenant', tenantSegment(tenantId), 'rcm', 'sub-processes', processId] as const,
+    subProcessesAll: (tenantId: TenantId) =>
+      ['tenant', tenantSegment(tenantId), 'rcm', 'sub-processes'] as const,
     risks: (tenantId: TenantId, subProcessId?: string) =>
       ['tenant', tenantSegment(tenantId), 'rcm', 'risks', subProcessId] as const,
+    risksAll: (tenantId: TenantId) =>
+      ['tenant', tenantSegment(tenantId), 'rcm', 'risks'] as const,
   },
   test: {
     testRuns: (tenantId: TenantId, params?: unknown) =>

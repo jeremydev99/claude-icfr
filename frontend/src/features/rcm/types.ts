@@ -106,6 +106,7 @@ export interface ProcessItem {
   id: string
   code: string
   name: string
+  description: string | null
   envelope: SourceEnvelope
 }
 
@@ -125,6 +126,30 @@ export interface RiskItem {
   sub_process_id: string
   envelope: SourceEnvelope
 }
+
+// 상위 3계층 CRUD 페이로드 — code는 생성 시에만 받고 편집에서는 서버가 무시하므로
+// Update 타입에서 제외한다(rcm-hierarchy-contract §PATCH). 상위참조도 동일 이유로 편집 불가.
+export interface ProcessCreatePayload {
+  code: string
+  name: string
+  description: string | null
+}
+export type ProcessUpdatePayload = Pick<ProcessCreatePayload, 'name' | 'description'>
+
+export interface SubProcessCreatePayload {
+  code: string
+  name: string
+  process_id: string
+}
+export type SubProcessUpdatePayload = Pick<SubProcessCreatePayload, 'name'>
+
+export interface RiskCreatePayload {
+  code: string
+  description: string
+  assessment_level: RiskLevel
+  sub_process_id: string
+}
+export type RiskUpdatePayload = Pick<RiskCreatePayload, 'description' | 'assessment_level'>
 
 // ── RAWC (ControlRiskAssessment) ──────────────────────────
 
