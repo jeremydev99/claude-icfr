@@ -1,5 +1,6 @@
 from app.models.base import AuditedBase, Base, IdentityBase, TenantMixin  # noqa: F401
 from app.models.evidence import EvidenceFile, EvidenceLink  # noqa: F401
+from app.models.org import Department, UserDepartment  # noqa: F401
 from app.models.rcm import (  # noqa: F401
     Control,
     ControlAssertion,
@@ -26,6 +27,11 @@ from app.models.remediation import (  # noqa: F401
     DesignAssessment,
     RemediationPlan,
     RemediationStatusHistory,
+)
+from app.models.role_assignment import (  # noqa: F401
+    ConflictAcknowledgement,
+    RoleAssignment,
+    TenantPolicy,
 )
 from app.models.tenant import Tenant, UserTenantAccess  # noqa: F401
 from app.models.test_module import (  # noqa: F401
