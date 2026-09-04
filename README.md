@@ -17,7 +17,7 @@
 | [`CLAUDE.md`](./CLAUDE.md) | Claude Code 세션 시작 시 자동 로드되는 가이드. |
 | `docs/diagrams/` | 다이어그램 산출물 (mmd/svg/png). |
 | `docs/adr/` | ADR-0028부터 개별 파일 사용 시작. 분리 기준: 운영·인프라 및 대형 설계 ADR은 개별 파일(`ADR-0028` 인프라 기준, `ADR-0029` cascade 시맨틱, `ADR-0030` baseline 테넌트 소유권, `ADR-0031` 역할·권한 모델, `ADR-0032` 평가 회차·워크플로), 코드 설계 ADR은 `ClaudeICFR.md` 섹션 10 요약 유지. |
-| `docs/api/` | `rcm-hierarchy-contract.md` — 상위 3계층 CRUD 계약 스냅샷(기준 커밋 명시, API 변경 시 갱신). API 스펙 자체는 FastAPI 자동 생성 문서가 단일 진실 공급원이며 `openapi.yaml` export는 미착수. |
+| `docs/api/` | 계약 스냅샷 문서 — `rcm-hierarchy-contract.md`(상위 3계층 CRUD), `org-contract.md`(조직·역할 배정). 각 문서 상단에 기준 커밋 명시, API 변경 시 갱신. API 스펙 자체는 FastAPI 자동 생성 문서가 단일 진실 공급원이며 `openapi.yaml` export는 미착수. |
 | `docs/erd/` (예정) | ERD 다이어그램 소스 분리 — 현재는 `ClaudeICFR.md` 섹션 5에 인라인. |
 
 ## 핵심 모듈
