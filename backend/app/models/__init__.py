@@ -1,3 +1,9 @@
+from app.models.assessment import (  # noqa: F401
+    ActivityApproval,
+    AssessmentActivity,
+    AssessmentCycle,
+    CycleTarget,
+)
 from app.models.base import AuditedBase, Base, IdentityBase, TenantMixin  # noqa: F401
 from app.models.evidence import EvidenceFile, EvidenceLink  # noqa: F401
 from app.models.org import Department, UserDepartment  # noqa: F401
