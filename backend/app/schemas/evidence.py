@@ -26,6 +26,25 @@ class EvidenceFileRead(EvidenceFileBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class EvidenceFileHistory(BaseModel):
+    """삭제 이력 포함 조회 (ADR-0032 §2.4).
+
+    "누가 언제 올렸다가 지웠는지"가 감사에서 실제로 묻는 질문이다.
+    `minio_key` 를 함께 낸다 — 삭제 후에도 파일이 남아 있음을 확인할 수 있어야 한다.
+    """
+    id: UUID
+    filename: str
+    is_deleted: bool
+    uploaded_by_id: UUID
+    uploaded_by_name: str | None = None
+    uploaded_at: datetime
+    deleted_by_id: UUID | None = None
+    deleted_by_name: str | None = None
+    deleted_at: datetime | None = None
+    delete_reason: str | None = None
+    minio_key: str | None = None
+
+
 class EvidenceLinkBase(BaseModel):
     file_id: UUID
     linked_entity_type: str = Field(min_length=1, max_length=50)

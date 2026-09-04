@@ -1,4 +1,5 @@
 import hashlib
+from datetime import UTC, datetime
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
@@ -8,9 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.deps import CurrentUser, get_db
-from app.minio_client import get_object_stream, remove_object_safe, upload_object
+from app.minio_client import get_object_stream, upload_object
 from app.models.evidence import EvidenceFile, EvidenceLink
+from app.models.user import User
 from app.schemas.evidence import (
+    EvidenceFileHistory,
     EvidenceFileRead,
     EvidenceFileUpdate,
     EvidenceLinkCreate,
@@ -131,14 +134,52 @@ def update_file(file_id: UUID, body: EvidenceFileUpdate, user: CurrentUser = Non
 
 
 @router.delete("/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_file(file_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_file(file_id: UUID, reason: str | None = None, user: CurrentUser = None,
+                db: Session = Depends(get_db)) -> None:
+    """삭제 표시만 한다. **MinIO 파일을 지우지 않는다** (ADR-0032 §2.4).
+
+    증빙은 감사 증거물이다. 레코드만 남기고 파일을 지우면 "그때 지운 게 뭐였나"에
+    답할 수 없고, 보존기간이 5년 이상이므로 파일도 그 기간을 따른다(§2.9).
+
+    **2026-09-04 수정 전에는 `remove_object_safe` 로 파일을 실제 삭제했다.**
+    운영 실측에서 `is_deleted=true` 인 2건의 MinIO 객체가 이미 사라져 있었다 —
+    테스트 파일이라 손실은 없었으나 동작이 그대로면 실증빙에서 같은 일이 난다.
+    """
     obj = db.query(EvidenceFile).filter(EvidenceFile.id == file_id, EvidenceFile.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="EvidenceFile not found")
-    if obj.minio_key:
-        remove_object_safe(obj.minio_key)
     obj.is_deleted = True
+    obj.deleted_by_id = user.id
+    obj.deleted_at_ts = datetime.now(UTC)
+    obj.delete_reason = reason
     db.commit()
+
+
+@router.get("/files/{file_id}/history", response_model=EvidenceFileHistory)
+def get_file_history(file_id: UUID, user: CurrentUser = None,
+                     db: Session = Depends(get_db)) -> EvidenceFileHistory:
+    """삭제된 증빙 포함 이력 조회 — 업로더·업로드시각·삭제자·삭제시각·사유.
+
+    `is_deleted` 를 필터하지 않는다. **삭제된 것을 보는 것이 이 엔드포인트의 목적**이다.
+    """
+    obj = db.query(EvidenceFile).filter(EvidenceFile.id == file_id).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="EvidenceFile not found")
+    names = {
+        u.id: u.display_name
+        for u in db.query(User).filter(
+            User.id.in_({i for i in (obj.uploaded_by_id, obj.deleted_by_id) if i})
+        ).all()
+    }
+    return EvidenceFileHistory(
+        id=obj.id, filename=obj.filename, is_deleted=obj.is_deleted,
+        uploaded_by_id=obj.uploaded_by_id, uploaded_by_name=names.get(obj.uploaded_by_id),
+        uploaded_at=obj.created_at,
+        deleted_by_id=obj.deleted_by_id,
+        deleted_by_name=names.get(obj.deleted_by_id) if obj.deleted_by_id else None,
+        deleted_at=obj.deleted_at_ts, delete_reason=obj.delete_reason,
+        minio_key=obj.minio_key,
+    )
 
 
 # ── Evidence Links ─────────────────────────────────────────

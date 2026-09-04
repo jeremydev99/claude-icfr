@@ -1,6 +1,15 @@
+"""증빙 파일 모델 — ADR-0032 §2.7.
+
+**증빙은 감사 증거물이다.** 지워지면 안 된다.
+
+`AuditedBase` 의 `deleted_at`/`deleted_by` 는 문자열 컬럼이라 "누가"를 계정으로
+되짚을 수 없다. 증빙은 **"누가 언제 올렸다가 지웠는지"가 감사에서 실제로 묻는
+질문**이므로 계정 FK 로 따로 남긴다.
+"""
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,6 +27,16 @@ class EvidenceFile(AuditedBase):
     uploaded_by_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
     )
+
+    # ── 삭제 이력 (ADR-0032 §2.4) ──
+    # **파일도 레코드도 지우지 않는다.** 삭제 표시만 하고 조회에서 제외한다.
+    # 레코드만 남기고 파일을 지우면 "그때 지운 게 뭐였나"에 답할 수 없다 —
+    # 보존기간이 5년 이상이므로 파일도 그 기간을 따른다(§2.9).
+    deleted_by_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    deleted_at_ts: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delete_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     links: Mapped[list["EvidenceLink"]] = relationship(
         "EvidenceLink", back_populates="file", cascade="all, delete-orphan"
