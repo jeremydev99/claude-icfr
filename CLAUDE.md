@@ -157,12 +157,28 @@ prompts/ICFR_setup_1_20260515.md 대로 작업해줘
 3. **사용자 OK 확인 후** `git add . → git commit -m "..."` 실행
 4. **push 전 `git log origin/main..HEAD` 로 대기 커밋을 확인한다.
    승인 범위 밖 커밋이 있으면 push하지 않고 보고한다.**
-5. `git push`
+5. **대기 커밋에 마이그레이션이 있는지 확인한다.**
+   ```bash
+   git diff --name-only origin/main..HEAD | grep alembic/versions/
+   ```
+   **결과가 있으면 Claude Code 는 push 하지 않는다.** 마스터에게 보고하고 멈춘다.
+6. `git push` (5 에서 마이그레이션이 없을 때만)
 
 > 사용자 OK 없이 commit·push 절대 금지.  
 > 커밋 메시지는 Conventional Commits 형식 준수 (섹션 2.2 참조).  
 > **push 승인은 커밋이 아니라 브랜치에 적용된다** — 대기 커밋이 함께 올라가므로
 > "이 커밋만 push"는 성립하지 않는다. 경위는 `ClaudeICFR.md` 13.9 참조.
+
+> **마이그레이션이 포함된 커밋은 Claude Code 가 push 하지 않는다.**
+> 마스터가 **백업 실행 후 직접** push 한다. 사용자가 "푸시하자"라고 해도
+> 5 에서 걸리면 push 하지 않고 보고한다 — 백업 여부는 실행자가 확인할 수 없다.
+>
+> `deploy.yml` 에 경로 필터가 없고(13.8) 컨테이너 기동이 `alembic upgrade head` 로
+> 시작하므로 **push = 운영 마이그레이션 실행**이다. 되돌리려면 백업이 있어야 한다.
+>
+> 근거: 2026-09-04 3-2. 프롬프트에 "마스터가 백업 후 push"라고 적었으나
+> Claude Code 가 push 했다. **실행자가 확인할 수 없는 조건은 게이트가 되지 못한다** —
+> 절차를 지시문에 적는 것과 실행 흐름에 심는 것은 다르다(`ClaudeICFR.md` 13.9-28).
 
 ---
 
