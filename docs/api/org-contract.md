@@ -1,6 +1,6 @@
 # 조직·역할 배정 API 계약 (부서 / 소속 / 배정 / 해석 / 정책)
 
-> **스냅샷 문서 — 기준 커밋 `505243a` / 2026-09-04 시점. API 변경 시 갱신 필요.**
+> **스냅샷 문서 — 기준 커밋 `6be31df` / 2026-09-04 시점. API 변경 시 갱신 필요.**
 >
 > 자동 생성 문서(FastAPI `/docs`)가 API 스펙의 단일 진실 공급원이다(ADR-0017 §19).
 > 이 문서는 그것이 드러내지 못하는 것 — **판정 규칙, 권한 검사 위치, 실제 에러 문구** — 을
@@ -148,7 +148,15 @@
 `conflict_{역할A}_{역할B}_blocked` (역할명은 사전순). 값이
 `"true"`/`"1"`/`"yes"`(대소문자 무관)이면 금지, **미설정이면 허용**이 기본이다.
 
-예: `conflict_assessor_control_owner_blocked`
+**토글 대상은 실제 판정 조합 2개뿐이다.**
+
+```
+conflict_assessor_control_owner_blocked
+conflict_assessor_icfr_manager_blocked
+```
+
+`control_owner = dept_approver` 는 충돌이 아니므로 **금지 설정 대상이 아니다**
+(2026-09-04 정정, §3.4). 그 키를 넣어도 서버가 보지 않는다.
 
 ### 2.5 목록 응답 봉투
 
@@ -176,7 +184,8 @@
     {"role_name": "assessor", "user_id": "...", "user_name": "홍길동",
      "source": "control",  "source_id": "01a06aa1-9f33-7b81-855b-1c3eefe7ba66"}
   ],
-  "conflicts": ["assessor=control_owner", "control_owner=dept_approver"]
+  "conflicts": ["assessor=control_owner"],
+  "dept_approval_skipped": false
 }
 ```
 
@@ -218,21 +227,51 @@
 순서를 고정한 것이다.
 
 ```
-"assessor=control_owner"        ← control_owner = assessor 겸직
-"control_owner=dept_approver"   ← control_owner = dept_approver 겸직
-"assessor=icfr_manager"         ← assessor 가 테넌트 역할 icfr_manager 도 보유
+"assessor=control_owner"   ← control_owner = assessor 겸직
+"assessor=icfr_manager"    ← assessor 가 테넌트 역할 icfr_manager 도 보유
 ```
+
+**`control_owner = dept_approver` 는 여기에 나오지 않는다**(2026-09-04 정정).
+충돌이 아니라 부서승인 단계 부재이며 §3.4 의 `dept_approval_skipped` 가 표시한다.
 
 **판정은 통제 단위다.** "이 통제에서 같은 사람이 두 역할을 겸하는가"만 본다 —
 사람 단위로 보면 상호 배정이 불가피한 중소기업에서 전부 걸린다(ADR-0031 §2.4).
 
-**`derived` 로 유도된 값도 판정 대상이다.** 위 예시에서
-`control_owner=dept_approver` 가 잡힌 것은 배정 때문이 아니라 **통제책임자가 자기
-부서의 책임자이기도 해서** 유도값이 자기 자신이 된 경우다. 배정 화면에서 조작하지
-않았는데 충돌이 뜰 수 있으므로 안내 문구가 필요하다.
+**`derived` 로 유도된 값도 판정 대상이다.** 유도값도 실제 승인자가 되므로
+`control_owner = assessor` 등 다른 조합에서는 그대로 본다. 다만
+`control_owner = dept_approver` 하나만 §3.4 로 빠졌다.
 
 `assessor=icfr_manager` 는 검사 방식이 다르다 — `icfr_manager` 는 `role_assignments`
 가 아니라 `user_roles` 에 있어(ADR-0031 §3.1) 그쪽을 함께 읽는다.
+
+### 3.4 `dept_approval_skipped` — 부서승인 단계 부재
+
+```json
+"dept_approval_skipped": true
+```
+
+**통제책임자가 곧 부서 책임자일 때 `true`** 다. 부서승인은 "상급자가 검토한다"는
+의미인데 통제책임자가 팀장 본인이면 그 위 단계가 없다 — **겸직이 아니라 단계가 없는
+것**이므로 `conflicts` 가 아니라 이 필드로 표시한다(ADR-0031 §2.4 정정, 2026-09-04).
+
+판정은 `services/role_resolver.is_dept_approval_skipped` 다 — 해석된
+`control_owner` 와 `dept_approver` 의 `user_id` 가 같으면 `true`.
+**`derived` 유래에 한정하지 않는다** — 통제별로 통제책임자 본인을 부서승인자로
+명시 지정한 경우도 같은 상황이다.
+
+**`true` 여도 `roles[]` 의 `dept_approver` 항목은 그대로 남는다.** `user_id` 가
+`control_owner` 와 같은 값이며 **별도 승인자가 아니라는 뜻**이다. 화면에서
+"승인자: 홍길동" 으로 렌더하면 오해를 부르므로, 이 필드가 `true` 면
+"부서승인 없음(통제책임자가 부서 책임자)" 으로 표시할 것.
+
+**`source` 에 `"skipped"` 를 넣지 않은 이유** — `source` 는 "값이 어디서 왔는가"라는
+단일 의미이고 스킵은 상태다. 섞으면 RCM `source` envelope 과 개념이 어긋나고,
+스킵일 때 유도된 부서 책임자가 누구인지 표현할 자리가 없어진다. 3-2 워크플로가 읽을
+값도 "이 통제에 부서승인 단계가 있는가" 라는 boolean 이라 최상위 필드가 직접적이다.
+
+**이름이 `skipped` 인 이유** — `dept_approval_required` 로 두면 §2.6 의 정책 토글
+(`dept_approval_enabled`, 아직 미배선)이 꺼진 경우와 사유가 섞인다. 지금 표현하는
+것은 "통제책임자 = 부서 책임자" 한 가지뿐이므로 이름을 좁게 뒀다.
 
 ### 3.3 `owner_name` 이 참고 정보인 이유
 
@@ -262,7 +301,7 @@
 
 ```
 HTTP 409
-{"detail": "겸직 조합이 발생합니다(assessor=control_owner, control_owner=dept_approver). 사유를 입력해야 저장할 수 있습니다"}
+{"detail": "겸직 조합이 발생합니다(assessor=control_owner). 사유를 입력해야 저장할 수 있습니다"}
 ```
 
 발생한 조합이 **`detail` 안에 괄호로 나열**된다(복수면 `, ` 로 구분).
