@@ -10,6 +10,8 @@ import ControlDetailSheet from '../components/ControlDetailSheet'
 import ControlFormDialog from '../components/ControlFormDialog'
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog'
 import ExcelUploadDialog from '../components/ExcelUploadDialog'
+import HierarchyManagementView from '../components/hierarchy/HierarchyManagementView'
+import { Button } from '@/components/ui/button'
 
 function extractErrorMessage(err: unknown): string {
   if (isAxiosError(err)) {
@@ -28,7 +30,10 @@ const DEFAULT_PARAMS: ControlSearchParams = {
   sort_order: 'asc',
 }
 
+type RcmTab = 'controls' | 'hierarchy'
+
 export default function RcmPage() {
+  const [rcmTab, setRcmTab] = useState<RcmTab>('controls')
   const [params, setParams] = useState<ControlSearchParams>(DEFAULT_PARAMS)
   const [selectedControl, setSelectedControl] = useState<Control | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -97,50 +102,65 @@ export default function RcmPage() {
         <p className="text-sm text-muted-foreground mt-1">리스크-통제 매트릭스 관리</p>
       </div>
 
-      <ControlSearchBar params={params} onChange={handleChange} onReset={handleReset} />
-      <ControlFilterChips params={params} onChange={handleChange} />
-      <ControlTable
-        data={data}
-        params={params}
-        onParamsChange={handleChange}
-        onSelect={handleSelect}
-        onAddClick={handleAddClick}
-        onEdit={handleEditClick}
-        onDelete={handleDeleteClick}
-        onUploadClick={() => setUploadOpen(true)}
-        isLoading={isLoading}
-        isError={isError}
-        error={error}
-      />
+      <div className="flex items-center gap-1 border rounded-md p-1 w-fit">
+        <Button variant={rcmTab === 'controls' ? 'default' : 'ghost'} size="sm" onClick={() => setRcmTab('controls')}>
+          통제
+        </Button>
+        <Button variant={rcmTab === 'hierarchy' ? 'default' : 'ghost'} size="sm" onClick={() => setRcmTab('hierarchy')}>
+          계층 관리
+        </Button>
+      </div>
 
-      <ControlDetailSheet
-        control={selectedControl}
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-        onEditClick={handleEditClick}
-        fiscalYear={fiscalYear}
-      />
+      {rcmTab === 'controls' && (
+        <>
+          <ControlSearchBar params={params} onChange={handleChange} onReset={handleReset} />
+          <ControlFilterChips params={params} onChange={handleChange} />
+          <ControlTable
+            data={data}
+            params={params}
+            onParamsChange={handleChange}
+            onSelect={handleSelect}
+            onAddClick={handleAddClick}
+            onEdit={handleEditClick}
+            onDelete={handleDeleteClick}
+            onUploadClick={() => setUploadOpen(true)}
+            isLoading={isLoading}
+            isError={isError}
+            error={error}
+          />
 
-      <ControlFormDialog
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        mode={formMode}
-        control={editingControl ?? undefined}
-      />
+          <ControlDetailSheet
+            control={selectedControl}
+            open={sheetOpen}
+            onOpenChange={setSheetOpen}
+            onEditClick={handleEditClick}
+            fiscalYear={fiscalYear}
+          />
 
-      <DeleteConfirmDialog
-        open={deleteTarget !== null}
-        control={deleteTarget}
-        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
-        onConfirm={handleDeleteConfirm}
-        isPending={deleteMutation.isPending}
-      />
+          <ControlFormDialog
+            open={formOpen}
+            onOpenChange={setFormOpen}
+            mode={formMode}
+            control={editingControl ?? undefined}
+          />
 
-      <ExcelUploadDialog
-        open={uploadOpen}
-        onOpenChange={setUploadOpen}
-        onSuccess={handleUploadSuccess}
-      />
+          <DeleteConfirmDialog
+            open={deleteTarget !== null}
+            control={deleteTarget}
+            onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+            onConfirm={handleDeleteConfirm}
+            isPending={deleteMutation.isPending}
+          />
+
+          <ExcelUploadDialog
+            open={uploadOpen}
+            onOpenChange={setUploadOpen}
+            onSuccess={handleUploadSuccess}
+          />
+        </>
+      )}
+
+      {rcmTab === 'hierarchy' && <HierarchyManagementView />}
     </div>
   )
 }

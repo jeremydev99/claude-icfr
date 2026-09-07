@@ -55,38 +55,45 @@ export function toControlList(dto: ControlListResponseDto): ControlListResponse 
   }
 }
 
-export function toProcessItems(dto: { items: ProcessItemDto[] }): { items: ProcessItem[] } {
+export function toProcess(dto: ProcessItemDto): ProcessItem {
   return {
-    items: dto.items.map((item) => ({
-      id: item.id,
-      code: item.code,
-      name: item.name,
-      envelope: buildSourceEnvelope(item),
-    })),
+    id: dto.id,
+    code: dto.code,
+    name: dto.name,
+    description: dto.description,
+    envelope: buildSourceEnvelope(dto),
   }
+}
+
+export function toSubProcess(dto: SubProcessItemDto): SubProcessItem {
+  return {
+    id: dto.id,
+    code: dto.code,
+    name: dto.name,
+    process_id: dto.process_id,
+    envelope: buildSourceEnvelope(dto),
+  }
+}
+
+export function toRisk(dto: RiskItemDto): RiskItem {
+  return {
+    id: dto.id,
+    code: dto.code,
+    description: dto.description,
+    assessment_level: dto.assessment_level,
+    sub_process_id: dto.sub_process_id,
+    envelope: buildSourceEnvelope(dto),
+  }
+}
+
+export function toProcessItems(dto: { items: ProcessItemDto[] }): { items: ProcessItem[] } {
+  return { items: dto.items.map(toProcess) }
 }
 
 export function toSubProcessItems(dto: { items: SubProcessItemDto[] }): { items: SubProcessItem[] } {
-  return {
-    items: dto.items.map((item) => ({
-      id: item.id,
-      code: item.code,
-      name: item.name,
-      process_id: item.process_id,
-      envelope: buildSourceEnvelope(item),
-    })),
-  }
+  return { items: dto.items.map(toSubProcess) }
 }
 
 export function toRiskItems(dto: { items: RiskItemDto[] }): { items: RiskItem[] } {
-  return {
-    items: dto.items.map((item) => ({
-      id: item.id,
-      code: item.code,
-      description: item.description,
-      assessment_level: item.assessment_level,
-      sub_process_id: item.sub_process_id,
-      envelope: buildSourceEnvelope(item),
-    })),
-  }
+  return { items: dto.items.map(toRisk) }
 }

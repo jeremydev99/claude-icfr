@@ -58,6 +58,7 @@ export interface ProcessItemDto {
   id: string
   code: string
   name: string
+  description: string | null
   source: SourceEnvelope['source']
   baseline_id: string | null
   is_overridden: boolean
