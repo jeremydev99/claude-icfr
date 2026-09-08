@@ -1,16 +1,25 @@
 import hashlib
 from datetime import UTC, datetime
 from urllib.parse import quote
-from uuid import UUID, uuid4
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.deps import CurrentUser, get_db
-from app.minio_client import get_object_stream, upload_object
+from app.core.permissions import require_write, tenant_roles
+from app.minio_client import build_evidence_key, get_object_stream, upload_object
+from app.models.assessment import CYCLE_OPEN, AssessmentCycle
 from app.models.evidence import EvidenceFile, EvidenceLink
+from app.models.role_assignment import (
+    POLICY_EVIDENCE_EDIT_ENABLED,
+    POLICY_EVIDENCE_MAX_BYTES,
+    ROLE_CONTROL_OWNER,
+    ROLE_ICFR_MANAGER,
+    TenantPolicy,
+)
 from app.models.user import User
 from app.schemas.evidence import (
     EvidenceFileHistory,
@@ -18,6 +27,10 @@ from app.schemas.evidence import (
     EvidenceFileUpdate,
     EvidenceLinkCreate,
     EvidenceLinkRead,
+)
+from app.services.role_resolver import (
+    resolve_control_process_id,
+    resolve_roles_for_control,
 )
 
 router = APIRouter(prefix="/api/evidence", tags=["evidence"])
@@ -45,6 +58,93 @@ def get_module_info(user: CurrentUser) -> dict:
     }
 
 
+def _policy(db: Session, key: str) -> str | None:
+    row = db.query(TenantPolicy).filter(
+        TenantPolicy.policy_key == key,
+        TenantPolicy.is_deleted == False,  # noqa: E712
+    ).first()
+    return row.policy_value if row else None
+
+
+def _evidence_max_bytes(db: Session) -> int:
+    """업로드 상한. **하드코딩하지 않고 정책에서 읽는다** (ADR-0032 §2.6).
+
+    미설정이면 기존 기본값(`settings.max_upload_bytes`, 50MB)을 쓴다 — 현행 유지.
+    잘못된 값에 예외를 던지지 않는다: 설정 하나가 깨졌다고 업로드 전체가 막히면 안 된다.
+
+    §2.7 은 "크기 상한을 두지 않는다"지만, 업로드가 `file.read()` 로 전체를 메모리에
+    적재하는 현재 구조에서 상한을 없애면 대용량 파일이 백엔드 메모리를 소진한다.
+    **스트리밍 전환이 선행되어야 한다**(13.9-31).
+    """
+    raw = _policy(db, POLICY_EVIDENCE_MAX_BYTES)
+    if raw is None:
+        return get_settings().max_upload_bytes
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return get_settings().max_upload_bytes
+    return value if value > 0 else get_settings().max_upload_bytes
+
+
+def _evidence_edit_enabled(db: Session) -> bool:
+    """진행 중 회차에서 통제책임자의 편집 허용 여부 (§2.5). 미설정이면 허용이 기본."""
+    raw = _policy(db, POLICY_EVIDENCE_EDIT_ENABLED)
+    return raw is None or raw.lower() not in ("false", "0", "no")
+
+
+def _assert_can_edit_evidence(db: Session, user: User, cycle_id: UUID,
+                              control_id: UUID) -> None:
+    """증빙 편집 권한 — 회차 상태 + 통제 단위 역할 (ADR-0032 §2.5).
+
+    | 회차 상태 | 통제책임자 | `icfr_manager` |
+    |---|---|---|
+    | 진행 중 | 가능(정책 토글) | 가능 |
+    | 마감·최종승인 | **불가** | 가능 |
+
+    마감 후 관리자 편집이 허용되는 것은 정정이 필요한 경우가 실재하기 때문이다.
+    그 사실은 업로드·삭제 이력에 남는다(업로더/삭제자 계정).
+
+    `external_auditor` 는 `require_write` 가 이미 막는다 — 여기서 다시 보지 않는다.
+    권한 판정을 두 곳에 두면 어긋난다.
+    """
+    cycle = db.query(AssessmentCycle).filter(
+        AssessmentCycle.id == cycle_id,
+        AssessmentCycle.is_deleted == False,  # noqa: E712
+    ).first()
+    if cycle is None:
+        raise HTTPException(status_code=404, detail="AssessmentCycle not found")
+
+    is_manager = ROLE_ICFR_MANAGER in tenant_roles(db, user.id)
+
+    if cycle.status != CYCLE_OPEN:
+        if not is_manager:
+            raise HTTPException(
+                status_code=403,
+                detail=(f"마감된 회차의 증빙은 내부회계관리자만 편집할 수 있습니다 "
+                        f"(상태: {cycle.status})"),
+            )
+        return
+
+    if is_manager:
+        return
+
+    if not _evidence_edit_enabled(db):
+        raise HTTPException(
+            status_code=403,
+            detail="증빙 편집이 비활성화되어 있습니다 (정책: evidence_edit_enabled)",
+        )
+
+    # 통제 단위 판정 — "이 사람이 통제책임자인가"가 아니라 "이 통제에서 통제책임자인가"
+    process_id = resolve_control_process_id(db, control_id)
+    resolved = resolve_roles_for_control(db, control_id, process_id)
+    owner = next((r["user_id"] for r in resolved if r["role_name"] == ROLE_CONTROL_OWNER), None)
+    if owner != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="이 통제의 통제책임자만 증빙을 편집할 수 있습니다",
+        )
+
+
 # ── Evidence Files ─────────────────────────────────────────
 
 @router.get("/files")
@@ -57,35 +157,53 @@ def list_files(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Se
 
 @router.post("/files", status_code=status.HTTP_201_CREATED, response_model=EvidenceFileRead)
 async def create_file(
+    cycle_id: UUID = Form(...),
+    control_id: UUID = Form(...),
     file: UploadFile = File(...),
-    user: CurrentUser = None,
+    user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ) -> EvidenceFile:
-    settings = get_settings()
+    """증빙 업로드 — **통제 × 회차**에 붙는다 (ADR-0032 §2.7).
+
+    **`cycle_id`·`control_id` 는 핸들러에서 필수로 막는다. DB 제약이 아니다.**
+    컬럼이 nullable 인 것은 기존 4건(시드·테스트 잔재) 때문이며, NOT NULL 로 만들면
+    그 4건을 지우거나 값을 지어내야 한다 — 실데이터 조작을 하지 않기로 확정했다
+    (13.9-29). 그래서 "레거시는 NULL 을 허용하되 **신규는 만들지 않는다**"를
+    핸들러가 담당한다.
+
+    권한은 §2.5 — 회차 상태와 통제 단위 역할 양쪽을 본다.
+    """
+    _assert_can_edit_evidence(db, user, cycle_id, control_id)
 
     data = await file.read()
 
-    if len(data) > settings.max_upload_bytes:
-        raise HTTPException(status_code=413, detail=f"파일 크기 초과 (최대 {settings.max_upload_bytes // 1024 // 1024}MB)")
+    max_bytes = _evidence_max_bytes(db)
+    if len(data) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"파일 크기 초과 (최대 {max_bytes // 1024 // 1024}MB)",
+        )
 
     content_type = file.content_type or ""
     if content_type not in ALLOWED_MIME:
         raise HTTPException(status_code=415, detail=f"허용되지 않는 파일 형식: {content_type}")
 
-    sha256 = hashlib.sha256(data).hexdigest()
-    minio_key = f"{uuid4()}/{file.filename}"
-
-    upload_object(minio_key, data, content_type)
-
     obj = EvidenceFile(
         filename=file.filename,
         mime_type=content_type,
         size_bytes=len(data),
-        minio_key=minio_key,
-        sha256=sha256,
+        sha256=hashlib.sha256(data).hexdigest(),
         uploaded_by_id=user.id,
+        cycle_id=cycle_id,
+        control_id=control_id,
     )
     db.add(obj)
+    db.flush()   # id 확보 — 경로가 내부 식별자를 쓴다(§2.3)
+
+    # 경로는 build_evidence_key 만 만든다. tenant_id 는 그 함수가 컨텍스트에서 가져온다
+    obj.minio_key = build_evidence_key(cycle_id, control_id, obj.id)
+    upload_object(obj.minio_key, data, content_type)
+
     db.commit()
     db.refresh(obj)
     return obj
@@ -134,7 +252,8 @@ def update_file(file_id: UUID, body: EvidenceFileUpdate, user: CurrentUser = Non
 
 
 @router.delete("/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_file(file_id: UUID, reason: str | None = None, user: CurrentUser = None,
+def delete_file(file_id: UUID, reason: str | None = None,
+                user: User = Depends(require_write),
                 db: Session = Depends(get_db)) -> None:
     """삭제 표시만 한다. **MinIO 파일을 지우지 않는다** (ADR-0032 §2.4).
 
@@ -148,6 +267,9 @@ def delete_file(file_id: UUID, reason: str | None = None, user: CurrentUser = No
     obj = db.query(EvidenceFile).filter(EvidenceFile.id == file_id, EvidenceFile.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="EvidenceFile not found")
+    # 레거시 증빙(cycle_id NULL)은 회차 판정을 걸 수 없다 — require_write 만 적용된다
+    if obj.cycle_id and obj.control_id:
+        _assert_can_edit_evidence(db, user, obj.cycle_id, obj.control_id)
     obj.is_deleted = True
     obj.deleted_by_id = user.id
     obj.deleted_at_ts = datetime.now(UTC)

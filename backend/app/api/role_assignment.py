@@ -16,6 +16,9 @@ from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.core.permissions import require_icfr_manager, require_write
 from app.models.role_assignment import (
+    EVIDENCE_RETENTION_MIN_YEARS,
+    EVIDENCE_RETENTION_PERMANENT,
+    POLICY_EVIDENCE_RETENTION_YEARS,
     SCOPE_CONTROL,
     SCOPE_PROCESS,
     ConflictAcknowledgement,
@@ -220,6 +223,27 @@ def get_control_roles(control_id: UUID, user: CurrentUser = None,
 
 # ── 정책 ──────────────────────────────────────────────────
 
+def _assert_policy_value_valid(body: TenantPolicyUpsert) -> None:
+    """값 검증이 필요한 정책만 여기서 본다. 나머지는 소비하는 쪽이 해석한다."""
+    if body.policy_key != POLICY_EVIDENCE_RETENTION_YEARS:
+        return
+    try:
+        years = int(body.policy_value)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=422,
+            detail="보존기간은 숫자여야 합니다 (0 = 영구 보존)",
+        ) from None
+    if years == EVIDENCE_RETENTION_PERMANENT:
+        return
+    if years < EVIDENCE_RETENTION_MIN_YEARS:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"보존기간은 최소 {EVIDENCE_RETENTION_MIN_YEARS}년입니다 "
+                    "(내부회계관리제도 업무지침). 0 은 영구 보존입니다"),
+        )
+
+
 @router.get("/policies")
 def list_policies(user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
     items = db.query(TenantPolicy).filter(
@@ -232,7 +256,13 @@ def list_policies(user: CurrentUser = None, db: Session = Depends(get_db)) -> di
 @router.put("/policies", response_model=TenantPolicyRead)
 def upsert_policy(body: TenantPolicyUpsert, user: User = Depends(require_icfr_manager),
                   db: Session = Depends(get_db)) -> TenantPolicyRead:
-    """정책 설정/변경 — `icfr_manager` 전용 (§2.6)."""
+    """정책 설정/변경 — `icfr_manager` 전용 (ADR-0031 §2.6).
+
+    **보존기간은 최소 5년을 시스템이 강제한다**(ADR-0032 §2.9) — 5년 미만은 거부한다.
+    근거: 내부회계관리제도 업무지침(회계정보 및 관련 문서 5년 보관). 0 은 영구 보존.
+    설정값만 저장하며 만료 삭제 처리는 아카이브 설계와 함께 다룬다.
+    """
+    _assert_policy_value_valid(body)
     obj = db.query(TenantPolicy).filter(
         TenantPolicy.policy_key == body.policy_key,
         TenantPolicy.is_deleted == False,  # noqa: E712

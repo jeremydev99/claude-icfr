@@ -20,6 +20,9 @@ class EvidenceFileUpdate(BaseModel):
 
 class EvidenceFileRead(EvidenceFileBase):
     id: UUID
+    # 통제 × 회차 부착 (ADR-0032 §2.7). 레거시 4건은 NULL — 신규는 핸들러가 필수로 막는다
+    cycle_id: UUID | None = None
+    control_id: UUID | None = None
     uploaded_by_id: UUID
     created_at: datetime
     updated_at: datetime
