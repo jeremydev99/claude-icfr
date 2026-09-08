@@ -36,13 +36,26 @@ def tenant_roles(db: Session, user_id) -> set[str]:
     }
 
 
+def can_write(roles: set[str]) -> bool:
+    """제도 운영 데이터를 쓸 수 있는가. **`require_write` 와 같은 판정이다.**
+
+    `/me` 응답의 `can_write` 와 `require_write` 가 각자 계산하면 규칙이 두 곳에
+    존재하게 되고, 어긋날 때 어느 쪽이 맞는지 알 수 없다. 판정은 여기 하나뿐이고
+    양쪽이 이 함수를 호출한다.
+
+    지금은 단일 조건이나 권한 판정이 계속 늘고 있다(회차 상태별·통제 단위·정책 토글·
+    증빙 편집). 조건이 늘 때도 이 함수만 고치면 되도록 둔다.
+    """
+    return ROLE_EXTERNAL_AUDITOR not in roles
+
+
 def require_write(user: CurrentUser, db: Session = Depends(get_db)) -> User:
     """생성·수정 API 공통 가드. **`external_auditor` 는 조회 전용이다**(ADR-0031 §2.1).
 
     외부감사인이 평가 데이터를 만들거나 고칠 수 있으면 그 자체가 독립성 훼손이다.
     막는 지점을 엔드포인트마다 두면 한 곳만 빠뜨려도 뚫리므로 의존성 하나로 모은다.
     """
-    if ROLE_EXTERNAL_AUDITOR in tenant_roles(db, user.id):
+    if not can_write(tenant_roles(db, user.id)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="외부감사인은 조회만 가능합니다",

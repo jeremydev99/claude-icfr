@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.permissions import can_write, tenant_roles
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -11,6 +12,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.core.tenant_context import get_active_tenant
 from app.models.tenant import Tenant, UserTenantAccess
 from app.models.user import User
 from app.schemas.auth import ChangePasswordRequest, RefreshRequest, RefreshResponse, TokenResponse
@@ -93,7 +95,18 @@ def me(
         TenantAccessRead(id=tenant.id, name=tenant.name, code=tenant.code, role=role)
         for role, tenant in rows
     ]
-    result.active_tenant_id = result.tenants[0].id if result.tenants else None
+    # 활성 테넌트는 get_current_user 가 정한 값이다(X-Tenant-Id 헤더 또는 단일 수렴).
+    # **이전에는 tenants[0] 을 썼다** — 테넌트가 1개뿐이라 드러나지 않았을 뿐,
+    # 여러 테넌트 + 헤더 지정 시 실제 활성 테넌트와 다른 값을 보고했다.
+    # 아래 tenant_roles·can_write 가 활성 테넌트 기준이므로 그 기준을 맞춘다.
+    active = get_active_tenant()
+    result.active_tenant_id = active or (result.tenants[0].id if result.tenants else None)
+
+    # 제도 운영 역할 — user_roles(AuditedBase) 라 활성 테넌트로 자동 필터된다(ADR-0025).
+    # 판정은 core/permissions 하나뿐이며 여기서 다시 계산하지 않는다.
+    roles = tenant_roles(db, current_user.id)
+    result.tenant_roles = sorted(roles)
+    result.can_write = can_write(roles)
     return result
 
 
