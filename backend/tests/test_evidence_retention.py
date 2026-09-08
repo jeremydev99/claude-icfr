@@ -58,8 +58,77 @@ def _headers(client: TestClient) -> dict:
     return {"Authorization": "Bearer " + resp.json()["access_token"]}
 
 
-def _upload(client: TestClient, h: dict, name: str, body: bytes = b"%PDF-1.4 test"):
+@pytest.fixture
+def target():
+    """업로드 대상 통제×회차 (3-3 이후 필수) + admin 을 그 통제의 책임자로 배정.
+
+    §2.4 검증에 필요한 것은 "삭제해도 파일이 남는가" 뿐이지만, 업로드 계약이
+    통제×회차를 요구하므로 최소한의 대상을 만든다.
+    """
+    from datetime import date
+
+    from app.core.tenant_context import (
+        DEFAULT_TENANT_ID,
+        reset_active_tenant,
+        set_active_tenant,
+    )
+    from app.models.assessment import AssessmentCycle, CycleTarget
+    from app.models.rcm_baseline import (
+        BaselineControl,
+        BaselineProcess,
+        BaselineRisk,
+        BaselineSubProcess,
+    )
+    from app.models.role_assignment import RoleAssignment
+    from app.models.user import User
+    from tests.conftest import TestingSessionLocal
+
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        # 테스트마다 다시 만들지 않는다 — 공용 세션 DB 라 같은 code 로 두 번 만들면
+        # (tenant_id, code) 유니크에 걸린다. 있으면 그대로 쓴다.
+        existing = db.query(AssessmentCycle).filter(
+            AssessmentCycle.name == "보존검증회차").first()
+        if existing is not None:
+            ctrl = db.query(BaselineControl).filter(BaselineControl.code == "RET-C").one()
+            yield str(existing.id), str(ctrl.id)
+            return
+
+        p = BaselineProcess(code="RET-P", name="P")
+        db.add(p)
+        db.flush()
+        sp = BaselineSubProcess(code="RET-SP", name="SP", process_id=p.id)
+        db.add(sp)
+        db.flush()
+        r = BaselineRisk(code="RET-R", description="R", assessment_level="LR",
+                         sub_process_id=sp.id)
+        db.add(r)
+        db.flush()
+        c = BaselineControl(code="RET-C", name="C", risk_id=r.id)
+        db.add(c)
+        db.flush()
+        cy = AssessmentCycle(kind="operation", frequency="annual", name="보존검증회차",
+                             period_start=date(2026, 1, 1), period_end=date(2026, 12, 31),
+                             status="open")
+        db.add(cy)
+        db.flush()
+        db.add(CycleTarget(cycle_id=cy.id, control_id=c.id, control_code="RET-C"))
+        admin = db.query(User).filter(User.email == "admin@acme.example").one()
+        db.add(RoleAssignment(scope="control", target_id=c.id,
+                              role_name="control_owner", user_id=admin.id))
+        db.commit()
+        yield str(cy.id), str(c.id)
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def _upload(client: TestClient, h: dict, target, name: str,
+            body: bytes = b"%PDF-1.4 test"):
+    cycle_id, control_id = target
     return client.post("/api/evidence/files", headers=h,
+                       data={"cycle_id": cycle_id, "control_id": control_id},
                        files={"file": (name, body, "application/pdf")})
 
 
@@ -72,14 +141,14 @@ def test_evidence_module_has_no_storage_delete_path(client: TestClient) -> None:
     assert not hasattr(evidence_api, "remove_object_safe")
 
 
-def test_deleted_evidence_file_survives_in_storage(client: TestClient, fake_storage) -> None:
+def test_deleted_evidence_file_survives_in_storage(client: TestClient, fake_storage, target) -> None:
     """§5-6 **핵심** — 삭제해도 저장소 객체가 남는다.
 
     레코드만 남기고 파일을 지우면 "그때 지운 게 뭐였나"에 답할 수 없다.
     보존기간이 5년 이상이므로 파일도 그 기간을 따른다(§2.9).
     """
     h = _headers(client)
-    created = _upload(client, h, "보존검증.pdf")
+    created = _upload(client, h, target, "보존검증.pdf")
     assert created.status_code == 201, created.text
     fid = created.json()["id"]
     key = created.json()["minio_key"]
@@ -89,10 +158,10 @@ def test_deleted_evidence_file_survives_in_storage(client: TestClient, fake_stor
     assert key in fake_storage          # 파일이 남아 있다
 
 
-def test_deleted_evidence_is_excluded_from_list(client: TestClient, fake_storage) -> None:
+def test_deleted_evidence_is_excluded_from_list(client: TestClient, fake_storage, target) -> None:
     """§5-5(전반) — 삭제 후 목록·상세 조회에서 제외된다."""
     h = _headers(client)
-    fid = _upload(client, h, "목록제외.pdf").json()["id"]
+    fid = _upload(client, h, target, "목록제외.pdf").json()["id"]
     ids = {f["id"] for f in client.get("/api/evidence/files",
                                        params={"limit": 500}, headers=h).json()["items"]}
     assert fid in ids
@@ -104,13 +173,13 @@ def test_deleted_evidence_is_excluded_from_list(client: TestClient, fake_storage
     assert client.get(f"/api/evidence/files/{fid}", headers=h).status_code == 404
 
 
-def test_delete_history_records_who_and_when(client: TestClient, fake_storage) -> None:
+def test_delete_history_records_who_and_when(client: TestClient, fake_storage, target) -> None:
     """§5-5(후반) — 이력 조회에 업로더·업로드시각·삭제자·삭제시각·사유가 나온다.
 
     "누가 언제 올렸다가 지웠는지"가 감사에서 실제로 묻는 질문이다.
     """
     h = _headers(client)
-    fid = _upload(client, h, "이력검증.pdf").json()["id"]
+    fid = _upload(client, h, target, "이력검증.pdf").json()["id"]
 
     before = client.get(f"/api/evidence/files/{fid}/history", headers=h).json()
     assert before["is_deleted"] is False
@@ -130,10 +199,10 @@ def test_delete_history_records_who_and_when(client: TestClient, fake_storage) -
     assert after["minio_key"]
 
 
-def test_history_endpoint_reads_deleted_records(client: TestClient, fake_storage) -> None:
+def test_history_endpoint_reads_deleted_records(client: TestClient, fake_storage, target) -> None:
     """이력 엔드포인트는 `is_deleted` 를 필터하지 않는다 — 삭제된 것을 보는 것이 목적이다."""
     h = _headers(client)
-    fid = _upload(client, h, "삭제조회.pdf").json()["id"]
+    fid = _upload(client, h, target, "삭제조회.pdf").json()["id"]
     client.delete(f"/api/evidence/files/{fid}", headers=h)
 
     resp = client.get(f"/api/evidence/files/{fid}/history", headers=h)
@@ -141,10 +210,10 @@ def test_history_endpoint_reads_deleted_records(client: TestClient, fake_storage
     assert resp.json()["is_deleted"] is True
 
 
-def test_korean_filename_roundtrip(client: TestClient, fake_storage) -> None:
+def test_korean_filename_roundtrip(client: TestClient, fake_storage, target) -> None:
     """§5-3 — 한글 파일명 업로드·다운로드. 원본명이 그대로 돌아온다."""
     h = _headers(client)
-    created = _upload(client, h, "2026년 1분기 대사표.pdf")
+    created = _upload(client, h, target, "2026년 1분기 대사표.pdf")
     assert created.status_code == 201, created.text
     assert created.json()["filename"] == "2026년 1분기 대사표.pdf"
 
@@ -153,11 +222,11 @@ def test_korean_filename_roundtrip(client: TestClient, fake_storage) -> None:
     assert "2026" in resp.headers.get("content-disposition", "")
 
 
-def test_same_filename_uploaded_twice_both_kept(client: TestClient, fake_storage) -> None:
+def test_same_filename_uploaded_twice_both_kept(client: TestClient, fake_storage, target) -> None:
     """§5-4 — 같은 이름 파일을 두 번 올려도 둘 다 보존된다(저장 키가 다르다)."""
     h = _headers(client)
-    a = _upload(client, h, "중복이름.pdf", b"%PDF-1.4 first").json()
-    b = _upload(client, h, "중복이름.pdf", b"%PDF-1.4 second longer").json()
+    a = _upload(client, h, target, "중복이름.pdf", b"%PDF-1.4 first").json()
+    b = _upload(client, h, target, "중복이름.pdf", b"%PDF-1.4 second longer").json()
     assert a["id"] != b["id"]
     assert a["minio_key"] != b["minio_key"]
     assert a["minio_key"] in fake_storage and b["minio_key"] in fake_storage
