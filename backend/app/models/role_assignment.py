@@ -149,6 +149,25 @@ POLICY_DEPT_APPROVAL_ENABLED = "dept_approval_enabled"
 # 그때마다 마이그레이션이 필요하다. 스키마 변경은 횟수 자체가 위험이다(ADR-0030 경험).
 # Report 모듈도 쓸 값이라 정책 테이블이 자연스럽다.
 POLICY_FISCAL_YEAR_START_MONTH = "fiscal_year_start_month"
+
+# ── 증빙 정책 (ADR-0032 §2.6·§2.7·§2.5) ───────────────────────────
+# 업로드 크기 상한. **ADR-0032 §2.7 은 "크기 상한을 두지 않는다" 지만, 업로드가
+# file.read() 로 전체를 메모리에 적재하는 현재 구조에서 상한을 없애면 대용량 파일이
+# 백엔드 메모리를 소진한다(13.9-31). 스트리밍 전환이 선행되어야 한다.**
+# 그때까지 상한을 유지하되 **코드에 하드코딩하지 않고 정책으로** 둔다 — 회사마다
+# 조정할 수 있어야 하고, 스트리밍 전환 후에는 값을 크게 올리거나 비우면 된다.
+POLICY_EVIDENCE_MAX_BYTES = "evidence_max_bytes"
+
+# 진행 중 회차에서 통제책임자의 증빙 편집 허용 여부 (§2.5). 기본 허용.
+POLICY_EVIDENCE_EDIT_ENABLED = "evidence_edit_enabled"
+
+# 보존기간(년). **최소 5년을 시스템이 강제한다** — 5년 미만 설정은 거부한다.
+# 근거: 내부회계관리제도 업무지침 — 회계정보 및 관련 문서 5년 보관(§2.9).
+# 0 은 영구 보존이며 **기본값**이다. 이번에는 설정값만 저장하고 만료 삭제 처리는
+# 하지 않는다 — 아카이브 설계와 함께 다룬다(§5).
+POLICY_EVIDENCE_RETENTION_YEARS = "evidence_retention_years"
+EVIDENCE_RETENTION_MIN_YEARS = 5
+EVIDENCE_RETENTION_PERMANENT = 0
 DEFAULT_FISCAL_YEAR_START_MONTH = 1
 
 
