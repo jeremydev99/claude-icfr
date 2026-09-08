@@ -1,6 +1,6 @@
 # 조직·역할 배정 API 계약 (부서 / 소속 / 배정 / 해석 / 정책)
 
-> **스냅샷 문서 — 기준 커밋 `6be31df` / 2026-09-04 시점. API 변경 시 갱신 필요.**
+> **스냅샷 문서 — 기준 커밋 `5620b68` / 2026-09-08 시점. API 변경 시 갱신 필요.**
 >
 > 자동 생성 문서(FastAPI `/docs`)가 API 스펙의 단일 진실 공급원이다(ADR-0017 §19).
 > 이 문서는 그것이 드러내지 못하는 것 — **판정 규칙, 권한 검사 위치, 실제 에러 문구** — 을
@@ -342,6 +342,53 @@ HTTP 409
 사유 입력 UI 는 첫 `POST` 의 409 를 받은 뒤에 띄우는 흐름이 된다.
 
 ## 5. 권한
+
+### 5.0 `GET /api/auth/me` — FE 가 권한을 판정하는 자리
+
+**`external_auditor` 를 FE 가 판정할 소스가 여기다.** 이전에는 `/me` 가
+`UserTenantAccess` 만 조회해 `require_write` 의 판정 근거(`user_roles`)가 응답
+어디에도 없었다.
+
+```json
+{
+  "id": "...", "email": "...", "display_name": "...",
+  "role": "admin",
+  "tenants": [{"id": "...", "name": "사이냅소프트", "code": "DEFAULT", "role": "admin"}],
+  "active_tenant_id": "d0000000-0000-0000-0000-000000000001",
+  "tenant_roles": ["assessor", "icfr_manager"],
+  "can_write": true
+}
+```
+
+**`role` 이라는 이름이 세 곳에서 다른 의미다.** 섞으면 권한 판정이 틀어진다.
+
+| 필드 | 출처 | 의미 | 판정에 쓰는가 |
+|---|---|---|---|
+| `role` | `users.role` | **시스템 관리 권한** | `require_admin` 전용(사용자 CRUD 4곳) |
+| `tenants[].role` | `user_tenant_access.role` | 테넌트 **접근** 권한 | **아니오** — 판정 코드 0건(13.9-23) |
+| **`tenant_roles`** | **`user_roles`** | **제도 운영 역할**(ADR-0031 §2.1) | **예** |
+
+**`tenant_roles`·`can_write` 는 활성 테넌트 기준이다.** `active_tenant_id` 와 같은
+맥락이라 함께 top-level 에 있다. `tenants[]` 안에 넣지 않은 이유 — 테넌트마다 활성
+컨텍스트를 바꿔가며 `user_roles` 를 읽어야 하는데, 그것은 ADR-0025 자동 격리가
+막으려던 수동 교차 조회다.
+
+활성 테넌트는 `X-Tenant-Id` 헤더로 정해진다(접근 테넌트가 1개면 자동 수렴).
+헤더를 바꾸면 `active_tenant_id`·`tenant_roles`·`can_write` 가 함께 따라간다 —
+A사에서 `external_auditor` 인 사람이 B사에서는 아닐 수 있다.
+
+**FE 사용 규칙 — 두 값의 역할이 다르다.**
+
+- **버튼 숨김·비활성은 `can_write`.** `tenant_roles` 로 직접 판정하지 말 것.
+  `can_write` 는 백엔드 `core/permissions.can_write` 가 낸 값이고 `require_write` 와
+  **같은 함수**다. FE 가 규칙을 다시 구현하면 조건이 늘 때 어긋난다
+  (회차 상태별·통제 단위·정책 토글·증빙 편집 권한이 계속 추가되고 있다).
+- **안내 문구는 `tenant_roles`.** `can_write` 만으로는 "왜 못 쓰는지"를 설명할 수 없다.
+  예: `tenant_roles` 에 `external_auditor` 가 있으면 "외부감사인은 조회만 가능합니다".
+
+`can_write=false` 인 상태로 쓰기 API 를 호출하면
+`403 {"detail": "외부감사인은 조회만 가능합니다"}` 가 온다. `can_write` 는 그 403 을
+미리 아는 수단이지 우회 수단이 아니다 — 서버가 최종 판정한다.
 
 ### 5.1 엔드포인트별 요구 권한
 
