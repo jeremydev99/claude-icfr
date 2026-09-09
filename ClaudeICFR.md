@@ -1941,6 +1941,10 @@ HTTP 200
     | `/data/minio` | 328K — 증빙 파일 사실상 없음(`test2.pdf` 12B 1건) |
     | `/data/backup` | 316K — 90일 보존, 파일당 약 37KB |
 
+33. **§5-6 운영 실증 미완 — 삭제 후 MinIO 파일 잔존** — 대역 검증만 됐다. **테스트 환경에 MinIO 가 없어 "삭제 경로가 저장소 삭제를 호출하지 않는다"까지만 확인**했다(`tests/test_evidence_retention.py`, `test_evidence_module_has_no_storage_delete_path` 가 import 부재까지 잠금). **화면 재배선 후 실제 업로드 → 삭제 → 객체 잔존을 확인해야 한다** — `docker exec icfr-minio mc ls -r local/icfr-evidence`. 이것이 ADR-0032 §2.4 의 실증이며, 그 전까지는 "구현했다"까지만 말할 수 있다.
+
+34. **MIME 화이트리스트를 정책으로 옮기지 않았다 (2026-09-09 판단)** — 크기 상한은 `evidence_max_bytes` 정책으로 옮겼으나 화이트리스트는 코드에 남겼다. **값이 목록이라 key-value 정책에 담으려면 파싱 규약을 새로 만들어야 하고, 현재 실무를 막는다는 증거가 없다. 막는 사례가 나오면 그때 옮긴다.** 현재 허용: pdf / png / jpeg / xlsx / docx / hwp 2종. 증빙 형식이 다양해 화이트리스트가 실무를 막을 소지는 있으므로, 반려 사례가 보고되면 재검토 대상이다.
+
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
 
