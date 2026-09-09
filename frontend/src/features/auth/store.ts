@@ -14,6 +14,8 @@ export interface UserProfile {
   role: string
   tenants: TenantSummary[]
   active_tenant_id: string | null
+  can_write: boolean
+  tenant_roles: string[]
 }
 
 interface AuthState {

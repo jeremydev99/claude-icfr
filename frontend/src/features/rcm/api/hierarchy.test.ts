@@ -5,7 +5,6 @@ import { describe, it, expect } from 'vitest'
 import { AxiosError } from 'axios'
 import { toProcess, toSubProcess, toRisk } from './controlsAdapter'
 import { extractHierarchyErrorMessage } from './errors'
-import { canEditHierarchy } from '../permissions'
 
 describe('toProcess / toSubProcess / toRisk', () => {
   it('ProcessItemDto를 도메인 ProcessItem으로 조립한다 (description 포함)', () => {
@@ -83,8 +82,4 @@ describe('extractHierarchyErrorMessage', () => {
   })
 })
 
-describe('canEditHierarchy', () => {
-  it('역할 로직 확정 전까지 항상 true를 반환한다 (ADR-0031 대기)', () => {
-    expect(canEditHierarchy()).toBe(true)
-  })
-})
+// canEditHierarchy 판정 로직(ADR-0031 확정 — can_write 소스)은 permissions.test.ts 로 이관.

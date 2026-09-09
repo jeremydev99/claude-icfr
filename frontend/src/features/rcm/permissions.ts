@@ -1,6 +1,9 @@
 // 상위 3계층(Process/SubProcess/Risk) 편집/삭제 버튼 노출 권한 seam.
-// 역할 기반 판단은 아직 미확정(ADR-0031)이라 지금은 무조건 true를 반환한다 —
-// 인라인 하드코딩 대신 이 헬퍼 뒤에 둬서, 역할 로직이 확정되면 여기 한 곳만 바꾼다.
+// 판정 소스는 `/me` 응답의 can_write(백엔드 core/permissions.can_write 계산값, ADR-0031) 하나뿐이다.
+// external_auditor·tenant_roles로 여기서 재판정하지 않는다 — 최종 강제는 서버가 403으로 한다.
+import { useAuthStore } from '../auth/store'
+import { canEditHierarchyForUser } from './permissions.pure'
+
 export function canEditHierarchy(): boolean {
-  return true
+  return canEditHierarchyForUser(useAuthStore.getState().user)
 }
