@@ -11,7 +11,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { UserRole, UserRoleListResponse, User } from '../types'
-import { ROLE_NAME_OPTIONS } from '../types'
+import { ROLE_LABELS } from '../types'
 
 interface Props {
   data: UserRoleListResponse | undefined
@@ -37,8 +37,7 @@ export default function UserRoleTable({
   const { items = [], total = 0 } = data ?? {}
 
   const userMap = Object.fromEntries(users.map((u) => [u.id, u]))
-  const roleLabel = (roleName: string) =>
-    ROLE_NAME_OPTIONS.find((o) => o.value === roleName)?.label ?? roleName
+  const roleLabel = (roleName: string) => ROLE_LABELS[roleName] ?? roleName
 
   if (isLoading) {
     return (

@@ -58,12 +58,24 @@ export interface UserRoleUpdatePayload {
   scope?: string | null
 }
 
-export const ROLE_NAME_OPTIONS = [
-  { value: 'Administrator', label: '관리자' },
-  { value: 'ProcessOwner', label: '프로세스 책임자' },
-  { value: 'ControlOwner', label: '통제 수행자' },
-  { value: 'Tester', label: '평가자' },
-  { value: 'Reviewer', label: '검토자' },
-  { value: 'ExternalAuditor', label: '외부감사인' },
-  { value: 'Executive', label: '경영진' },
+// 배정용 — 신규 5역할(ADR-0031)만 선택 가능. 값은 snake_case 정규값.
+// TODO: 협업자 라벨 확정 대기 — 아래 label은 임시 한글값.
+export const ROLE_ASSIGN_OPTIONS = [
+  { value: 'icfr_manager', label: '내부회계관리자' },
+  { value: 'ceo', label: '대표자' },
+  { value: 'auditor', label: '감사' },
+  { value: 'external_auditor', label: '외부감사인' },
+  { value: 'sys_admin', label: '시스템관리자' },
 ] as const
+
+// 표시용 — 구7종(기존 라벨 유지) + 신규5역할 전체.
+export const ROLE_LABELS: Record<string, string> = {
+  Administrator: '관리자',
+  ProcessOwner: '프로세스 책임자',
+  ControlOwner: '통제 수행자',
+  Tester: '평가자',
+  Reviewer: '검토자',
+  ExternalAuditor: '외부감사인',
+  Executive: '경영진',
+  ...Object.fromEntries(ROLE_ASSIGN_OPTIONS.map((o) => [o.value, o.label])),
+}

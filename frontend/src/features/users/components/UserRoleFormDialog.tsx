@@ -33,7 +33,7 @@ import { Loader2 } from 'lucide-react'
 import { useUsers } from '../api/useUsers'
 import { useCreateUserRole, useUpdateUserRole } from '../api/useUserRoles'
 import type { UserRole } from '../types'
-import { ROLE_NAME_OPTIONS } from '../types'
+import { ROLE_ASSIGN_OPTIONS } from '../types'
 
 const schema = z.object({
   user_id: z.string().min(1, '사용자를 선택하세요'),
@@ -168,7 +168,7 @@ export default function UserRoleFormDialog({ open, onOpenChange, editTarget }: P
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {ROLE_NAME_OPTIONS.map((o) => (
+                      {ROLE_ASSIGN_OPTIONS.map((o) => (
                         <SelectItem key={o.value} value={o.value}>
                           {o.label}
                         </SelectItem>

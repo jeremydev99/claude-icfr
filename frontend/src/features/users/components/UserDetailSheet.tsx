@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/table'
 import { useUserDetail } from '../api/useUsers'
 import { useUserRoles } from '../api/useUserRoles'
-import { ROLE_NAME_OPTIONS } from '../types'
+import { ROLE_LABELS } from '../types'
 
 interface Props {
   userId: string | null
@@ -40,8 +40,7 @@ export default function UserDetailSheet({ userId, open, onOpenChange }: Props) {
 
   const userRoles = rolesData?.items.filter((r) => r.user_id === userId) ?? []
 
-  const roleLabel = (roleName: string) =>
-    ROLE_NAME_OPTIONS.find((o) => o.value === roleName)?.label ?? roleName
+  const roleLabel = (roleName: string) => ROLE_LABELS[roleName] ?? roleName
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
