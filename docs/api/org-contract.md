@@ -1,13 +1,14 @@
 # 조직·역할 배정 API 계약 (부서 / 소속 / 배정 / 해석 / 정책)
 
-> **스냅샷 문서 — 기준 커밋 `5620b68` / 2026-09-08 시점. API 변경 시 갱신 필요.**
+> **스냅샷 문서 — 기준 커밋 `3bcb399` + 13.9-35 수정 / 2026-09-16 시점. API 변경 시 갱신 필요.**
 >
 > 자동 생성 문서(FastAPI `/docs`)가 API 스펙의 단일 진실 공급원이다(`ClaudeICFR.md` §19).
 > 이 문서는 그것이 드러내지 못하는 것 — **판정 규칙, 권한 검사 위치, 실제 에러 문구** — 을
 > 코드에서 읽어 정리한 것이다. 스펙을 대체하지 않는다.
 >
 > 근거 파일: `backend/app/schemas/org.py`, `backend/app/api/org.py`,
-> `backend/app/api/role_assignment.py`, `backend/app/core/permissions.py`,
+> `backend/app/api/role_assignment.py`, `backend/app/api/user_mgmt.py`,
+> `backend/app/core/permissions.py`,
 > `backend/app/services/role_resolver.py`, `backend/app/models/role_assignment.py`
 >
 > 근거 ADR: ADR-0031(역할·권한 모델). 형식은 `rcm-hierarchy-contract.md` 와 같다.
@@ -38,6 +39,11 @@
 | **해석** | **통제별 역할** | **`GET /api/org/controls/{control_id}/roles`** |
 | 정책 | 목록 | `GET /api/org/policies` |
 | | 설정/변경 | `PUT /api/org/policies` → 200 |
+| **테넌트 역할** | 목록 | `GET /api/users/roles/list` |
+| | 배정 | `POST /api/users/roles` → 201 |
+| | 상세 | `GET /api/users/roles/{role_id}` |
+| | 수정 | `PATCH /api/users/roles/{role_id}` → 200 |
+| | 해제 | `DELETE /api/users/roles/{role_id}` → 204 |
 
 쿼리 파라미터 — 부서: `skip`·`limit` / 소속: `user_id`·`department_id`·`skip`·`limit` /
 배정: `scope`·`target_id`·`skip`·`limit`.
@@ -46,6 +52,11 @@
 `(scope, target_id, role_name)` 이 이미 있으면 `user_id` 만 바꾼다(§6-①).
 
 **정책에는 `POST`/`DELETE` 가 없다.** `PUT` 이 upsert 다.
+
+**테넌트 역할은 `/api/org` 가 아니라 `/api/users` 밑에 있다.** 통제 단위 배정
+(`/api/org/assignments`)과 다른 층이다 — 전자는 사람에게 붙는 제도 운영 역할 5종
+(ADR-0031 §2.1), 후자는 통제에 붙는 역할 3종(§2.2). 저장소도 `user_roles` 와
+`role_assignments` 로 다르다. 권한·허용 값은 §5.3.
 
 ## 2. 요청/응답 스키마
 
@@ -404,6 +415,7 @@ A사에서 `external_auditor` 인 사람이 B사에서는 아닐 수 있다.
 | 소속 `POST`/`PATCH`/`DELETE` | `require_write` | 〃 |
 | 배정 `POST`/`DELETE` | `require_write` | 〃 |
 | **정책 `PUT`** | **`require_icfr_manager`** | **`icfr_manager` 보유** |
+| **테넌트 역할 `POST`/`PATCH`/`DELETE`** | **`require_role_assigner`** | **`icfr_manager` 보유 (§5.3)** |
 
 **`users.role`(시스템 관리 권한)은 이 API 들에서 검사하지 않는다.** `require_admin` 은
 사용자 CRUD 4곳 전용이며 제도 운영 권한과 서로 참조하지 않는다(ADR-0031 §3.2).
@@ -431,6 +443,50 @@ HTTP 403
 HTTP 403
 {"detail": "내부회계관리자 권한이 필요합니다"}
 ```
+
+### 5.3 테넌트 역할 배정 — 권한과 허용 값 (2026-09-16)
+
+`/api/users/roles` 의 생성·수정·삭제가 **로그인만 확인하던 상태를 고친 것**이다.
+일반 사용자가 자기에게 `icfr_manager` 를 부여하거나 `external_auditor` 가 자기 역할
+행을 지워 조회 전용을 벗어나는 것이 실측으로 재현됐다(`ClaudeICFR.md` 13.9-35).
+**`require_write`·`require_icfr_manager` 가 보는 테이블이 여기라서** 이 경로가 뚫리면
+두 가드가 함께 무력화된다.
+
+**세 경로 모두 `icfr_manager` 다.** 배정만 막으면 삭제로 우회된다.
+
+```
+HTTP 403
+{"detail": "역할 배정은 내부회계관리자만 가능합니다 (내부회계관리자가 없는 테넌트에 한해 시스템관리자가 첫 배정을 합니다)"}
+```
+
+**부트스트랩 예외** — 테넌트에 `icfr_manager` 가 0명일 때만 `user_roles` 의
+`sys_admin` 이 배정할 수 있고, 1명이 생기면 닫힌다(ADR-0031 §3.3).
+`users.role == "admin"` 은 여기서 보지 않는다(ADR-0031 §3.2).
+
+**허용 값은 5종뿐이다** — `icfr_manager`/`ceo`/`auditor`/`external_auditor`/`sys_admin`.
+목록 밖 값은 **422**(스키마 단계에서 거부):
+
+```
+HTTP 422
+{"detail": [{"type": "value_error", "loc": ["body", "role_name"],
+             "msg": "Value error, 허용되지 않는 역할명 'icfr_mananger'. 허용: icfr_manager, ceo, auditor, external_auditor, sys_admin"}]}
+```
+
+**구 3역할(`Administrator`/`Reviewer`/`Tester`)은 읽기만 된다.** 기존 행은 `/me`
+`tenant_roles` 와 목록 조회에 그대로 나오지만 신규 배정은 422 로 막힌다
+(`ClaudeICFR.md` 13.9-24). **FE `ROLE_NAME_OPTIONS` 가 아직 구 역할명 7종이라
+화면에서는 5역할을 만들 수 없고 기존 선택지는 전부 422 가 된다** — FE 수정 전까지
+역할 배정은 API 로만 가능하다.
+
+**같은 사용자·역할 중복 배정은 409.**
+
+```
+HTTP 409
+{"detail": "이미 'ceo' 역할이 배정되어 있습니다"}
+```
+
+DB 부분 유니크 인덱스(`uq_user_roles_active_pair`)가 최종 보장이며 **살아 있는 행만
+대상**이라 해제 후 재배정은 정상 동작한다.
 
 ## 6. 기존 RCM 규약과 다른 지점
 

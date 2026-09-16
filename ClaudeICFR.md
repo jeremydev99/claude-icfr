@@ -1229,6 +1229,86 @@ cd claude-icfr
 
 레포 루트의 `CLAUDE.md`가 세션 시작 시 자동 로드됨. 사용자는 별도 지시 없이 Claude Code를 ICFR 폴더에서 실행하면 됨.
 
+### 8.5 신규 테넌트 온보딩 — 첫 역할 1행은 SQL 로 넣는다 (2026-09-16 등록)
+
+**신규 테넌트는 `icfr_manager` 도 `sys_admin` 도 0명이라 역할 배정을 시작할 수 없다.**
+13.9-35 수정으로 `/api/users/roles` 가 `icfr_manager`(또는 `icfr_manager` 0명일 때
+`sys_admin`)를 요구하는데, `user_roles` 가 비어 있으면 **둘 다 없어 부트스트랩 경로도
+닫혀 있다.** `users.role == "admin"` 을 보게 하면 열리지만 **그 추론을 금지한 것이
+ADR-0031 §3.2 이고, 그 경계가 이 결함을 만든 구조적 원인과 같은 자리다.**
+코드로 풀지 않고 **첫 1행만 SQL 로 넣는다.**
+
+**고객사 온보딩 때마다 반복되는 상황이므로 온보딩 절차에 포함한다.**
+
+순서 — ①가드 배포 완료 → ②아래 SQL 로 `sys_admin` 1행 → ③그 계정이 API 로
+첫 `icfr_manager` 배정 → ④이후 `sys_admin` 경로는 자동으로 닫힌다.
+
+**실행 주체는 마스터다.** 운영 실데이터 조작이며 Claude Code 는 실행하지 않는다.
+
+```sql
+-- 대상 지정 (하드코딩하지 않는다 — 이메일·테넌트 코드로 조회한다)
+\set target_email 'jeremy@example.com'   -- 실제 마스터 계정 이메일로 교체
+\set target_tenant 'DEFAULT'             -- 대상 테넌트 코드
+
+-- ① 사전 확인 — 계정·테넌트가 유일하게 잡히는지, 현재 역할이 무엇인지
+SELECT id, email, display_name, role FROM users
+ WHERE email = :'target_email' AND is_deleted = false;
+
+SELECT id, code, name, is_active FROM tenants WHERE code = :'target_tenant';
+
+SELECT ur.id, u.email, ur.role_name, t.code AS tenant, ur.is_deleted
+  FROM user_roles ur
+  JOIN users u ON u.id = ur.user_id
+  JOIN tenants t ON t.id = ur.tenant_id
+ ORDER BY ur.created_at;
+
+-- ② 삽입 — AuditedBase 전 컬럼을 명시한다. id 는 DB 기본값이 없다(앱이 UUIDv7 생성).
+--    여기서는 gen_random_uuid()(v4)를 쓴다 — 온보딩마다 새 값이어야 하므로 고정값을
+--    적을 수 없고, 단일 행이라 ADR-0020(v7 정렬 효율)의 실익이 없다.
+--    NOT EXISTS 로 멱등하게 둔다. uq_user_roles_active_pair 가 최종 보장이다.
+BEGIN;
+
+INSERT INTO user_roles (
+    id, tenant_id, user_id, role_name, scope,
+    created_at, created_by, updated_at, updated_by,
+    is_deleted, deleted_at, deleted_by, row_version
+)
+SELECT
+    gen_random_uuid(), t.id, u.id, 'sys_admin', NULL,
+    now(), 'manual-bootstrap-13.9-35',
+    now(), 'manual-bootstrap-13.9-35',
+    false, NULL, NULL, 1
+  FROM users u
+ CROSS JOIN tenants t
+ WHERE u.email = :'target_email' AND u.is_deleted = false
+   AND t.code = :'target_tenant' AND t.is_active = true
+   AND NOT EXISTS (
+       SELECT 1 FROM user_roles ur
+        WHERE ur.user_id = u.id AND ur.tenant_id = t.id
+          AND ur.role_name = 'sys_admin' AND ur.is_deleted = false
+   );
+
+-- **`INSERT 0 1` 인지 확인하고 COMMIT 한다.** 0 이면 이미 있거나 조건이 안 맞는 것이고,
+-- 2 이상이면 대상이 유일하지 않다는 뜻이므로 ROLLBACK 하고 ① 로 돌아간다.
+COMMIT;
+
+-- ③ 검증
+SELECT ur.id, u.email, ur.role_name, t.code AS tenant,
+       ur.is_deleted, ur.row_version, ur.created_by, ur.created_at
+  FROM user_roles ur
+  JOIN users u ON u.id = ur.user_id
+  JOIN tenants t ON t.id = ur.tenant_id
+ WHERE ur.role_name = 'sys_admin' AND ur.is_deleted = false;
+```
+
+**API 로도 확인한다** (여기까지 해야 부트스트랩이 열린 것이다):
+
+1. 해당 계정 로그인 → `GET /api/auth/me` 의 `tenant_roles` 에 `sys_admin` 이 있다
+2. `POST /api/users/roles` 로 첫 `icfr_manager` 배정 → **201**
+3. 같은 계정으로 한 번 더 배정 시도 → **403** (부트스트랩이 닫혔다는 증거)
+
+3번까지 확인할 것. 2번만 보면 `sys_admin` 상시 배정 상태와 구분되지 않는다.
+
 ### 8.4 향후 작성 예정
 
 - `.env.example` — 환경변수 템플릿 (기술 스택 결정 후)
@@ -1615,7 +1695,7 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | 개선계획 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + DesignAssessment + 4단계워크플로 + 이력 + history changed_by(실명) join(test_module과 일관) + deficiency 삭제 FK가드(409) | ✅ 미비점+개선계획 단일 화면 통합 (탭 제거). 미비점 행에서 개선계획 상태 확인·바로 등록. 상세에서 미비점 code·담당자 display_name·이력 작성자 표시 (UUID 제거). prefilled deficiency_id useEffect 버그 수정 (11310dd) | ✅ 75개 | feature/fe-remediation-unify → main 머지 완료 |
 | 증빙 관리 | ✅ | ✅ | ✅ | ✅ MinIO 실연동 + SHA256 컬럼 | ✅ 업로드·목록·다운로드(blob)·삭제 (d70c849) | — | evidenceApi.ts·useEvidence.ts·EvidenceTable·EvidenceUploadDialog·types 신규. 50MB 검증. 브랜치: feature/fe-evidence-module → main 머지 완료. **사이드바 메뉴: 보고 그룹 → 평가 그룹 이동 (2026-06-30). 액션 컬럼 헤더 빈 문자열로 통일** |
-| 담당자/권한 | ✅ | ✅ | ✅ | ✅ 사용자 CRUD(생성·수정·삭제, 관리자 가드) + 비밀번호 변경(본인)·리셋(관리자) + 역할 CRUD ⚠ **역할 CRUD 권한 가드·값 검증 없음(13.9-35)** | ✅ 사용자 CRUD(등록·편집·삭제·비번리셋) + 역할 CRUD 실 API 연결. ⚠ 역할 드롭다운이 구 역할명 7종이라 ADR-0031 5역할 배정 불가(13.9-35). UserFormDialog·ResetPasswordDialog 신규. 409 에러 메시지(본인·마지막관리자·이메일중복) 직접 표시. deficiency 삭제 임시 클라이언트 가드 → BE 409 전달로 대체. remediation history changed_by UUID 우회 매핑 제거 → changed_by.display_name 직접 사용. (4b2f66a) | ✅ 8개 | BE: create_user(email중복409·해시저장)·update_user·delete_user(본인·마지막관리자 가드)·reset-password / auth.change-password(old검증). require_admin 가드. UserCreate/UserUpdate 재사용(중복정의 없음). 브랜치: feature/fe-users-module·feature/fe-user-crud-cleanup → main 머지 완료 |
+| 담당자/권한 | ✅ | ✅ | ✅ | ✅ 사용자 CRUD(생성·수정·삭제, 관리자 가드) + 비밀번호 변경(본인)·리셋(관리자) + 역할 CRUD + **권한 가드·값 검증·중복 방지(13.9-35 BE 해소, 2026-09-16)** — 배정·수정·삭제 `require_role_assigner`(icfr_manager, icfr_manager 0명 테넌트 한정 sys_admin 부트스트랩), 허용값 5역할 422 검증, 활성 행 부분 유니크 | ✅ 사용자 CRUD(등록·편집·삭제·비번리셋) + 역할 CRUD 실 API 연결. ⚠ 역할 드롭다운이 구 역할명 7종이라 **화면에서 역할을 배정하면 전부 422** — BE 값 검증 적용 후 FE 수정 대기(13.9-35 잔여, Regina). UserFormDialog·ResetPasswordDialog 신규. 409 에러 메시지(본인·마지막관리자·이메일중복) 직접 표시. deficiency 삭제 임시 클라이언트 가드 → BE 409 전달로 대체. remediation history changed_by UUID 우회 매핑 제거 → changed_by.display_name 직접 사용. (4b2f66a) | ✅ 8개 | BE: create_user(email중복409·해시저장)·update_user·delete_user(본인·마지막관리자 가드)·reset-password / auth.change-password(old검증). require_admin 가드. UserCreate/UserUpdate 재사용(중복정의 없음). 브랜치: feature/fe-users-module·feature/fe-user-crud-cleanup → main 머지 완료 |
 | 메일발송 | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | Report | ✅ | — | — | — | 🔄 골조 | — | Phase 3 |
 | Test | ✅ | — | ✅ | ✅ Phase1 풀확장 | 🔄 목록·추가·상세패널·워크플로전이·이력타임라인·TestStep CRUD·TestRun편집 (실 API) | ✅ | RAWC+워크플로+이력. FE: TestRunTable·SearchBar·ControlSelector·CreateDialog·TestRunDetailSheet·TestRunEditDialog 완료. TestStep 인라인 추가·편집·삭제 (approved 잠금). TestRun 평가일·결과·샘플수·평가방법 편집. StepInlineForm 외부 컴포넌트 분리. (커밋: 70ca2d0) |
@@ -1945,7 +2025,17 @@ HTTP 200
 
 34. **MIME 화이트리스트를 정책으로 옮기지 않았다 (2026-09-09 판단)** — 크기 상한은 `evidence_max_bytes` 정책으로 옮겼으나 화이트리스트는 코드에 남겼다. **값이 목록이라 key-value 정책에 담으려면 파싱 규약을 새로 만들어야 하고, 현재 실무를 막는다는 증거가 없다. 막는 사례가 나오면 그때 옮긴다.** 현재 허용: pdf / png / jpeg / xlsx / docx / hwp 2종. 증빙 형식이 다양해 화이트리스트가 실무를 막을 소지는 있으므로, 반려 사례가 보고되면 재검토 대상이다.
 
-35. **`/api/users/roles` 에 권한 가드·값 검증이 없다 — ADR-0031 테넌트 역할 5종의 배정 경로가 무방비 (2026-09-15 발견, 수정 대기 — 별도 지시)** — Regina 질문("신규 5역할 배정 가능한가")을 확인하다 발견. ①**배정 자체는 된다**: `UserRoleCreate.role_name` 은 `min_length=1, max_length=50` 뿐이고 DB 도 `String(50)` 무제약이라 5역할 모두 201, `/me` `tenant_roles` 에 즉시 나온다(`external_auditor` 는 `can_write=false`). `org-contract.md` §2.3 의 "422" 는 **`/api/org/assignments`(통제 단위) 얘기이며 의도된 동작**이다 — 지금도 422. ②**가드 없음**: POST/PATCH/DELETE `/api/users/roles` 가 `CurrentUser` 만 요구한다(`api/user_mgmt.py:122·139·151`). 실측 — **일반 사용자가 자기에게 `icfr_manager` 를 부여 → 곧바로 `PUT /api/org/policies` 200**, **`external_auditor` 가 자기 역할 행을 DELETE 204 → `can_write=true`**. `require_write`·`require_icfr_manager` 가 판정 근거로 삼는 테이블을 누구나 고칠 수 있어 두 가드가 무력화된다. ③**값 검증 없음**: `icfr_mananger` 같은 오타도 201 — 판정에 안 걸려 조용히 무효. ④**중복 허용**: 같은 사용자·역할 2행 가능(유니크 제약 없음), 1행만 지우면 역할이 남는다. ⑤**FE 로는 5역할을 만들 수 없다**: `frontend/src/features/users/types.ts` `ROLE_NAME_OPTIONS` 가 구 역할명 7종(`Administrator`/`ExternalAuditor` 등 PascalCase)이라, 화면에서 "외부감사인"을 고르면 `ExternalAuditor` 가 저장되어 **조회 전용이 걸리지 않는다.** 운영 `user_roles` 3행도 전부 구 값이다(13.9-24). **판단**: 3-1(2026-09-04)이 `user_roles` 재사용을 결정하며 "CRUD·FE 배선 기존재"를 근거로 들었으나(ADR-0031 §3.1) 그 CRUD 가 새 용도에 맞는지 — 누가 배정할 수 있는가, 어떤 값이 유효한가 — 는 점검하지 않았다. **의도가 아니라 누락이다.** 테스트도 전부 `db.add(UserRole(...))` 직접 삽입이라 API 경로가 한 번도 검증되지 않았다. 수정 시 결정 필요: 배정 권한 주체(`icfr_manager`? `require_admin`? 최초 `icfr_manager` 부트스트랩은 누가?), 허용 값 목록(5역할만? 구 3행 처리는 13.9-24 와 함께), 유니크 제약(마이그레이션 → 마스터 push).
+35. **`/api/users/roles` 에 권한 가드·값 검증이 없다 — ADR-0031 테넌트 역할 5종의 배정 경로가 무방비 (2026-09-15 발견, ✅ 2026-09-16 백엔드 해소 / FE 드롭다운은 잔여)** — Regina 질문("신규 5역할 배정 가능한가")을 확인하다 발견. ①**배정 자체는 된다**: `UserRoleCreate.role_name` 은 `min_length=1, max_length=50` 뿐이고 DB 도 `String(50)` 무제약이라 5역할 모두 201, `/me` `tenant_roles` 에 즉시 나온다(`external_auditor` 는 `can_write=false`). `org-contract.md` §2.3 의 "422" 는 **`/api/org/assignments`(통제 단위) 얘기이며 의도된 동작**이다 — 지금도 422. ②**가드 없음**: POST/PATCH/DELETE `/api/users/roles` 가 `CurrentUser` 만 요구한다(`api/user_mgmt.py:122·139·151`). 실측 — **일반 사용자가 자기에게 `icfr_manager` 를 부여 → 곧바로 `PUT /api/org/policies` 200**, **`external_auditor` 가 자기 역할 행을 DELETE 204 → `can_write=true`**. `require_write`·`require_icfr_manager` 가 판정 근거로 삼는 테이블을 누구나 고칠 수 있어 두 가드가 무력화된다. ③**값 검증 없음**: `icfr_mananger` 같은 오타도 201 — 판정에 안 걸려 조용히 무효. ④**중복 허용**: 같은 사용자·역할 2행 가능(유니크 제약 없음), 1행만 지우면 역할이 남는다. ⑤**FE 로는 5역할을 만들 수 없다**: `frontend/src/features/users/types.ts` `ROLE_NAME_OPTIONS` 가 구 역할명 7종(`Administrator`/`ExternalAuditor` 등 PascalCase)이라, 화면에서 "외부감사인"을 고르면 `ExternalAuditor` 가 저장되어 **조회 전용이 걸리지 않는다.** 운영 `user_roles` 3행도 전부 구 값이다(13.9-24). **판단**: 3-1(2026-09-04)이 `user_roles` 재사용을 결정하며 "CRUD·FE 배선 기존재"를 근거로 들었으나(ADR-0031 §3.1) 그 CRUD 가 새 용도에 맞는지 — 누가 배정할 수 있는가, 어떤 값이 유효한가 — 는 점검하지 않았다. **의도가 아니라 누락이다.** 테스트도 전부 `db.add(UserRole(...))` 직접 삽입이라 API 경로가 한 번도 검증되지 않았다. 수정 시 결정 필요: 배정 권한 주체(`icfr_manager`? `require_admin`? 최초 `icfr_manager` 부트스트랩은 누가?), 허용 값 목록(5역할만? 구 3행 처리는 13.9-24 와 함께), 유니크 제약(마이그레이션 → 마스터 push).
+
+    **해소 (2026-09-16, `prompts/ICFR_role_guard_fix_20260909.md`)** — 배정·수정·삭제 **세 경로 모두** `core/permissions.require_role_assigner` 로 막았다(`icfr_manager`, 그 보유자가 0명인 테넌트에 한해 `user_roles` 의 `sys_admin` 이 첫 배정). **배정만 막으면 ②(자기 역할 삭제)가 그대로 남는다** — Regina 지적으로 결정 사항에 명시하고 검증 2건(남의 역할 수정·자기 역할 삭제)을 추가했다. 허용 값은 `models/role_assignment.TENANT_ROLES` 5종뿐이며 스키마 단계에서 **422**(구 3역할은 읽기만 허용 — `UserRoleRead` 에는 검증을 걸지 않았다). 중복은 앱 **409** + DB 부분 유니크(`uq_user_roles_active_pair`, 마이그레이션 `d6e7f8a9b0c1`). **부분 유니크여야 한다** — 소프트 삭제 테이블이라 평범한 유니크면 역할 해제 후 재배정이 IntegrityError 로 터진다(선례: `uq_user_departments_one_primary`). 검증은 전부 **API 경로**로 했다(`tests/test_user_roles_guard.py` 11건) — DB 직접 삽입이 이 결함을 놓친 원인이라서다.
+
+    **잔여 ①: FE 드롭다운(⑤).** `ROLE_NAME_OPTIONS` 가 구 역할명 7종이라 **이제 화면에서 역할을 배정하면 전부 422 로 거부된다.** 잘못된 값이 저장되지 않게 된 것이지 화면이 깨진 것은 아니나, FE 수정 전까지 역할 배정은 API 로만 가능하다 — Regina 역할 UI 작업 범위.
+
+    **잔여 ②: 운영 부트스트랩.** 부트스트랩 예외의 `sys_admin` 은 `user_roles` 의 역할 값이지 `users.role == "admin"` 이 아니다(ADR-0031 §3.2 — 한쪽으로 다른 쪽을 추론하지 않는다). **운영 `user_roles` 는 구 3행뿐이라 `sys_admin` 보유자도 0명이며, 따라서 첫 행은 API 로 만들 수 없다.** 마스터가 SQL 로 첫 `sys_admin` 1행을 넣어야 열린다. **고객사 온보딩 때마다 반복되는 상황이라 절차로 고정했다 — §8.5** (실행 SQL·검증 포함). 실데이터 변경이므로 마스터가 직접 실행한다.
+
+36. **`RequestValidationError` 핸들러가 커스텀 validator 를 직렬화하지 못했다 (2026-09-16 발견·수정)** — `app/main.py` 가 `exc.errors()` 를 그대로 `JSONResponse` 에 넣고 있었다. Pydantic 커스텀 validator 가 `ValueError` 를 던지면 `errors()` 의 `ctx.error` 에 **예외 객체가 그대로** 실려 있어 `TypeError: Object of type ValueError is not JSON serializable` 로 터진다 — **422 를 내려야 할 자리에서 500 이 났다.** 13.9-35 값 검증 구현 중 실측으로 드러났다(그 전까지 커스텀 validator 가 한 건도 없어 발현하지 않았다). 조치: FastAPI 기본 핸들러와 같이 `jsonable_encoder` 를 거치게 했다. **필드 제약(`Field(pattern=...)`)만 쓰던 동안은 보이지 않던 부채다** — 앞으로 validator 를 추가하는 쪽이 이 함정을 다시 밟지 않는다.
+
+37. **로컬 `icfr-backend` 컨테이너가 `Restarting (255)` 로 돈다 (2026-09-16 관찰, 미수정)** — 로컬 환경 문제이며 **운영은 정상**(네 컨테이너 healthy, backend 7일째 안정, 마스터 확인). 재현 조건: `docker compose ps` 에서 `icfr-backend` 가 `Restarting (255)` 인데 `docker compose logs backend` 에는 헬스체크 200 이 계속 찍힌다. **이번 작업은 pytest/SQLite 로 진행해 막히지 않았으나, 로컬 postgres·MinIO 가 필요한 검증(예: 13.9-33 증빙 삭제 후 객체 잔존 실증)에서는 막힌다.** 손대지 않았다.
 
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
@@ -1955,6 +2045,8 @@ HTTP 200
 ## 14. 변경 로그 (Changelog)
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
+
+- **2026-09-16 / TrustBuilder + Claude** — **역할 배정 API 권한 가드·값 검증 (13.9-35 백엔드 해소, 보안 결함 수정)** (`prompts/ICFR_role_guard_fix_20260909.md`). ①**가드**: `/api/users/roles` 의 생성·수정·삭제가 로그인만 확인하던 상태를 `core/permissions.require_role_assigner` 로 막았다 — **세 경로 전부**다. 배정만 막으면 `external_auditor` 가 자기 역할 행을 지워 조회 전용을 벗어나는 구멍이 남는다(Regina 지적으로 프롬프트 §2.1 에 명시 + 검증 2건 추가). `require_admin`(`users.role`)은 쓰지 않았다(ADR-0031 §3.2). **부트스트랩 예외** — `icfr_manager` 0명인 테넌트에서만 `user_roles` 의 `sys_admin` 이 첫 배정을 하고, 1명이 생기면 닫힌다(ADR-0031 §3.3 신설). ②**값 검증**: 허용 값은 `models/role_assignment.TENANT_ROLES` 5역할뿐이며 스키마 단계에서 **422**. 구 3역할은 **읽기만 허용**(`UserRoleRead` 에는 검증 미적용)해 기존 행을 깨지 않으면서 확산만 막는다(13.9-24). ③**중복**: 앱 **409** + DB 부분 유니크(`uq_user_roles_active_pair`, `d6e7f8a9b0c1`). **소프트 삭제 테이블이라 부분 유니크여야 한다** — 평범한 유니크면 역할 해제 후 재배정이 500 으로 터진다. ④**테스트 11건 전부 API 경로**(`tests/test_user_roles_guard.py`) — 기존 역할 테스트가 전부 DB 직접 삽입이라 API 가 한 번도 검증되지 않은 것이 이 결함의 원인이었다. 부트스트랩 검증은 별도 테넌트를 쓴다(기본 테넌트엔 다른 테스트의 `icfr_manager` 가 이미 있어 "0명" 상태를 만들 수 없다). ⑤**부수 수정**: `main.py` 의 422 핸들러가 커스텀 validator 의 `ValueError` 를 직렬화하지 못해 500 이 나던 것을 `jsonable_encoder` 로 고쳤다(13.9-36). `test_org_roles.py` 의 무조건 `UserRole` 삽입 1곳을 다른 파일과 같은 멱등 형태로 맞췄다. ⑥**잔여**: FE `ROLE_NAME_OPTIONS` 가 구 역할명 7종이라 **화면 배정은 전부 422** — Regina 역할 UI 작업 범위. 운영은 `user_roles` 에 `sys_admin` 도 0명이라 첫 1행을 마스터가 SQL 로 넣어야 부트스트랩이 열린다. 마이그레이션 포함이라 **push 대기**(CLAUDE.md §8.3).
 
 - **2026-09-15 / TrustBuilder + Claude** — **API 계약 문서 3종 참조 표기 정리 + 테넌트 역할 배정 경로 조사** (문서만, 코드 변경 0건). ①**참조 정리**: 문서명 없는 `§` 는 그 문서의 절, 다른 문서는 `ADR-0032 §2.7`·`ClaudeICFR.md` 13.9-29 처럼 문서명을 붙이는 규칙을 3종 머리말에 명시. **ADR 절 번호 오기 3건 정정** — `evidence-contract.md` 의 "ADR-0032 §2.4"(삭제 시 파일 보존)·"§2.5"(권한 두 축)는 **3-3 프롬프트의 절 번호**였고 실제 ADR 은 §2.7, `org-contract.md` 의 owner_name 근거 "ADR-0031 §2.4" 는 무관한 절(이해상충)이라 제거. 같은 오기가 13.9-33 에도 있어 함께 정정. 프롬프트 번호(§5-6·§5 검증·3-1 STEP 0·3-2·2-A-4-3)는 내용으로 풀었고, "ADR-0017 §19" 는 `ClaudeICFR.md` §19 로, 나머지 `13.9-xx` 는 문서명을 붙였다. `org-contract.md` 는 §3.4 가 §3.3 앞에 있던 순서를 바로잡고 §4 를 가리키던 교체 동작 참조를 §6-① 로 고쳤다. ②**조사(Regina 질문)**: 신규 5역할은 `/api/users/roles` 로 배정 가능하고 `/me` 에 나온다. 422 는 `/api/org/assignments` 한정이며 의도된 동작. **그러나 그 경로에 권한 가드·값 검증이 없어 자기 승격·`external_auditor` 자기 해제가 실측으로 재현되고, FE 드롭다운은 구 역할명이라 5역할을 못 만든다** → 13.9-35 등록, 수정은 별도 지시 대기.
 
