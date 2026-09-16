@@ -309,7 +309,12 @@ def test_policy_toggle_blocks_conflict(client: TestClient, org_ctx) -> None:
     _, ctrl_id = _chain(db, "I1")
 
     admin = db.query(User).filter(User.email == "admin@acme.example").one()
-    db.add(UserRole(user_id=admin.id, role_name="icfr_manager"))
+    # 같은 역할이 2행 저장되지 않는다(`uq_user_roles_active_pair`, 13.9-35 ④).
+    # 다른 파일의 같은 헬퍼들과 동일한 형태 — 부수효과에 기대지 않고 없을 때만 넣는다.
+    if db.query(UserRole).filter(UserRole.user_id == admin.id,
+                                 UserRole.role_name == "icfr_manager",
+                                 UserRole.is_deleted == False).first() is None:  # noqa: E712
+        db.add(UserRole(user_id=admin.id, role_name="icfr_manager"))
     db.commit()
     assert manager_id is not None
 
