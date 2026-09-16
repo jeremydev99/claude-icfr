@@ -16,7 +16,11 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser
-from app.models.role_assignment import ROLE_EXTERNAL_AUDITOR, ROLE_ICFR_MANAGER
+from app.models.role_assignment import (
+    ROLE_EXTERNAL_AUDITOR,
+    ROLE_ICFR_MANAGER,
+    ROLE_SYS_ADMIN,
+)
 from app.models.user import User
 from app.models.user_mgmt import UserRole
 
@@ -71,3 +75,48 @@ def require_icfr_manager(user: CurrentUser, db: Session = Depends(get_db)) -> Us
             detail="내부회계관리자 권한이 필요합니다",
         )
     return user
+
+
+def has_icfr_manager(db: Session) -> bool:
+    """활성 tenant 에 `icfr_manager` 보유자가 1명이라도 있는가.
+
+    `user_roles` 는 `AuditedBase` 라 tenant 필터가 자동이다(ADR-0025) —
+    `tenant_roles` 와 같은 이유로 수동 필터를 붙이지 않는다.
+    """
+    return db.query(UserRole).filter(
+        UserRole.role_name == ROLE_ICFR_MANAGER,
+        UserRole.is_deleted == False,  # noqa: E712
+    ).first() is not None
+
+
+def require_role_assigner(user: CurrentUser, db: Session = Depends(get_db)) -> User:
+    """테넌트 역할 배정·수정·삭제 가드 (ADR-0031 §3.3, 13.9-35).
+
+    **배정만 막으면 안 된다** — `external_auditor` 가 자기 역할 행을 지우면
+    조회 전용을 스스로 벗어난다. 생성·수정·삭제 세 경로가 같은 가드를 쓴다.
+
+    **`require_admin`(`users.role`)으로 막지 않는다**(§3.2). 시스템 계정 관리
+    권한과 제도 운영 권한은 서로를 추론하지 않으며, `sys_admin` 은 제도 활동에
+    참여하지 않는다(§2.1.1).
+
+    **부트스트랩 예외** — 테넌트에 `icfr_manager` 가 0명일 때만 `user_roles` 의
+    `sys_admin` 이 배정할 수 있다. 첫 배정을 할 사람이 없는 상태를 풀기 위한
+    것이며, 1명이라도 생기면 이 경로는 닫힌다. `sys_admin` 이 제도 운영에
+    참여하는 것이 아니라 **초기 셋업만** 하는 것이고, 그 사실이 조건으로
+    코드에 남는다. 이 조건이 없으면 "sys_admin 도 제도 역할을 배정한다"로
+    잘못 읽힌다.
+
+    **여기서도 `users.role` 은 보지 않는다** — 그래서 `user_roles` 가 완전히 빈
+    테넌트는 첫 행을 API 로 만들 수 없다. 그건 실데이터 시딩이며 마스터가
+    직접 실행한다(13.9-35).
+    """
+    roles = tenant_roles(db, user.id)
+    if ROLE_ICFR_MANAGER in roles:
+        return user
+    if ROLE_SYS_ADMIN in roles and not has_icfr_manager(db):
+        return user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=("역할 배정은 내부회계관리자만 가능합니다"
+                " (내부회계관리자가 없는 테넌트에 한해 시스템관리자가 첫 배정을 합니다)"),
+    )
