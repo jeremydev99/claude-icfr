@@ -59,7 +59,7 @@ export interface UserRoleUpdatePayload {
 }
 
 // 배정용 — 신규 5역할(ADR-0031)만 선택 가능. 값은 snake_case 정규값.
-// TODO: 협업자 라벨 확정 대기 — 아래 label은 임시 한글값.
+
 export const ROLE_ASSIGN_OPTIONS = [
   { value: 'icfr_manager', label: '내부회계관리자' },
   { value: 'ceo', label: '대표자' },
