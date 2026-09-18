@@ -224,3 +224,54 @@ class ControlSearchResponse(BaseModel):
     skip: int
     limit: int
     sort: str
+
+
+# ── Dashboard summary (4-1) ─────────────────────────────────
+
+class SummaryBucket(BaseModel):
+    """집계 한 칸. `value` 는 **RCM 검색에 그대로 넘기는 필터 값**이다.
+
+    화면이 라벨을 다시 만들지 않도록 `label` 을 함께 낸다 — 프로세스명처럼
+    백엔드에만 있는 값이 섞여 있어 매핑을 FE 에 두면 반쪽이 된다.
+    """
+    value: str
+    label: str
+    count: int
+
+
+class SummaryGroup(BaseModel):
+    """집계 한 묶음. `filter_param` 이 None 이면 드릴스루할 수 없는 묶음이다."""
+    key: str
+    label: str
+    filter_param: str | None = None
+    buckets: list[SummaryBucket] = []
+
+
+class OrgSummary(BaseModel):
+    """통제 조직별 — `control_owner` 배정 → 그 사람의 주 소속 부서(ADR-0031 §2.2).
+
+    **새 분류 체계가 아니다.** 배정이 0건이면 `unassigned` 가 전체 건수가 된다.
+    """
+    unassigned: int
+    buckets: list[SummaryBucket] = []
+
+
+class ProgressSummary(BaseModel):
+    """진행 현황 — 평가 회차(ADR-0032)가 생기면 자동으로 채워진다.
+
+    `targets` 는 시점별 진행 의무(회차 × 대상 통제), `completed` 는 활동이 한 건이라도
+    기록된 대상 수, `incomplete` 는 나머지다. 회차 0건이면 전부 0 이며 **0 을 가리지 않는다.**
+    """
+    cycles: int
+    targets: int
+    activities: int
+    completed: int
+    incomplete: int
+
+
+class RcmSummaryResponse(BaseModel):
+    control_total: int
+    process_total: int
+    groups: list[SummaryGroup] = []
+    org: OrgSummary
+    progress: ProgressSummary

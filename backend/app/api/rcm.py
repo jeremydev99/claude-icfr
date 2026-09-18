@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser
+from app.models.assessment import AssessmentActivity, AssessmentCycle, CycleTarget
+from app.models.org import Department, UserDepartment
 from app.models.rcm import (
     Control,
     ControlAssertion,
@@ -37,6 +39,7 @@ from app.models.rcm_baseline import (
     RiskInstance,
     SubProcessInstance,
 )
+from app.models.role_assignment import ROLE_CONTROL_OWNER
 from app.schemas.rcm import (
     BulkDeleteRequest,
     BulkUpdateRequest,
@@ -47,9 +50,12 @@ from app.schemas.rcm import (
     ControlSearchOut,
     ControlSearchResponse,
     ControlUpdate,
+    OrgSummary,
     ProcessCreate,
     ProcessRead,
     ProcessUpdate,
+    ProgressSummary,
+    RcmSummaryResponse,
     RiskCategoryCreate,
     RiskCategoryRead,
     RiskCategoryUpdate,
@@ -59,6 +65,8 @@ from app.schemas.rcm import (
     SubProcessCreate,
     SubProcessRead,
     SubProcessUpdate,
+    SummaryBucket,
+    SummaryGroup,
 )
 from app.services.control_resolver import (
     resolve_control_assertion_links,
@@ -67,6 +75,26 @@ from app.services.control_resolver import (
     resolve_processes,
 )
 from app.services.excel_parser import find_data_start_row, find_rcm_sheet
+
+# `_assignments_by_target` 은 배치 해석용 선계산 — 통제마다 조회하면 93건에 수백 회가 된다.
+# `api/role_assignment.py` 도 같은 이유로 이 함수를 쓴다.
+from app.services.role_resolver import _assignments_by_target, resolve_roles_for_control
+
+# 통제활동 6종 (ADR-0018 표기). 대시보드 집계와 검색 필터가 같은 목록을 본다 —
+# 한쪽만 늘어나면 화면에는 보이는데 눌러도 필터가 안 걸리는 상태가 된다.
+ACTIVITY_FIELDS = (
+    "activity_approval", "activity_verification", "activity_physical",
+    "activity_master_data", "activity_reconciliation", "activity_supervision",
+)
+ACTIVITY_LABELS = {
+    "activity_approval": "승인", "activity_verification": "검증",
+    "activity_physical": "물리적통제", "activity_master_data": "마스터데이터",
+    "activity_reconciliation": "대사", "activity_supervision": "감독",
+}
+
+# 값이 비어 있는 통제를 가리키는 필터 값. 빈 문자열을 쓰면 "필터 없음"과 구분되지 않아
+# **"미지정 24건"을 눌렀는데 전체가 나오는** 상태가 된다(4-1 테스트가 잡은 건).
+UNSET_FILTER = "__none__"
 
 router = APIRouter(prefix="/api/rcm", tags=["rcm"])
 
@@ -458,6 +486,147 @@ def delete_risk_category(rc_id: UUID, user: CurrentUser = None, db: Session = De
 
 # ── Controls — 정적 경로 먼저 (파라미터 경로보다 앞에 위치해야 함) ──
 
+@router.get("/summary", response_model=RcmSummaryResponse)
+def get_rcm_summary(user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """대시보드 RCM 집계 (4-1). **전부 resolver 경유** — baseline 직접 조회 금지(ADR-0027).
+
+    프론트에서 목록을 받아 집계하지 않는 이유: ①검색 API 는 페이징되어 전량을 따로
+    받아야 하고 ②고객사 통제가 수백~수천 건이면 전송량이 그대로 늘며 ③조직별 집계는
+    역할 판정(`role_resolver`)이 필요한데 그것을 FE 에 복제하면 판정이 두 곳이 된다.
+
+    **0 건도 0 으로 낸다.** 배정 0건·회차 0건이 보이는 것 자체가 현황이다 —
+    "준비중"으로 가리면 현황판이 현황을 말하지 못한다.
+
+    `buckets[].value` 는 RCM 검색에 그대로 넘기는 필터 값이고, 묶음의 `filter_param` 이
+    그 파라미터 이름이다. 둘을 합치면 드릴스루 링크가 된다.
+    """
+    controls = resolve_controls(db)
+    processes = resolve_processes(db)
+
+    def _count(items: list[dict], key: str, mapping: dict[str, str]) -> list[SummaryBucket]:
+        """값별 건수. `mapping` 순서를 따르되, 목록에 없는 값이 나오면 뒤에 붙인다 —
+        데이터에만 있는 값이 집계에서 조용히 사라지면 합계가 맞지 않는다."""
+        counts: dict[str, int] = {}
+        for it in items:
+            v = it[key]
+            k = UNSET_FILTER if v is None or v == "" else str(v)
+            counts[k] = counts.get(k, 0) + 1
+        ordered = [k for k in mapping if k in counts] + [k for k in counts if k not in mapping]
+        return [
+            SummaryBucket(
+                value=k,
+                label="미지정" if k == UNSET_FILTER else mapping.get(k, k),
+                count=counts[k],
+            )
+            for k in ordered
+        ]
+
+    groups = [
+        SummaryGroup(
+            key="is_key_control", label="핵심통제 여부", filter_param="is_key_control",
+            buckets=_count(controls, "is_key_control", {"True": "핵심통제", "False": "비핵심통제"}),
+        ),
+        # **`frequency`(수행주기)와 다른 축이다.** 라벨에서 구분되게 쓸 것 — 나란히 보이면 혼동한다.
+        SummaryGroup(
+            key="assessment_frequency", label="평가주기", filter_param="assessment_frequency",
+            buckets=_count(controls, "assessment_frequency", {
+                "annual": "연", "semiannual": "반기", "quarterly": "분기",
+                "monthly": "월", "weekly": "주",
+            }),
+        ),
+        SummaryGroup(
+            key="frequency", label="수행주기", filter_param="frequency",
+            buckets=_count(controls, "frequency", {
+                "O": "수시", "D": "일", "W": "주", "M": "월", "Q": "분기", "A": "연",
+            }),
+        ),
+        SummaryGroup(
+            key="process", label="프로세스별", filter_param="process_code",
+            buckets=_count(controls, "process_code", {p["code"]: f'{p["code"]} {p["name"]}' for p in processes}),
+        ),
+        SummaryGroup(
+            key="preventive_detective", label="예방/적발", filter_param="preventive_detective",
+            buckets=_count(controls, "preventive_detective", {"P": "예방", "D": "적발"}),
+        ),
+        SummaryGroup(
+            key="auto_manual", label="자동/수동", filter_param="auto_manual",
+            buckets=_count(controls, "auto_manual", {"A": "자동", "M": "수동", "IT": "IT의존수동"}),
+        ),
+        SummaryGroup(
+            key="ipe_relevant", label="IPE 관련", filter_param="ipe_relevant",
+            buckets=_count(controls, "ipe_relevant", {"Y": "관련", "N": "무관", "N/A": "해당없음"}),
+        ),
+        # 통제활동은 6개 플래그라 **한 통제가 여러 칸에 들어간다** — 합이 전체와 다르다.
+        SummaryGroup(
+            key="activity", label="통제활동 유형", filter_param="activity",
+            buckets=[
+                SummaryBucket(value=f, label=ACTIVITY_LABELS[f], count=sum(1 for c in controls if c[f]))
+                for f in ACTIVITY_FIELDS
+            ],
+        ),
+    ]
+
+    # ── 통제 조직별 — 새 분류가 아니라 3-1 의 부서 + 역할 배정을 쓴다(ADR-0031 §2.2) ──
+    assignments = _assignments_by_target(db)
+    process_id_by_code = {p["code"]: p["id"] for p in processes}
+    # user_id → 주 소속 부서. `_primary_department_manager` 를 쓰지 않는 이유 —
+    # 그쪽은 dept_approver 유도용이라 **책임자가 없는 부서를 버린다.** 조직 집계는 그대로 세야 한다.
+    dept_name = {
+        d.id: d.name
+        for d in db.query(Department).filter(Department.is_deleted == False).all()  # noqa: E712
+    }
+    primary_dept_of = {
+        m.user_id: m.department_id
+        for m in db.query(UserDepartment).filter(
+            UserDepartment.is_primary == True,  # noqa: E712
+            UserDepartment.is_deleted == False,  # noqa: E712
+        ).all()
+    }
+
+    org_counts: dict[UUID, int] = {}
+    unassigned = 0
+    for c in controls:
+        roles = resolve_roles_for_control(
+            db, c["id"], process_id_by_code.get(c["process_code"]),
+            assignments=assignments, primary_dept={}, user_names={},
+        )
+        owner = next((r for r in roles if r["role_name"] == ROLE_CONTROL_OWNER), None)
+        dept_id = primary_dept_of.get(owner["user_id"]) if owner and owner["user_id"] else None
+        if dept_id is None:
+            unassigned += 1
+            continue
+        org_counts[dept_id] = org_counts.get(dept_id, 0) + 1
+
+    org = OrgSummary(
+        unassigned=unassigned,
+        buckets=[
+            SummaryBucket(value=str(d), label=dept_name.get(d, "(삭제된 부서)"), count=n)
+            for d, n in sorted(org_counts.items(), key=lambda kv: -kv[1])
+        ],
+    )
+
+    # ── 진행 현황 — 회차가 생기면 자동으로 채워진다(ADR-0032) ──
+    cycles = db.query(AssessmentCycle).filter(
+        AssessmentCycle.is_deleted == False).count()  # noqa: E712
+    targets = db.query(CycleTarget).filter(
+        CycleTarget.is_deleted == False).count()  # noqa: E712
+    acts = db.query(AssessmentActivity).filter(
+        AssessmentActivity.is_deleted == False).all()  # noqa: E712
+    done_pairs = {(a.cycle_id, a.control_id) for a in acts}
+    completed = len(done_pairs)
+
+    return {
+        "control_total": len(controls),
+        "process_total": len(processes),
+        "groups": groups,
+        "org": org,
+        "progress": ProgressSummary(
+            cycles=cycles, targets=targets, activities=len(acts),
+            completed=completed, incomplete=max(targets - completed, 0),
+        ),
+    }
+
+
 @router.get("/controls/search", response_model=ControlSearchResponse)
 def search_controls(
     q: str | None = None,
@@ -470,6 +639,12 @@ def search_controls(
     preventive_detective: str | None = None,
     assertion: str | None = None,
     owner: str | None = None,
+    # 대시보드 드릴스루용 (4-1). **`frequency`(통제 수행주기)와 다른 축이다** —
+    # `assessment_frequency` 는 평가주기(연·반기·분기·월·주, ADR-0032 §2)다.
+    assessment_frequency: str | None = None,
+    ipe_relevant: str | None = None,
+    # 통제활동 6종 중 하나의 이름(`activity_approval` 등). 그 플래그가 True 인 통제만.
+    activity: str | None = None,
     skip: int = 0,
     limit: int = 100,
     sort_by: str = "code",
@@ -483,10 +658,29 @@ def search_controls(
     관계 필드(process_code/sub_process_code/risk_level/assertions)·source envelope 는
     resolver 가 이미 채워 반환하므로 여기서 조인하지 않는다.
     """
+    if activity is not None and activity not in ACTIVITY_FIELDS:
+        # 조용히 무시하면 필터가 안 걸린 전체 목록이 돌아가 "필터가 듣지 않는다"가 된다.
+        raise HTTPException(
+            status_code=422,
+            detail=f"허용되지 않는 통제활동 유형 '{activity}'. 허용: {', '.join(ACTIVITY_FIELDS)}",
+        )
+
     rows = resolve_controls(db)  # 활성 tenant 자동 격리, 관계 필드·envelope 포함
 
     def _has(text: str | None, needle: str) -> bool:
         return text is not None and needle.lower() in text.lower()
+
+    def _selected(actual, wanted: str | None) -> bool:
+        """필터 일치. `wanted` 가 None 이면 필터를 걸지 않고, `UNSET_FILTER` 면 **값이 빈 것만** 고른다.
+
+        집계에는 "미지정" 칸이 나오는데 그 필터로 이동할 수 없으면, 숫자를 눌렀을 때
+        전체 목록이 나온다 — 화면이 거짓말을 한다.
+        """
+        if wanted is None:
+            return True
+        if wanted == UNSET_FILTER:
+            return actual is None or actual == ""
+        return actual == wanted
 
     filtered = []
     for r in rows:
@@ -495,21 +689,27 @@ def search_controls(
             continue
         if owner and not _has(r["owner_name"], owner):
             continue
-        if frequency and r["frequency"] != frequency:
+        if not _selected(r["frequency"], frequency):
             continue
         if is_key_control is not None and r["is_key_control"] != is_key_control:
             continue
-        if auto_manual and r["auto_manual"] != auto_manual:
+        if not _selected(r["auto_manual"], auto_manual):
             continue
-        if preventive_detective and r["preventive_detective"] != preventive_detective:
+        if not _selected(r["preventive_detective"], preventive_detective):
             continue
-        if risk_level and r["risk_level"] != risk_level:
+        if not _selected(r["risk_level"], risk_level):
             continue
-        if sub_process_code and r["sub_process_code"] != sub_process_code:
+        if not _selected(r["sub_process_code"], sub_process_code):
             continue
-        if process_code and r["process_code"] != process_code:
+        if not _selected(r["process_code"], process_code):
             continue
         if assertion and assertion not in r["assertions"]:
+            continue
+        if not _selected(r["assessment_frequency"], assessment_frequency):
+            continue
+        if not _selected(r["ipe_relevant"], ipe_relevant):
+            continue
+        if activity and not r[activity]:
             continue
         filtered.append(r)
 
