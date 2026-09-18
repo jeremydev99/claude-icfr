@@ -27,6 +27,11 @@ from app.models.rcm_baseline import (
     ACTION_OVERRIDE,
     ASSERTION_ACTION_ADD,
     ASSERTION_ACTION_REMOVE,
+    ASSESSMENT_FREQUENCIES,
+    AUTO_MANUAL_VALUES,
+    FREQUENCY_VALUES,
+    IPE_RELEVANT_VALUES,
+    PREVENTIVE_DETECTIVE_VALUES,
     BaselineControl,
     BaselineControlAssertion,
     BaselineProcess,
@@ -86,6 +91,17 @@ ACTIVITY_FIELDS = (
     "activity_approval", "activity_verification", "activity_physical",
     "activity_master_data", "activity_reconciliation", "activity_supervision",
 )
+# 분류 라벨 — 값 목록은 `models/rcm_baseline.py` 가 정의처이고 여기는 표시 문구만 갖는다.
+# 목록에 값을 더하면 여기 라벨이 없어 KeyError 로 즉시 드러난다(조용히 빠지지 않는다).
+PREVENTIVE_DETECTIVE_LABELS = {"P": "예방", "D": "적발"}
+AUTO_MANUAL_LABELS = {"A": "자동", "M": "수동", "IT": "IT의존수동"}
+FREQUENCY_LABELS = {"O": "수시", "D": "일", "W": "주", "M": "월", "Q": "분기", "A": "연"}
+ASSESSMENT_FREQUENCY_LABELS = {
+    "weekly": "주", "monthly": "월", "quarterly": "분기",
+    "semiannual": "반기", "annual": "연",
+}
+IPE_RELEVANT_LABELS = {"Y": "관련", "N": "무관", "N/A": "해당없음"}
+
 ACTIVITY_LABELS = {
     "activity_approval": "승인", "activity_verification": "검증",
     "activity_physical": "물리적통제", "activity_master_data": "마스터데이터",
@@ -504,9 +520,16 @@ def get_rcm_summary(user: CurrentUser = None, db: Session = Depends(get_db)) -> 
     processes = resolve_processes(db)
 
     def _count(items: list[dict], key: str, mapping: dict[str, str]) -> list[SummaryBucket]:
-        """값별 건수. `mapping` 순서를 따르되, 목록에 없는 값이 나오면 뒤에 붙인다 —
-        데이터에만 있는 값이 집계에서 조용히 사라지면 합계가 맞지 않는다."""
-        counts: dict[str, int] = {}
+        """값별 건수. **`mapping` 의 모든 값을 0 이라도 낸다.**
+
+        데이터에 있는 값만 나열하면 **0건인 분류는 축이 있다는 사실조차 화면에서 사라진다** —
+        "핵심통제 93" 만 보이고 "비핵심 0" 이 없으면, 93건이 전부 핵심이라는 사실이 드러나지
+        않는다. 그 대비가 곧 현황이다(4-1 §0 "0 을 0 으로 보여준다").
+
+        그래서 기준값 집합은 데이터가 아니라 **상수**에서 온다(`models/rcm_baseline.py`).
+        목록에 없는 값이 데이터에 있으면 뒤에 붙인다 — 그래야 합계가 맞는다.
+        """
+        counts: dict[str, int] = {k: 0 for k in mapping}
         for it in items:
             v = it[key]
             k = UNSET_FILTER if v is None or v == "" else str(v)
@@ -524,21 +547,19 @@ def get_rcm_summary(user: CurrentUser = None, db: Session = Depends(get_db)) -> 
     groups = [
         SummaryGroup(
             key="is_key_control", label="핵심통제 여부", filter_param="is_key_control",
+            # 파이썬 bool 의 str() 표기. FE 가 "True"/"False" 를 모두 받는다(urlFilters.pure.ts).
             buckets=_count(controls, "is_key_control", {"True": "핵심통제", "False": "비핵심통제"}),
         ),
         # **`frequency`(수행주기)와 다른 축이다.** 라벨에서 구분되게 쓸 것 — 나란히 보이면 혼동한다.
         SummaryGroup(
             key="assessment_frequency", label="평가주기", filter_param="assessment_frequency",
-            buckets=_count(controls, "assessment_frequency", {
-                "annual": "연", "semiannual": "반기", "quarterly": "분기",
-                "monthly": "월", "weekly": "주",
-            }),
+            buckets=_count(controls, "assessment_frequency",
+                           {v: ASSESSMENT_FREQUENCY_LABELS[v] for v in ASSESSMENT_FREQUENCIES}),
         ),
         SummaryGroup(
             key="frequency", label="수행주기", filter_param="frequency",
-            buckets=_count(controls, "frequency", {
-                "O": "수시", "D": "일", "W": "주", "M": "월", "Q": "분기", "A": "연",
-            }),
+            buckets=_count(controls, "frequency",
+                           {v: FREQUENCY_LABELS[v] for v in FREQUENCY_VALUES}),
         ),
         SummaryGroup(
             key="process", label="프로세스별", filter_param="process_code",
@@ -546,15 +567,18 @@ def get_rcm_summary(user: CurrentUser = None, db: Session = Depends(get_db)) -> 
         ),
         SummaryGroup(
             key="preventive_detective", label="예방/적발", filter_param="preventive_detective",
-            buckets=_count(controls, "preventive_detective", {"P": "예방", "D": "적발"}),
+            buckets=_count(controls, "preventive_detective",
+                           {v: PREVENTIVE_DETECTIVE_LABELS[v] for v in PREVENTIVE_DETECTIVE_VALUES}),
         ),
         SummaryGroup(
             key="auto_manual", label="자동/수동", filter_param="auto_manual",
-            buckets=_count(controls, "auto_manual", {"A": "자동", "M": "수동", "IT": "IT의존수동"}),
+            buckets=_count(controls, "auto_manual",
+                           {v: AUTO_MANUAL_LABELS[v] for v in AUTO_MANUAL_VALUES}),
         ),
         SummaryGroup(
             key="ipe_relevant", label="IPE 관련", filter_param="ipe_relevant",
-            buckets=_count(controls, "ipe_relevant", {"Y": "관련", "N": "무관", "N/A": "해당없음"}),
+            buckets=_count(controls, "ipe_relevant",
+                           {v: IPE_RELEVANT_LABELS[v] for v in IPE_RELEVANT_VALUES}),
         ),
         # 통제활동은 6개 플래그라 **한 통제가 여러 칸에 들어간다** — 합이 전체와 다르다.
         SummaryGroup(

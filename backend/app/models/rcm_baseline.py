@@ -80,6 +80,16 @@ ASSESSMENT_FREQUENCIES = (
     ASSESSMENT_SEMIANNUAL, ASSESSMENT_ANNUAL,
 )
 
+# ── 통제 분류 값 (ADR-0018 표기) ──────────────────────────────────
+# **여기가 유일한 정의처다.** 스키마의 `pattern=` 과 대시보드 집계가 같은 목록을 본다 —
+# 예전에는 Create/Update 스키마의 정규식 두 곳에만 있어서, 집계가 "데이터에 있는 값"만
+# 나열하면 **0건인 분류는 축이 있다는 사실조차 화면에서 사라졌다**(2026-09-19 A-1).
+PREVENTIVE_DETECTIVE_VALUES = ("P", "D")
+AUTO_MANUAL_VALUES = ("A", "M", "IT")
+FREQUENCY_VALUES = ("O", "D", "W", "M", "Q", "A")
+IPE_RELEVANT_VALUES = ("Y", "N", "N/A")
+RISK_LEVEL_VALUES = ("LR", "MR", "HR", "SR")
+
 ASSERTION_ACTION_ADD = "add"
 ASSERTION_ACTION_REMOVE = "remove"
 ASSERTION_ACTIONS = (ASSERTION_ACTION_ADD, ASSERTION_ACTION_REMOVE)

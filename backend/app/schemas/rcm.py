@@ -1,7 +1,23 @@
+import re
 from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.models.rcm_baseline import (
+    ASSESSMENT_FREQUENCIES,
+    AUTO_MANUAL_VALUES,
+    FREQUENCY_VALUES,
+    IPE_RELEVANT_VALUES,
+    PREVENTIVE_DETECTIVE_VALUES,
+    RISK_LEVEL_VALUES,
+)
+
+
+def _one_of(values: tuple[str, ...]) -> str:
+    """허용 값 목록 → 정규식. **목록을 두 번 적지 않기 위해서다** — 정규식에 직접 쓰면
+    상수와 어긋나도 알 방법이 없다. `N/A` 처럼 메타문자가 섞인 값이 있어 escape 한다."""
+    return "^(" + "|".join(re.escape(v) for v in values) + ")$"
 
 # ── Process ──────────────────────────────────────────────
 
@@ -61,7 +77,7 @@ class SubProcessRead(SubProcessBase):
 class RiskBase(BaseModel):
     code: str = Field(min_length=1, max_length=30)
     description: str
-    assessment_level: str = Field(default="LR", pattern="^(LR|MR|HR|SR)$")
+    assessment_level: str = Field(default="LR", pattern=_one_of(RISK_LEVEL_VALUES))
     sub_process_id: UUID
 
 class RiskCreate(RiskBase):
@@ -69,7 +85,7 @@ class RiskCreate(RiskBase):
 
 class RiskUpdate(BaseModel):
     description: str | None = None
-    assessment_level: str | None = Field(None, pattern="^(LR|MR|HR|SR)$")
+    assessment_level: str | None = Field(None, pattern=_one_of(RISK_LEVEL_VALUES))
 
 class RiskRead(RiskBase):
     # resolver 는 상위 미지정 add 행을 낼 수 있어 읽기에서는 nullable (Create 는 Base 상속으로 required 유지). ADR-0029.
@@ -120,8 +136,8 @@ class ControlBase(BaseModel):
 
     # 그룹 3
     is_key_control: bool = True
-    preventive_detective: str = Field(default="P", pattern="^(P|D)$")
-    auto_manual: str = Field(default="M", pattern="^(A|M|IT)$")
+    preventive_detective: str = Field(default="P", pattern=_one_of(PREVENTIVE_DETECTIVE_VALUES))
+    auto_manual: str = Field(default="M", pattern=_one_of(AUTO_MANUAL_VALUES))
     activity_approval: bool = False
     activity_verification: bool = False
     activity_physical: bool = False
@@ -131,10 +147,10 @@ class ControlBase(BaseModel):
 
     # 그룹 5
     related_accounts: str | None = None
-    frequency: str = Field(default="A", pattern="^(O|D|W|M|Q|A)$")
+    frequency: str = Field(default="A", pattern=_one_of(FREQUENCY_VALUES))
     # 평가주기 — frequency(통제 수행 주기)와 다른 개념. 일 단위 미지원(ADR-0032 §2.1)
-    assessment_frequency: str = Field(default="annual", pattern="^(weekly|monthly|quarterly|semiannual|annual)$")
-    ipe_relevant: str = Field(default="N/A", pattern="^(Y|N|N/A)$")
+    assessment_frequency: str = Field(default="annual", pattern=_one_of(ASSESSMENT_FREQUENCIES))
+    ipe_relevant: str = Field(default="N/A", pattern=_one_of(IPE_RELEVANT_VALUES))
     related_systems: str | None = None
     euc_description: str | None = None
 
@@ -147,8 +163,8 @@ class ControlUpdate(BaseModel):
     objective: str | None = None
     owner_name: str | None = None
     is_key_control: bool | None = None
-    preventive_detective: str | None = Field(None, pattern="^(P|D)$")
-    auto_manual: str | None = Field(None, pattern="^(A|M|IT)$")
+    preventive_detective: str | None = Field(None, pattern=_one_of(PREVENTIVE_DETECTIVE_VALUES))
+    auto_manual: str | None = Field(None, pattern=_one_of(AUTO_MANUAL_VALUES))
     activity_approval: bool | None = None
     activity_verification: bool | None = None
     activity_physical: bool | None = None
@@ -156,9 +172,9 @@ class ControlUpdate(BaseModel):
     activity_reconciliation: bool | None = None
     activity_supervision: bool | None = None
     related_accounts: str | None = None
-    frequency: str | None = Field(None, pattern="^(O|D|W|M|Q|A)$")
-    assessment_frequency: str | None = Field(None, pattern="^(weekly|monthly|quarterly|semiannual|annual)$")
-    ipe_relevant: str | None = Field(None, pattern="^(Y|N|N/A)$")
+    frequency: str | None = Field(None, pattern=_one_of(FREQUENCY_VALUES))
+    assessment_frequency: str | None = Field(None, pattern=_one_of(ASSESSMENT_FREQUENCIES))
+    ipe_relevant: str | None = Field(None, pattern=_one_of(IPE_RELEVANT_VALUES))
     related_systems: str | None = None
     euc_description: str | None = None
 
