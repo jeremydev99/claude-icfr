@@ -160,8 +160,10 @@ export const navigation: NavGroup[] = [
         label: '부서 관리',
         path: '/admin/departments',
         icon: Building2,
-        description: '부서 등록·계층·책임자 지정 (GET/POST /api/org/departments)',
-        status: 'api',
+        description: '부서 등록·소속 인원·책임자 지정',
+        status: 'ready',
+        // **`requiresIcfrManager` 를 붙이지 않는다** — 조회는 누구나 할 수 있고(서버도 인증만),
+        // 조직도를 보는 것 자체는 막을 이유가 없다. 화면 안에서 쓰기 버튼만 잠근다.
       },
       {
         label: '역할 배정',
