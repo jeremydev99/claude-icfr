@@ -8,6 +8,10 @@ type TenantId = string | null | undefined
 const tenantSegment = (tenantId: TenantId) => tenantId ?? 'no-tenant'
 
 export const queryKeys = {
+  dashboard: {
+    rcmSummary: (tenantId: TenantId) =>
+      ['tenant', tenantSegment(tenantId), 'dashboard', 'rcm-summary'] as const,
+  },
   rcm: {
     controls: (tenantId: TenantId, params?: unknown) =>
       ['tenant', tenantSegment(tenantId), 'rcm', 'controls', params] as const,
