@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -90,10 +90,52 @@ function BucketRow({ group, bucket }: { group: SummaryGroup; bucket: SummaryBuck
   )
 }
 
+/**
+ * 묶음 성격별 제목 색 (4종).
+ *
+ * 카드 10장이 전부 흰 제목이면 어느 것이 같은 종류인지 구분되지 않는다. 반대로 카드마다
+ * 다른 색을 주면 색이 의미를 잃는다 — **같은 성격끼리 같은 색**이라야 색이 정보를 나른다.
+ *
+ *   속성  통제 자체의 성질 (핵심·예방적발·자동수동·활동유형·IPE)
+ *   분류  통제를 무엇으로 묶어 보는가 (프로세스·조직)
+ *   주기  얼마나 자주 (평가주기·수행주기) — 두 축이 다르다는 것도 같은 색으로 묶어 보인다
+ *   현황  시간에 따라 변하는 값 (진행 현황) — 위 셋은 정적이고 이것만 움직인다
+ *
+ * 본문 영역은 사이드바 테마의 영향을 받지 않는다(테마는 `--sidebar-*` 토큰만 바꾼다).
+ * 세 테마 어디서도 이 색은 그대로다.
+ */
+const CATEGORY_STYLE = {
+  attribute: 'bg-blue-50 text-blue-900 border-blue-100',
+  grouping: 'bg-violet-50 text-violet-900 border-violet-100',
+  cadence: 'bg-teal-50 text-teal-900 border-teal-100',
+  status: 'bg-amber-50 text-amber-900 border-amber-100',
+} as const
+
+type Category = keyof typeof CATEGORY_STYLE
+
+const GROUP_CATEGORY: Record<string, Category> = {
+  is_key_control: 'attribute',
+  preventive_detective: 'attribute',
+  auto_manual: 'attribute',
+  ipe_relevant: 'attribute',
+  activity: 'attribute',
+  process: 'grouping',
+  assessment_frequency: 'cadence',
+  frequency: 'cadence',
+}
+
+function BlockTitle({ category, children }: { category: Category; children: ReactNode }) {
+  return (
+    <h3 className={cn('-m-3 mb-2 rounded-t-md border-b px-3 py-2 text-sm font-semibold', CATEGORY_STYLE[category])}>
+      {children}
+    </h3>
+  )
+}
+
 function GroupBlock({ group }: { group: SummaryGroup }) {
   return (
     <div className="rounded-md border p-3">
-      <h3 className="mb-1 text-sm font-semibold">{group.label}</h3>
+      <BlockTitle category={GROUP_CATEGORY[group.key] ?? 'attribute'}>{group.label}</BlockTitle>
       {group.key === 'activity' && (
         // 한 통제가 여러 활동을 가지므로 합이 전체와 다르다. 안 적으면 "숫자가 틀렸다"로 읽힌다.
         <p className="mb-1 text-xs text-muted-foreground">한 통제가 여러 유형에 해당할 수 있습니다</p>
@@ -114,7 +156,7 @@ function OrgBlock({ summary }: { summary: RcmSummary }) {
   const { org } = summary
   return (
     <div className="rounded-md border p-3">
-      <h3 className="mb-1 text-sm font-semibold">통제 조직별</h3>
+      <BlockTitle category="grouping">통제 조직별</BlockTitle>
       <p className="mb-1 text-xs text-muted-foreground">
         통제책임자 배정 → 그 사람의 주 소속 부서 기준
       </p>
@@ -146,7 +188,7 @@ function ProgressBlock({ summary }: { summary: RcmSummary }) {
   ]
   return (
     <div className="rounded-md border p-3">
-      <h3 className="mb-1 text-sm font-semibold">진행 현황</h3>
+      <BlockTitle category="status">진행 현황</BlockTitle>
       <p className="mb-1 text-xs text-muted-foreground">
         평가 회차가 생성되면 자동으로 채워집니다
       </p>
