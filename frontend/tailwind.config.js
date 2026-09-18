@@ -38,10 +38,16 @@ module.exports = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        // 사이드바는 자체 팔레트를 갖는다 — 본문 토큰(--foreground/--accent 등)을 그대로
+        // 쓰면 남색 배경에서 글자가 보이지 않는다(검정 글자 + 남색 배경).
         sidebar: {
           DEFAULT: 'hsl(var(--sidebar))',
+          foreground: 'hsl(var(--sidebar-foreground))',
+          muted: 'hsl(var(--sidebar-muted))',
           hover: 'hsl(var(--sidebar-hover))',
           border: 'hsl(var(--sidebar-border))',
+          selected: 'hsl(var(--sidebar-selected))',
+          'selected-foreground': 'hsl(var(--sidebar-selected-foreground))',
         },
       },
       borderRadius: {
