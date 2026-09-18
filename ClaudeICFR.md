@@ -2022,13 +2022,34 @@ HTTP 200
 
 23. **`user_tenant_access.role` — 테넌트별 단일값 역할 컬럼. 용도 불명확** — 단일값이라 겸직 표현이 불가하며 **ADR-0031 §2.2(한 사람이 통제 A에서는 통제책임자, 통제 B에서는 평가자)와 충돌**한다. **참조 코드 유무를 확인한 결과: 판정에 쓰는 코드가 0건이다.** 쓰기는 `api/user_mgmt.py:65`(사용자 생성 시 `users.role` 과 **같은 값을 복사**), `seeds/bootstrap.py:61`·`tests/conftest.py:60`(둘 다 `"admin"` 하드코딩). 읽기는 `api/auth.py:80` 이 `/me` 응답의 `tenants[].role` 로 실어 보내고 FE `store.ts` 의 `TenantSummary.role` 타입에만 존재한다 — **그 값으로 분기하는 코드는 BE·FE 통틀어 0건.** 즉 **저장되고 응답에 실려 나가지만 아무도 판정에 쓰지 않으며, `users.role` 과 중복 저장 상태다.** 제거 또는 용도 확정 필요. 제거 시 `/me` 응답 계약(`TenantAccessRead.role`)이 바뀌므로 Regina 공유 필요.
 
-24. **`user_roles` 기존 3행(Tester/Reviewer/Administrator)의 의미가 불명확 — ✅ 2026-09-18 정정: 운영에는 없다. 로컬 한정 문제다** — 특히 **`Reviewer` 는 ADR-0031 §1.2가 명시적으로 경고한 용어 혼동 대상**이다(통제 실행 층의 preparer/reviewer/approver vs 평가 층의 control_owner/assessor). 기존 값이 어느 층 의미인지 문서 근거가 없다. **신규 `assessor` 와 화면에서 나란히 보이면 사용자가 구분할 수 없다.** FE 역할 화면 표시를 확인하고 정리 방침을 정해야 한다. **정리는 운영 데이터 변경이므로 마스터가 직접 실행한다** — 3-1에서는 기존 3행을 건드리지 않았다(실데이터 변경은 별건). **2026-09-09 관찰 연결**: canEditHierarchy 작업에서 `/me` `tenant_roles` 실측 시 이 3행(`Administrator`/`Tester`)이 그대로 노출됨을 확인 — `can_write` 게이트와는 무관(그쪽만 사용)하지만 역할 UI 착수 시 이 부채부터 처리해야 한다.
+24. **`user_roles` 기존 3행(Tester/Reviewer/Administrator)의 의미가 불명확 — ✅ 2026-09-18 해소: 운영에는 없었고(로컬 한정), 시드 경로도 5역할로 교체** — 특히 **`Reviewer` 는 ADR-0031 §1.2가 명시적으로 경고한 용어 혼동 대상**이다(통제 실행 층의 preparer/reviewer/approver vs 평가 층의 control_owner/assessor). 기존 값이 어느 층 의미인지 문서 근거가 없다. **신규 `assessor` 와 화면에서 나란히 보이면 사용자가 구분할 수 없다.** FE 역할 화면 표시를 확인하고 정리 방침을 정해야 한다. **정리는 운영 데이터 변경이므로 마스터가 직접 실행한다** — 3-1에서는 기존 3행을 건드리지 않았다(실데이터 변경은 별건). **2026-09-09 관찰 연결**: canEditHierarchy 작업에서 `/me` `tenant_roles` 실측 시 이 3행(`Administrator`/`Tester`)이 그대로 노출됨을 확인 — `can_write` 게이트와는 무관(그쪽만 사용)하지만 역할 UI 착수 시 이 부채부터 처리해야 한다.
 
     **2026-09-18 정정 — 운영 `user_roles` 는 0행이었다(§8.5 부트스트랩 실행 전 실측).** 구 3역할은 **로컬 개발 DB 에만 있다**(`app/seeds/users.py` 가 tester/reviewer 계정과 함께 만든다). 그동안 "운영 `user_roles` 3행도 전부 구 값"(13.9-35 ⑤)이라고 적었던 것은 **로컬 실측을 운영으로 옮겨 적은 오류다.**
 
     **영향** — ①운영 데이터 정리가 필요 없다. 마스터가 실행할 실데이터 작업이 아니다. ②역할 UI 착수 전 선결 조건이 아니다 — 화면에 구 역할명이 섞여 보이는 상황은 로컬에서만 생긴다. ③남는 것은 **시드 정리**뿐이다(`seeds/users.py` 를 ADR-0031 5역할로 갱신). 신규 배정은 이미 422 로 막혀 있어 확산 경로는 닫혔다.
 
     **교훈: 로컬에서 본 것을 운영 상태로 적지 않는다.** 두 DB 는 시드 경로가 다르다.
+
+    **✅ 해소 (2026-09-18) — `seeds/users.py` 를 ADR-0031 5역할로 교체했다.** 안 고치면 **새 개발 환경을 만들 때마다 구 역할이 계속 생기고**, 13.9-35 값 검증 이후로는 그 값으로 API 배정이 안 되는 상태가 이어진다. **1:1 매핑을 만들지 않았다** — 기존 3개가 어느 층 의미였는지 문서 근거가 없으므로(위 서술) 개발·테스트에 **무엇이 필요한가**로 다시 짰다.
+
+    | 계정 | 테넌트 역할 | 근거 |
+    |---|---|---|
+    | `admin@acme.example` | `sys_admin` | 부트스트랩 1행. 없으면 아무도 역할을 배정할 수 없다 |
+    | `icfrmgr@acme.example` (신규) | `icfr_manager` | 배정·정책 변경 주체. **시스템 관리 계정과 분리**(ADR-0031 §2.1.1) |
+    | `extaudit@acme.example` (신규) | `external_auditor` | `can_write=false` 경로 확인용. FE 쓰기 차단 작업에 필요 |
+    | `tester@`·`reviewer@` | 없음 | 역할 없는 일반 사용자(= 기본 경로) |
+
+    `ceo`·`auditor` 는 시드하지 않았다 — **현재 어떤 판정도 두 값에 의존하지 않아 계정을 만들어도 확인할 동작이 없다.** 값은 `models/role_assignment.py` 상수를 참조한다(문자열 리터럴 금지).
+
+    **시드가 §8.5 절차를 그대로 재현한다** — `sys_admin` 1행만 직접 삽입하고, 그 자격으로 첫 `icfr_manager` 를 **API 로** 배정하고, 그 뒤부터는 `icfr_manager` 가 배정한다. **부트스트랩 경로가 로컬에서 매번 실제로 돈다.** 직접 삽입을 `bootstrap.py`(앱 기동 시 실행 — **운영 포함**)에 넣지 않은 이유가 중요하다 — 거기 넣으면 모든 환경이 자동으로 `sys_admin` 을 갖게 되어 §8.5 절차가 무의미해지고 ADR-0031 §3.2 경계도 무너진다.
+
+    **부수 수정**: 시드가 `UserTenantAccess` 를 만들지 않아 **시드 계정으로 로그인은 되지만 모든 요청이 403** 이던 것을 함께 고쳤다(테넌트 접근 행 생성).
+
+    **부트스트랩 검증 자리는 그대로다** — 시드가 `icfr_manager` 를 만들어 기본 테넌트에서는 "0명" 상태를 만들 수 없지만, `tests/test_user_roles_guard.py` 의 부트스트랩 테스트는 **별도 테넌트(`ROLEGUARD_B`)** 를 쓰므로 영향받지 않는다.
+
+    **로컬 실측 (2026-09-18, 실 Postgres)** — 시드 2회 실행 멱등 확인. `/me`: `icfrmgr` → `['icfr_manager']`·`can_write=true`, `extaudit` → `['external_auditor']`·`can_write=false`. 가드: **`sys_admin` 의 배정 시도 403**(`icfr_manager` 가 이미 있어 부트스트랩이 닫힘) / `icfr_manager` 배정 **201** / 구 역할명 **422**. 마이그레이션 `d6e7f8a9b0c1` 도 로컬 Postgres 에 적용해 **부분 유니크 인덱스가 `WHERE NOT is_deleted` 로 생성됨을 확인**했다(그동안 SQLite 로만 검증돼 있었다).
+
+    **기존 로컬 DB 의 구 3행은 시드가 지우지 않는다**(추가만 한다). 정리는 각자 로컬에서 — `DELETE FROM user_roles WHERE role_name IN ('Administrator', 'Reviewer', 'Tester');`
 
 25. **이해상충 판정 정정 — `control_owner = dept_approver` 는 충돌이 아니다 (2026-09-04 해소)** — 3-1 구현 후 `org-contract.md` 작성 중 발견: **배정을 하나만 했는데 충돌이 잡히는 상황**이 있었다. 통제책임자를 지정했을 뿐인데 그 사람이 자기 부서의 책임자라 `dept_approver` 유도값이 자기 자신이 된 경우다. **팀장이 통제책임자인 통제는 전부 이 형태이며 실무에서 흔하다** — 경고로 두면 대부분의 통제에 사유 입력을 요구하게 되고, 그러면 사유 기록이 형식화되어 보완통제 증적으로서의 값을 잃는다. **판단: 겸직이 아니라 부서승인 단계가 성립하지 않는 상황이다.** 부서승인은 "상급자가 검토한다"는 뜻인데 통제책임자가 팀장 본인이면 그 위 단계가 없다(ADR-0031 §2.6 이 부서승인을 선택 단계로 규정한 것의 연장선). 조치: `CONFLICT_PAIRS` 에서 제거하고 `dept_approval_skipped: bool` 로 상태 표시. 정책 금지 토글 대상에서도 빠진다. **`derived` 유래 값 자체는 판정에서 빼지 않았다** — 유도값도 실제 승인자가 되므로 다른 조합에서는 계속 대상이다. ADR-0031 §2.4 에 정정 이력으로 기록.
 
@@ -2128,6 +2149,8 @@ HTTP 200
 ## 14. 변경 로그 (Changelog)
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
+
+- **2026-09-18 / TrustBuilder + Claude** — **`seeds/users.py` 구 3역할 정리 (13.9-24 해소)**. 구 3역할은 로컬 시드 산물이었고(13.9-24 정정), 안 고치면 **새 개발 환경마다 계속 생기며 13.9-35 값 검증 때문에 그 값으로는 API 배정이 안 된다.** **1:1 매핑을 만들지 않고** 개발·테스트에 필요한 조합으로 다시 짰다 — `admin`=`sys_admin`(부트스트랩 1행), 신규 `icfrmgr@`=`icfr_manager`(배정·정책 주체, 시스템 관리 계정과 분리), 신규 `extaudit@`=`external_auditor`(`can_write=false` 경로), `tester@`·`reviewer@`=역할 없음. `ceo`·`auditor` 는 **의존하는 판정이 없어** 시드하지 않았다. 값은 `models/role_assignment.py` 상수 참조(리터럴 금지). **시드가 §8.5 절차를 재현한다** — `sys_admin` 1행만 직접 삽입, 첫 `icfr_manager` 는 그 자격으로 API 배정, 이후는 `icfr_manager` 가 배정. 직접 삽입을 `bootstrap.py`(운영 포함 기동 경로)에 두지 않은 이유를 코드에 남겼다. **부수 수정**: 시드가 `UserTenantAccess` 를 만들지 않아 시드 계정이 로그인 후 전부 403 이던 것을 고쳤다. 실측(실 Postgres): 시드 2회 멱등, `sys_admin` 배정 **403**(부트스트랩 닫힘)·`icfr_manager` **201**·구 역할명 **422**, 마이그레이션 `d6e7f8a9b0c1` 적용으로 부분 유니크 인덱스 생성 확인(그동안 SQLite 로만 검증).
 
 - **2026-09-18 / TrustBuilder + Claude** — **운영 부트스트랩 실행 확인 + 배포 경로 필터 적용 (13.8 해소)**. ①**13.9-35 운영 검증 완료** — 마스터가 §8.5 SQL 을 실행(`ynjun@synapsoft.co.kr` / `sys_admin` / `DEFAULT`, `INSERT 0 1`). API 검증 3단계 전부 통과: `/me` `tenant_roles: ['sys_admin']`·`can_write: true` → `sys_admin` 이 본인에게 `icfr_manager` 배정 **201** → `icfr_manager` 가 Regina 계정에 `external_auditor` 배정 **201**. **부트스트랩 경로가 실제로 열렸고 `icfr_manager` 전환까지 확인됐다.** ②**13.9-24 정정** — 구 3역할(`Administrator`/`Reviewer`/`Tester`)은 **운영에 없다. 로컬 시드(`seeds/users.py`) 산물이며 로컬 한정 문제다.** 실행 전 운영 `user_roles` 는 0행이었다. 그동안 "운영 3행"이라 적은 것은 로컬 실측을 운영으로 옮겨 적은 오류다 — **로컬에서 본 것을 운영 상태로 적지 않는다.** 남는 것은 시드 정리뿐이며 실데이터 작업이 아니다. ③**Regina 테스트 계정 회수 예정** — `teilua@synapsoft.co.kr` 의 `external_auditor`(role id `01a0b240-958e-…`)는 검증용이며 확인 후 회수한다. 회수 전까지 그 계정은 편집이 막힌다(조회 전용, 정상 동작). ④**13.8 조치 완료** — `deploy.yml` 에 `paths-ignore`(`'**.md'`·`docs/**`·`prompts/**`) 적용. **포함 목록(`paths`)이 아니라 제외 목록을 썼다** — 포함 목록은 모르는 경로를 만나면 배포를 **조용히** 건너뛰고, 제외 목록은 배포하는 쪽으로 기울어 실패가 눈에 보인다. `docker-compose*.yml`·`.github/workflows/**` 는 적지 않는 것만으로 포함된다. 근거는 §8.6.
 
