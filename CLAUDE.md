@@ -143,26 +143,36 @@ prompts/ICFR_setup_1_20260515.md 대로 작업해줘
 
 ## 8. Git 자동화 운영 방침
 
-### 7.1 역할 분리
+### 8.1 역할 분리
 - **claude.ai 채팅**: 기획·설계·토론 전용. 파일 직접 수정 불가.
 - **Claude Code (로컬)**: 파일 생성·수정 + `ClaudeICFR.md` 갱신 + git commit & push 일괄 수행.
 
-### 7.2 ClaudeICFR.md 갱신 주체
+### 8.2 ClaudeICFR.md 갱신 주체
 - 모든 `ClaudeICFR.md` 업데이트는 **Claude Code가 직접** 수행한다.
 - claude.ai에서 설계 토론 후 결론이 나면, Claude Code에 "ClaudeICFR.md에 반영해줘"라고 지시한다.
 
-### 7.3 작업 완료 후 Git 자동화 절차
+### 8.3 작업 완료 후 Git 자동화 절차
+
 1. `git status` — 변경 파일 확인
 2. 커밋 메시지(안)을 사용자에게 제시
 3. **사용자 OK 확인 후** `git add . → git commit -m "..."` 실행
-4. **push 전 `git log origin/main..HEAD` 로 대기 커밋을 확인한다.
-   승인 범위 밖 커밋이 있으면 push하지 않고 보고한다.**
-5. **대기 커밋에 마이그레이션이 있는지 확인한다.**
+4. **`git pull --no-rebase` 를 반드시 먼저 실행한다. pull 없이 push 하지 않는다.**
+5. **pull 결과를 확인한다.** 아래에 해당하면 **push 하지 않고 보고한다.**
+   - 충돌이 발생한 경우
+   - 상대가 이번 작업과 **같은 파일**을 건드린 경우
+     ```bash
+     git diff --stat HEAD@{1} HEAD
+     ```
+   - 상대 커밋에 `alembic/versions/` **신규 파일**이 있는 경우
+     (마이그레이션이 둘 겹치면 순서가 꼬인다)
+6. **`git log origin/main..HEAD` 로 대기 커밋을 확인한다.**
+   승인 범위 밖 커밋이 있으면 push 하지 않고 보고한다.
+   대기 커밋에 마이그레이션이 있는지도 함께 본다.
    ```bash
    git diff --name-only origin/main..HEAD | grep alembic/versions/
    ```
    **결과가 있으면 Claude Code 는 push 하지 않는다.** 마스터에게 보고하고 멈춘다.
-6. `git push` (5 에서 마이그레이션이 없을 때만)
+7. `git push` (5·6 에서 걸리는 것이 없을 때만)
 
 > 사용자 OK 없이 commit·push 절대 금지.  
 > 커밋 메시지는 Conventional Commits 형식 준수 (섹션 2.2 참조).  
@@ -171,7 +181,7 @@ prompts/ICFR_setup_1_20260515.md 대로 작업해줘
 
 > **마이그레이션이 포함된 커밋은 Claude Code 가 push 하지 않는다.**
 > 마스터가 **백업 실행 후 직접** push 한다. 사용자가 "푸시하자"라고 해도
-> 5 에서 걸리면 push 하지 않고 보고한다 — 백업 여부는 실행자가 확인할 수 없다.
+> 6 에서 걸리면 push 하지 않고 보고한다 — 백업 여부는 실행자가 확인할 수 없다.
 >
 > `deploy.yml` 에 경로 필터가 없고(13.8) 컨테이너 기동이 `alembic upgrade head` 로
 > 시작하므로 **push = 운영 마이그레이션 실행**이다. 되돌리려면 백업이 있어야 한다.
@@ -180,12 +190,25 @@ prompts/ICFR_setup_1_20260515.md 대로 작업해줘
 > Claude Code 가 push 했다. **실행자가 확인할 수 없는 조건은 게이트가 되지 못한다** —
 > 절차를 지시문에 적는 것과 실행 흐름에 심는 것은 다르다(`ClaudeICFR.md` 13.9-28).
 
+> **4·5 는 백엔드/프론트엔드 역할 구분을 없앤 데 따른 것이다**(2026-09-18,
+> `ClaudeICFR.md` 13.9-38). 두 사람이 같은 영역을 건드릴 수 있으므로 push 전
+> 원격 상태를 반드시 병합해 보고, 겹침이 보이면 멈춘다. 속도를 올리되
+> 충돌로 되돌리는 일은 만들지 않는다.
+>
+> **"사전에 공유했다"는 게이트가 아니다.** Claude Code 가 확인할 수 없는 조건이기
+> 때문이다 — **저장소 상태로만 판정한다.** 사람 간 공유는 별도로 하되 그것이
+> push 가드를 대신하지 않는다. 13.9-28 과 같은 원칙이다.
+
 ---
 
 ## 9. 코딩 시작 전 명세 동기화 체크 (Contract Sync)
 
-사용자가 백엔드(`backend/`) 또는 프론트엔드(`frontend/`) 코드 작업을
-요청할 때, Claude Code는 **반드시 작업 시작 전 다음을 수행**한다.
+사용자가 `backend/` 또는 `frontend/` 코드 작업을 요청할 때, Claude Code는
+**반드시 작업 시작 전 다음을 수행**한다.
+
+**여기는 작업 *시작 전* 이다.** 작업을 마치고 commit·push 할 때의 절차는
+**§8.3 이 단일 출처**이며 이 절에서 반복하지 않는다. 같은 규칙을 두 곳에 적으면
+나중에 한쪽만 고쳐진다.
 
 ### 9.1 발동 조건
 - 사용자 요청에 `backend/`, `frontend/` 폴더의 코드 변경이 포함됨
@@ -194,14 +217,20 @@ prompts/ICFR_setup_1_20260515.md 대로 작업해줘
 ### 9.2 체크 절차
 1. `git fetch origin` 으로 원격 최신 상태 가져오기
 2. 로컬 main과 원격 main의 차이 확인 (`git log HEAD..origin/main`)
-3. 다음 파일에 원격 변경이 있는지 점검:
+3. **작업 영역과 무관하게 아래 전부를 점검한다.**
    - `ClaudeICFR.md` (특히 섹션 10 ADR, 섹션 19 API 명세 표준)
+   - `docs/api/*.md` 계약 스냅샷 3종, `docs/adr/`
+   - `backend/app/api/**/*.py`, `backend/app/schemas/**/*.py`
+   - `frontend/src/**`
    - `docs/api/openapi.yaml` (생성된 후)
-   - 프론트엔드 작업 시: `backend/app/api/**/*.py`, `backend/app/schemas/**/*.py`
-   - 백엔드 작업 시: 자기 영역이므로 동기화 확인만
 4. 변경 발견 시 사용자에게 보고하고 동기화 여부 확인
-5. 사용자 OK → `git pull` → 작업 시작
+5. 사용자 OK → `git pull --no-rebase` → 작업 시작
 6. 변경 없음 → 바로 작업 시작
+
+> **"자기 영역"은 없다.** 개정 전 이 절은 "백엔드 작업 시: 자기 영역이므로
+> 동기화 확인만"이라고 적고 있었다. **백엔드/프론트엔드 역할 구분을 없앴으므로
+> (2026-09-18, `ClaudeICFR.md` 13.9-38) 그 전제가 성립하지 않는다** — 두 사람이
+> 같은 파일을 건드릴 수 있다. 점검 범위를 작업 영역으로 좁히지 않는다.
 
 ### 9.3 우회 금지
 - 사용자가 "체크 건너뛰고 바로 작업해" 라고 명시하지 않는 한 항상 체크
@@ -209,4 +238,4 @@ prompts/ICFR_setup_1_20260515.md 대로 작업해줘
 
 ### 9.4 Claude Code 미사용 시 수동 동기화
 - 사용자가 Claude Code를 거치지 않고 직접 코드 작업을 시작할 때는
-  본인이 수동으로 `git pull` 실행 권장
+  본인이 수동으로 `git pull --no-rebase` 실행 권장
