@@ -88,6 +88,19 @@
 - Regina에게 필요한 권한은 **GitHub repo write뿐**이다. NCP 콘솔 권한도, SSH 키도 필요 없다.
 - 프론트엔드는 같은 서버 nginx가 정적 빌드를 서빙한다. 설치형(On-Premise) 판매 구성과 동일해 배포 분기가 생기지 않는다.
 
+**수동 배포 절차** (파이프라인이 막혔을 때 — 2026-09-18 등록)
+
+```bash
+cd /opt/actions-runner/_work/claude-icfr/claude-icfr
+COMPOSE_PROJECT_NAME=icfr IMAGE_TAG=<커밋SHA> docker compose -f docker-compose.prod.yml up -d
+```
+
+**`COMPOSE_PROJECT_NAME=icfr` 를 빠뜨리면 안 된다.** 누락 시 프로젝트명이 디렉터리명인
+`claude-icfr` 로 잡혀 **별도 네트워크를 만들고 컨테이너 이름 충돌로 실패한다**(실제 발생).
+컨테이너 이름은 `container_name` 으로 고정돼 있어 기존 스택과 같은 이름을 쓰려다 부딪힌다.
+
+`down -v` 는 여기서도 금지다(ADR-0023). `up -d` 로 교체 기동한다.
+
 ### 2.5 시크릿 관리
 
 - **단일 원천은 GitHub Secrets**로 둔다. 서버의 `.env`는 그 사본이다.
@@ -268,7 +281,15 @@ DB와 보존정책이 다르고(원본 보관 의무 vs 시점 복원) 데이터
    증상: 스크립트가 `System: command not found` 로 죽는다(실제 사례: `APP_NAME=ICFR System`).
    docker compose 는 자체 파서로 읽어 **통과하기 때문에**, `source` 를 쓰는 스크립트를 도입하기 전까지 드러나지 않는다.
    → `.env` 값에 공백이 있으면 반드시 따옴표로 감싼다.
-10. **함정을 기록할 때는 증상을 함께 남긴다.** 원인만 적으면 정작 그 상황에서 검색이 되지 않는다(위 기록 규칙과 동일).
+10. **Docker Hub 익명 pull 한도. 서버 공인 IP 단위로 걸린다** (2026-09-18, Deploy #38·#39 연속 실패).
+    증상: `Error response from daemon: pull access denied for minio/minio, repository does not exist or may require 'docker login'`.
+    **저장소가 없는 게 아니라 인증·한도 문제다** — 문구가 "repository does not exist" 라 원인을 엉뚱한 데서 찾게 된다.
+    배포가 **1초 만에 exit 1** 로 끝나고, **코드와 무관하게 모든 배포가 막힌다**(우리 이미지인 GHCR 는 정상인데도 스택 전체가 못 뜬다).
+    `deploy.yml` 에 경로 필터가 없어(`ClaudeICFR.md` 13.8) **문서 커밋에도 전체 재배포가 돌기 때문에 매번 같은 지점에서 깨진다.**
+    → **공개 이미지를 다이제스트로 고정한다**(`docker-compose.prod.yml`). 필요 시 Docker Hub 로그인.
+    한도는 서버 공인 IP 단위라 **고객사 서버에서도 그대로 발생한다.**
+
+11. **함정을 기록할 때는 증상을 함께 남긴다.** 원인만 적으면 정작 그 상황에서 검색이 되지 않는다(위 기록 규칙과 동일).
 
 ---
 

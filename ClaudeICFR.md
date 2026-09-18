@@ -2057,6 +2057,10 @@ HTTP 200
 
     **§9(Contract Sync) 동반 정리 (같은 날)** — §9.2 가 "프론트엔드 작업 시 / 백엔드 작업 시 — 자기 영역이므로 동기화 확인만"이라는 역할 구분 전제로 쓰여 있어 §8.3 개정과 모순이었다. **"자기 영역"이 없어졌으므로 점검 범위를 작업 영역으로 좁히지 않는다** — `ClaudeICFR.md`·`docs/api`·`docs/adr`·`backend/app/api`·`backend/app/schemas`·`frontend/src` 전부를 본다. **두 절이 같은 이야기를 하지 않게 경계를 명시했다** — §9 는 작업 *시작 전*, commit·push 절차는 **§8.3 이 단일 출처**이며 §9 는 참조만 한다. 같은 규칙이 두 곳에 있으면 나중에 한쪽만 고쳐진다. `git pull` 은 §8.3 과 같은 `--no-rebase` 로 통일했다.
 
+**배포 라인 (2026-09-18 등록)**
+
+39. **Docker Hub 익명 pull 한도로 전 배포가 막혔다 — 공개 이미지 다이제스트 고정으로 해소 (Deploy #38·#39 실패, #40 예정)** — 증상: `Error response from daemon: pull access denied for minio/minio, repository does not exist or may require 'docker login'`. **저장소가 없는 게 아니라 한도·인증 문제인데 문구가 "repository does not exist" 라 원인을 엉뚱한 데서 찾게 된다.** 우리 이미지(GHCR)는 정상이었다. 배포가 1초 만에 exit 1 로 끝나고 **코드와 무관하게 모든 배포가 막힌다.** `deploy.yml` 에 경로 필터가 없어(13.8) **문서 커밋에도 전체 재배포가 돌기 때문에 매번 같은 지점에서 깨졌다** — 13.8 이 "빌드 시간 낭비" 수준의 부채가 아니라 **장애를 반복 재생하는 경로**임이 드러났다. 조치 — `docker-compose.prod.yml` 의 공개 이미지 2종을 **운영 서버 실측 RepoDigests** 로 고정(`minio/minio@sha256:14cea49…`, `postgres@sha256:cf78e766…`). **지금 돌고 있는 그 이미지를 그대로 고정한 것이라 동작 변경이 없다.** 원래 태그는 주석으로 남겼다. **`latest` 는 운영에서 쓸 수 없는 태그다** — 지금 도는 버전과 다음에 받는 버전이 달라질 수 있고 언제 바뀌는지 알 수 없다(ADR-0028 §2.4 가 우리 이미지에 대해 이미 정한 원칙인데 공개 이미지에는 적용돼 있지 않았다). 고정하면 Docker Hub 조회가 줄어 한도 문제도 완화된다. **한도는 서버 공인 IP 단위라 고객사 서버에서도 그대로 발생한다** → ADR-0028 §5.1 함정 10 에 증상과 함께 등록. 수동 배포 절차도 ADR-0028 §2.4 에 기록했다 — **`COMPOSE_PROJECT_NAME=icfr` 누락 시 프로젝트명이 `claude-icfr` 로 잡혀 별도 네트워크를 만들고 컨테이너 이름 충돌로 실패한다**(실제 발생). 검증: 로컬 `docker compose -f docker-compose.prod.yml config` 로 다이제스트 정상 해석 확인.
+
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
 
@@ -2065,6 +2069,8 @@ HTTP 200
 ## 14. 변경 로그 (Changelog)
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
+
+- **2026-09-18 / TrustBuilder + Claude** — **Docker Hub 다이제스트 고정 — 전 배포 차단 해소 (최우선)** (`docker-compose.prod.yml`, ADR-0028). Deploy #38·#39 가 `pull access denied for minio/minio, repository does not exist` 로 연속 실패했다. **Docker Hub 익명 pull 한도(서버 공인 IP 단위)이며 저장소 문제가 아니다.** 공개 이미지 2종을 **운영 실측 RepoDigests** 로 고정 — `minio/minio@sha256:14cea49…`, `postgres@sha256:cf78e766…`. 지금 도는 이미지를 그대로 고정한 것이라 **동작 변경 없음**. 원래 태그는 주석 보존. **`latest` 는 운영 금지 태그**라는 ADR-0028 §2.4 원칙이 우리 이미지에만 적용돼 있던 것을 공개 이미지까지 넓혔다. ADR-0028 §5.1 함정 10(증상 포함)·§2.4 수동 배포 절차(`COMPOSE_PROJECT_NAME=icfr` 누락 시 컨테이너 이름 충돌) 기록. `deploy.yml` 경로 필터 부재(13.8)가 문서 커밋마다 전체 재배포를 돌려 장애를 반복 재생시켰다는 점도 13.9-39 에 남겼다. 검증: 로컬 `compose config` 다이제스트 정상 해석.
 
 - **2026-09-18 / TrustBuilder + Claude** — **push 절차 개정 — 백엔드/프론트엔드 역할 구분 철폐에 따른 pull 게이트 추가** (`CLAUDE.md` §8.3, 문서만). 두 사람이 같은 영역을 건드릴 수 있게 되면서 "자기 영역이니 원격을 안 봐도 된다"는 전제가 사라졌다. push 전에 **`git pull --no-rebase` 필수**(4), pull 결과가 ①충돌 ②같은 파일 겹침(`git diff --stat HEAD@{1} HEAD`) ③상대 커밋의 `alembic/versions/` 신규 파일 — 중 하나면 **push 중단·보고**(5). 기존 대기 커밋·마이그레이션 검사는 6, push 는 7 로 밀렸다. **"사전 공유했다"는 Claude Code 가 확인할 수 없으므로 게이트로 두지 않고 저장소 상태로만 판정한다** — 13.9-28 과 같은 원칙을 사고 전에 적용한 것이다(13.9-38). **같은 날 첫 실행에서 5 의 체크 명령(`git diff --stat HEAD@{1} HEAD`)이 no-op pull 시 직전 내 커밋을 가리키는 오탐을 내는 것이 드러나 즉시 교체했다**(pull 직전 해시를 잡아 비교). 하위 절 번호 `7.x` → `8.x` 정리 동반. **§9(Contract Sync)도 함께 고쳤다** — 점검 범위를 작업 영역과 무관하게 전부로 넓히고, commit·push 절차는 §8.3 단일 출처로 두어 §9 는 참조만 하게 했다(두 곳에 같은 규칙이 있으면 한쪽만 고쳐진다).
 
