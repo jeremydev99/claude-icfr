@@ -1887,9 +1887,16 @@ HTTP 200
 
 **2026-09-02 해소 (`ICFR-PROMPT-envelope-required-transition.md`)**: 2-A-4-3(2026-08-24)로 이 항목의 원인이던 미배선 자체가 해소된 것을 라이브 API 재검증(`/processes`·`/sub-processes`·`/risks` 3개 전부 `source`/`baseline_id`/`is_overridden` 항상 포함)으로 확인, FE `types.ts`/`dto.ts`의 상위 3계층 `envelope`를 optional→required로 전환해 control 계층과 통일했다. 본 항목은 기록 보존, 신규 결손 없음.
 
-### 13.8 배포 파이프라인 부채 — deploy.yml 경로 필터 부재 (미착수)
+### 13.8 배포 파이프라인 부채 — deploy.yml 경로 필터 부재 (미착수, **2026-09-18 등급 상향**)
 
 `.github/workflows/deploy.yml` 은 `main` push 전체를 트리거로 받는다. **문서·스크립트만 바뀌어도 이미지 재빌드 → 운영 컨테이너 전체 재시작**이 일어나 불필요한 다운타임이 발생한다.
+
+> **2026-09-18 — 이것은 "빌드 시간 낭비" 수준의 부채가 아니다. 장애를 반복 재생시키는 경로다.**
+> Docker Hub 익명 pull 한도로 배포가 막힌 동안(13.9-39), **문서만 바꾼 커밋 5건이 전부 배포 실패로 남았다** —
+> 13.9-35 해소·§8.3 개정·§8.3-5 교체·다이제스트 고정·ADR 기록. 코드가 바뀌지 않았는데도 매번 전체
+> 재배포가 돌아 같은 지점에서 깨졌고, **실패 알림이 5회 쌓이는 동안 어느 것이 진짜 문제인지 구분되지 않았다.**
+> 경로 필터가 있었다면 문서 커밋은 배포를 건드리지 않았고, 장애는 실제 코드 배포 1건에서만 드러났다.
+> **실패가 반복되면 사람이 실패 알림 자체를 무시하게 된다** — 13.9-38 의 오탐 문제와 같은 구조다.
 
 근거(2026-08-19 실측):
 
@@ -1897,6 +1904,7 @@ HTTP 200
 |---|---|---|---|---|
 | Deploy #4 | `f44a8a3` | ADR 문서만 | 4분 12초 | 운영 컨테이너 전체 재시작 |
 | Deploy #5 | `84fad4c` | 백업 스크립트만 | 4분 35초 | 운영 컨테이너 전체 재시작 |
+| Deploy #38·#39·#41 등 | 문서 5건 | 문서·ADR만 | 각 4~5분 | **전부 실패**(Docker Hub 한도, 13.9-39) |
 
 - 조치안: `on.push.paths`(또는 `paths-ignore`)로 `backend/**`·`frontend/**`·compose·워크플로 변경일 때만 배포. 문서(`docs/**`, `*.md`)·`scripts/**` 는 제외.
 - **백업 cron(03:00)과 배포가 겹치면 그날 백업이 조용히 실패할 수 있다.** `pg_dump` 도중 postgres 컨테이너가 재시작되면 덤프가 끊긴다. `backup_db.sh` 는 1KB 미만 덤프를 실패 처리하지만, 중간 크기로 끊긴 덤프는 크기 검사를 통과할 수 있다 — 경로 필터로 배포 빈도를 줄이는 것이 1차 방어이고, 필요하면 배포 시각 회피(또는 백업 중 배포 잠금)를 별도 검토한다.
@@ -2061,6 +2069,8 @@ HTTP 200
 
 39. **Docker Hub 익명 pull 한도로 전 배포가 막혔다 — 공개 이미지 다이제스트 고정으로 해소 (Deploy #38·#39 실패, #40 예정)** — 증상: `Error response from daemon: pull access denied for minio/minio, repository does not exist or may require 'docker login'`. **저장소가 없는 게 아니라 한도·인증 문제인데 문구가 "repository does not exist" 라 원인을 엉뚱한 데서 찾게 된다.** 우리 이미지(GHCR)는 정상이었다. 배포가 1초 만에 exit 1 로 끝나고 **코드와 무관하게 모든 배포가 막힌다.** `deploy.yml` 에 경로 필터가 없어(13.8) **문서 커밋에도 전체 재배포가 돌기 때문에 매번 같은 지점에서 깨졌다** — 13.8 이 "빌드 시간 낭비" 수준의 부채가 아니라 **장애를 반복 재생하는 경로**임이 드러났다. 조치 — `docker-compose.prod.yml` 의 공개 이미지 2종을 **운영 서버 실측 RepoDigests** 로 고정(`minio/minio@sha256:14cea49…`, `postgres@sha256:cf78e766…`). **지금 돌고 있는 그 이미지를 그대로 고정한 것이라 동작 변경이 없다.** 원래 태그는 주석으로 남겼다. **`latest` 는 운영에서 쓸 수 없는 태그다** — 지금 도는 버전과 다음에 받는 버전이 달라질 수 있고 언제 바뀌는지 알 수 없다(ADR-0028 §2.4 가 우리 이미지에 대해 이미 정한 원칙인데 공개 이미지에는 적용돼 있지 않았다). 고정하면 Docker Hub 조회가 줄어 한도 문제도 완화된다. **한도는 서버 공인 IP 단위라 고객사 서버에서도 그대로 발생한다** → ADR-0028 §5.1 함정 10 에 증상과 함께 등록. 수동 배포 절차도 ADR-0028 §2.4 에 기록했다 — **`COMPOSE_PROJECT_NAME=icfr` 누락 시 프로젝트명이 `claude-icfr` 로 잡혀 별도 네트워크를 만들고 컨테이너 이름 충돌로 실패한다**(실제 발생). 검증: 로컬 `docker compose -f docker-compose.prod.yml config` 로 다이제스트 정상 해석 확인.
 
+    **2단계 — 고정만으로는 부족했다 (Deploy #41 실패로 확인).** 고정 후에도 같은 `pull access denied` 가 났다. 로그에는 `Image minio/minio@sha256:14cea49… Pulling` 으로 **다이제스트가 정상 해석된 채** 실패했다. 원인은 `deploy.yml` 의 `docker compose pull` — **로컬 존재 여부와 무관하게 전 서비스를 레지스트리에서 조회한다.** 다이제스트 고정의 이점(로컬에 그 이미지 ID가 있으면 조회 생략)은 `up -d` 에서만 나온다. 조치 — `pull backend frontend` 로 **대상을 자사 이미지로 한정**해 운영 서버의 Docker Hub 조회를 0회로 만들었다. 새 서버(고객사 초기 설치)에서는 `up -d` 가 없는 이미지만 1회 받는다. **경위를 2단계로 남긴 이유: 고정만 하고 pull 을 그대로 둔 채 "고쳤다"고 넘어가면 증상이 하나도 바뀌지 않는다.** 다음 수단은 Docker Hub 로그인(시크릿 2개 필요, 마스터 등록).
+
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
 
@@ -2070,7 +2080,7 @@ HTTP 200
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
-- **2026-09-18 / TrustBuilder + Claude** — **Docker Hub 다이제스트 고정 — 전 배포 차단 해소 (최우선)** (`docker-compose.prod.yml`, ADR-0028). Deploy #38·#39 가 `pull access denied for minio/minio, repository does not exist` 로 연속 실패했다. **Docker Hub 익명 pull 한도(서버 공인 IP 단위)이며 저장소 문제가 아니다.** 공개 이미지 2종을 **운영 실측 RepoDigests** 로 고정 — `minio/minio@sha256:14cea49…`, `postgres@sha256:cf78e766…`. 지금 도는 이미지를 그대로 고정한 것이라 **동작 변경 없음**. 원래 태그는 주석 보존. **`latest` 는 운영 금지 태그**라는 ADR-0028 §2.4 원칙이 우리 이미지에만 적용돼 있던 것을 공개 이미지까지 넓혔다. ADR-0028 §5.1 함정 10(증상 포함)·§2.4 수동 배포 절차(`COMPOSE_PROJECT_NAME=icfr` 누락 시 컨테이너 이름 충돌) 기록. `deploy.yml` 경로 필터 부재(13.8)가 문서 커밋마다 전체 재배포를 돌려 장애를 반복 재생시켰다는 점도 13.9-39 에 남겼다. 검증: 로컬 `compose config` 다이제스트 정상 해석.
+- **2026-09-18 / TrustBuilder + Claude** — **Docker Hub 다이제스트 고정 — 전 배포 차단 해소 (최우선)** (`docker-compose.prod.yml`, ADR-0028). Deploy #38·#39 가 `pull access denied for minio/minio, repository does not exist` 로 연속 실패했다. **Docker Hub 익명 pull 한도(서버 공인 IP 단위)이며 저장소 문제가 아니다.** 공개 이미지 2종을 **운영 실측 RepoDigests** 로 고정 — `minio/minio@sha256:14cea49…`, `postgres@sha256:cf78e766…`. 지금 도는 이미지를 그대로 고정한 것이라 **동작 변경 없음**. 원래 태그는 주석 보존. **`latest` 는 운영 금지 태그**라는 ADR-0028 §2.4 원칙이 우리 이미지에만 적용돼 있던 것을 공개 이미지까지 넓혔다. ADR-0028 §5.1 함정 10(증상 포함)·§2.4 수동 배포 절차(`COMPOSE_PROJECT_NAME=icfr` 누락 시 컨테이너 이름 충돌) 기록. `deploy.yml` 경로 필터 부재(13.8)가 문서 커밋마다 전체 재배포를 돌려 장애를 반복 재생시켰다는 점도 13.9-39 에 남겼다. 검증: 로컬 `compose config` 다이제스트 정상 해석. **후속(같은 날)**: 고정 후에도 Deploy #41 이 같은 지점에서 실패 — `compose pull` 이 로컬 존재 여부와 무관하게 전 서비스를 조회하기 때문이다. `deploy.yml` 의 pull 대상을 `backend frontend` 로 한정해 운영 Docker Hub 조회를 0회로 만들었다. 13.8(경로 필터 부재)은 **문서 커밋 5건이 전부 배포 실패로 남은 실사례**로 등급을 올렸다 — 빌드 시간 낭비가 아니라 장애를 반복 재생시키는 부채다.
 
 - **2026-09-18 / TrustBuilder + Claude** — **push 절차 개정 — 백엔드/프론트엔드 역할 구분 철폐에 따른 pull 게이트 추가** (`CLAUDE.md` §8.3, 문서만). 두 사람이 같은 영역을 건드릴 수 있게 되면서 "자기 영역이니 원격을 안 봐도 된다"는 전제가 사라졌다. push 전에 **`git pull --no-rebase` 필수**(4), pull 결과가 ①충돌 ②같은 파일 겹침(`git diff --stat HEAD@{1} HEAD`) ③상대 커밋의 `alembic/versions/` 신규 파일 — 중 하나면 **push 중단·보고**(5). 기존 대기 커밋·마이그레이션 검사는 6, push 는 7 로 밀렸다. **"사전 공유했다"는 Claude Code 가 확인할 수 없으므로 게이트로 두지 않고 저장소 상태로만 판정한다** — 13.9-28 과 같은 원칙을 사고 전에 적용한 것이다(13.9-38). **같은 날 첫 실행에서 5 의 체크 명령(`git diff --stat HEAD@{1} HEAD`)이 no-op pull 시 직전 내 커밋을 가리키는 오탐을 내는 것이 드러나 즉시 교체했다**(pull 직전 해시를 잡아 비교). 하위 절 번호 `7.x` → `8.x` 정리 동반. **§9(Contract Sync)도 함께 고쳤다** — 점검 범위를 작업 영역과 무관하게 전부로 넓히고, commit·push 절차는 §8.3 단일 출처로 두어 §9 는 참조만 하게 했다(두 곳에 같은 규칙이 있으면 한쪽만 고쳐진다).
 
