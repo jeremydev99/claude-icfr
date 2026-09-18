@@ -39,7 +39,14 @@ class Department(AuditedBase):
     """
     __tablename__ = "departments"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "name", name="uq_departments_tenant_name"),
+        # **살아 있는 행만 대상으로 하는 부분 유니크다.** 평범한 유니크면 소프트 삭제된
+        # 부서가 이름을 계속 점유해 **같은 이름으로 다시 만들 수 없다** — 오타로 만든 부서를
+        # 지우고 다시 만드는 것은 흔한 실무다. 선례: `uq_user_roles_active_pair`(13.9-35 ④).
+        Index(
+            "uq_departments_tenant_name", "tenant_id", "name",
+            unique=True, sqlite_where=text("is_deleted = 0"),
+            postgresql_where=text("NOT is_deleted"),
+        ),
         # 복합 FK 참조 대상 (ADR-0030 §2.3) — 하위 테이블이 (id, tenant_id) 로 가리킨다
         UniqueConstraint("id", "tenant_id", name="uq_departments_id_tenant"),
         # 자기참조도 테넌트를 넘지 못한다 — 계층을 쓰게 되는 시점에 이미 막혀 있어야 한다
@@ -74,13 +81,20 @@ class UserDepartment(AuditedBase):
     """
     __tablename__ = "user_departments"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "user_id", "department_id", name="uq_user_departments_pair"),
+        # 같은 이유로 부분 유니크 — 소속을 뺐다가 다시 넣는 것이 막히면 안 된다.
+        Index(
+            "uq_user_departments_pair", "tenant_id", "user_id", "department_id",
+            unique=True, sqlite_where=text("is_deleted = 0"),
+            postgresql_where=text("NOT is_deleted"),
+        ),
         # 주 소속은 사용자당 1건 — 부분 유니크 인덱스로 DB 가 강제한다.
         # 앱 검증만 두면 한 경로만 빠뜨려도 뚫린다(회귀 방지 원칙: 판별은 구조로).
+        # **`is_deleted` 조건이 함께 있어야 한다** — 소프트 삭제된 주 소속 행이 남아 있으면
+        # 그 사람은 어느 부서에서도 다시 주 소속이 될 수 없다(실측 409).
         Index(
             "uq_user_departments_one_primary", "tenant_id", "user_id",
-            unique=True, sqlite_where=text("is_primary = 1"),
-            postgresql_where=text("is_primary"),
+            unique=True, sqlite_where=text("is_primary = 1 AND is_deleted = 0"),
+            postgresql_where=text("is_primary AND NOT is_deleted"),
         ),
         ForeignKeyConstraint(
             ["department_id", "tenant_id"], ["departments.id", "departments.tenant_id"],
