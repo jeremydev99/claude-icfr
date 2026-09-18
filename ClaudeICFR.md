@@ -1229,7 +1229,14 @@ cd claude-icfr
 
 레포 루트의 `CLAUDE.md`가 세션 시작 시 자동 로드됨. 사용자는 별도 지시 없이 Claude Code를 ICFR 폴더에서 실행하면 됨.
 
-### 8.5 신규 테넌트 온보딩 — 첫 역할 1행은 SQL 로 넣는다 (2026-09-16 등록)
+### 8.4 향후 작성 예정
+
+- `.env.example` — 환경변수 템플릿 (기술 스택 결정 후)
+- 로컬 개발 서버 실행 명령
+- 시드 데이터 적재 스크립트
+- Docker compose 파일
+
+### 8.5 신규 테넌트 온보딩 — 첫 역할 1행은 SQL 로 넣는다 (2026-09-16 등록, ✅ 2026-09-18 운영 1회 실행 완료)
 
 **신규 테넌트는 `icfr_manager` 도 `sys_admin` 도 0명이라 역할 배정을 시작할 수 없다.**
 13.9-35 수정으로 `/api/users/roles` 가 `icfr_manager`(또는 `icfr_manager` 0명일 때
@@ -1309,12 +1316,26 @@ SELECT ur.id, u.email, ur.role_name, t.code AS tenant,
 
 3번까지 확인할 것. 2번만 보면 `sys_admin` 상시 배정 상태와 구분되지 않는다.
 
-### 8.4 향후 작성 예정
+**운영 실행 기록 (2026-09-18, 마스터)** — `ynjun@synapsoft.co.kr` / `sys_admin` / `DEFAULT`, `INSERT 0 1`, `created_by = manual-bootstrap-13.9-35`, `row_version 1`. 실행 전 운영 `user_roles` **0행**. API 검증 1~3 전부 통과(상세는 13.9-35). **이 절차가 실제로 동작함이 운영에서 확인됐다** — 고객사 온보딩에 그대로 쓴다.
 
-- `.env.example` — 환경변수 템플릿 (기술 스택 결정 후)
-- 로컬 개발 서버 실행 명령
-- 시드 데이터 적재 스크립트
-- Docker compose 파일
+### 8.6 배포 트리거 경로 필터 — 제외 목록으로 둔 이유 (2026-09-18, `ClaudeICFR.md` 13.8 조치)
+
+`deploy.yml` 의 배포 트리거는 **`paths-ignore`(제외 목록)** 이다. `paths`(포함 목록)를 쓰지 않았다.
+
+**두 실패의 성질이 다르다.**
+
+| 방식 | 모르는 경로를 만나면 | 실패가 드러나는가 |
+|---|---|---|
+| 포함 목록(`paths`) | **배포 안 함** | ❌ 조용하다 — 운영에 옛 코드가 도는데 신호가 없다 |
+| 제외 목록(`paths-ignore`) | 배포함 | ✅ 시끄럽다 — 불필요한 배포 1회로 보인다 |
+
+**안 나가는 실패는 조용하고, 더 나가는 실패는 시끄럽다.** 배포 트리거에서는 조용한 쪽이 나쁘다 —
+"배포되어야 할 변경이 안 나간" 상태는 아무도 알아채지 못한 채 유지된다. 그래서 `docker-compose*.yml`·
+`.github/workflows/**`·`backend/**`·`frontend/**` 는 **목록에 적지 않는 것만으로** 포함되고,
+나중에 새 디렉터리가 생겨도 기본값이 "배포함" 이다.
+
+제외 목록은 `'**.md'`·`docs/**`·`prompts/**` 세 줄뿐이다. 이 셋은 **배포 산출물에 들어가지 않는 것이
+확실한 경로**이며, 늘어날 일이 있어도 사람이 의식적으로 추가해야 한다.
 
 ---
 
@@ -1887,7 +1908,7 @@ HTTP 200
 
 **2026-09-02 해소 (`ICFR-PROMPT-envelope-required-transition.md`)**: 2-A-4-3(2026-08-24)로 이 항목의 원인이던 미배선 자체가 해소된 것을 라이브 API 재검증(`/processes`·`/sub-processes`·`/risks` 3개 전부 `source`/`baseline_id`/`is_overridden` 항상 포함)으로 확인, FE `types.ts`/`dto.ts`의 상위 3계층 `envelope`를 optional→required로 전환해 control 계층과 통일했다. 본 항목은 기록 보존, 신규 결손 없음.
 
-### 13.8 배포 파이프라인 부채 — deploy.yml 경로 필터 부재 (미착수, **2026-09-18 등급 상향**)
+### 13.8 배포 파이프라인 부채 — deploy.yml 경로 필터 부재 (**✅ 2026-09-18 조치 완료**)
 
 `.github/workflows/deploy.yml` 은 `main` push 전체를 트리거로 받는다. **문서·스크립트만 바뀌어도 이미지 재빌드 → 운영 컨테이너 전체 재시작**이 일어나 불필요한 다운타임이 발생한다.
 
@@ -1906,7 +1927,7 @@ HTTP 200
 | Deploy #5 | `84fad4c` | 백업 스크립트만 | 4분 35초 | 운영 컨테이너 전체 재시작 |
 | Deploy #38·#39·#41 등 | 문서 5건 | 문서·ADR만 | 각 4~5분 | **전부 실패**(Docker Hub 한도, 13.9-39) |
 
-- 조치안: `on.push.paths`(또는 `paths-ignore`)로 `backend/**`·`frontend/**`·compose·워크플로 변경일 때만 배포. 문서(`docs/**`, `*.md`)·`scripts/**` 는 제외.
+- ~~조치안: `on.push.paths`(또는 `paths-ignore`)로 `backend/**`·`frontend/**`·compose·워크플로 변경일 때만 배포. 문서(`docs/**`, `*.md`)·`scripts/**` 는 제외.~~ **✅ 2026-09-18 적용** — `paths-ignore` 로 `'**.md'`·`docs/**`·`prompts/**` 3줄만 제외했다. **포함 목록(`paths`)을 쓰지 않은 이유는 §8.6** — 포함 목록은 모르는 경로를 만나면 배포를 조용히 건너뛴다. `scripts/**` 는 제외하지 않았다(배포 산출물과 무관하다고 단정하기 어렵고, 더 배포되는 쪽이 안전하다). `ci.yml` 은 필터가 없어 **문서 커밋에도 린트·테스트는 그대로 돈다** — 검증 신호를 잃지 않는다.
 - **백업 cron(03:00)과 배포가 겹치면 그날 백업이 조용히 실패할 수 있다.** `pg_dump` 도중 postgres 컨테이너가 재시작되면 덤프가 끊긴다. `backup_db.sh` 는 1KB 미만 덤프를 실패 처리하지만, 중간 크기로 끊긴 덤프는 크기 검사를 통과할 수 있다 — 경로 필터로 배포 빈도를 줄이는 것이 1차 방어이고, 필요하면 배포 시각 회피(또는 백업 중 배포 잠금)를 별도 검토한다.
 
 ### 13.9 운영 인프라 미결·후속 (2026-08-19 등록)
@@ -1995,7 +2016,13 @@ HTTP 200
 
 23. **`user_tenant_access.role` — 테넌트별 단일값 역할 컬럼. 용도 불명확** — 단일값이라 겸직 표현이 불가하며 **ADR-0031 §2.2(한 사람이 통제 A에서는 통제책임자, 통제 B에서는 평가자)와 충돌**한다. **참조 코드 유무를 확인한 결과: 판정에 쓰는 코드가 0건이다.** 쓰기는 `api/user_mgmt.py:65`(사용자 생성 시 `users.role` 과 **같은 값을 복사**), `seeds/bootstrap.py:61`·`tests/conftest.py:60`(둘 다 `"admin"` 하드코딩). 읽기는 `api/auth.py:80` 이 `/me` 응답의 `tenants[].role` 로 실어 보내고 FE `store.ts` 의 `TenantSummary.role` 타입에만 존재한다 — **그 값으로 분기하는 코드는 BE·FE 통틀어 0건.** 즉 **저장되고 응답에 실려 나가지만 아무도 판정에 쓰지 않으며, `users.role` 과 중복 저장 상태다.** 제거 또는 용도 확정 필요. 제거 시 `/me` 응답 계약(`TenantAccessRead.role`)이 바뀌므로 Regina 공유 필요.
 
-24. **`user_roles` 기존 3행(Tester/Reviewer/Administrator)의 의미가 불명확** — 특히 **`Reviewer` 는 ADR-0031 §1.2가 명시적으로 경고한 용어 혼동 대상**이다(통제 실행 층의 preparer/reviewer/approver vs 평가 층의 control_owner/assessor). 기존 값이 어느 층 의미인지 문서 근거가 없다. **신규 `assessor` 와 화면에서 나란히 보이면 사용자가 구분할 수 없다.** FE 역할 화면 표시를 확인하고 정리 방침을 정해야 한다. **정리는 운영 데이터 변경이므로 마스터가 직접 실행한다** — 3-1에서는 기존 3행을 건드리지 않았다(실데이터 변경은 별건). **2026-09-09 관찰 연결**: canEditHierarchy 작업에서 `/me` `tenant_roles` 실측 시 이 3행(`Administrator`/`Tester`)이 그대로 노출됨을 확인 — `can_write` 게이트와는 무관(그쪽만 사용)하지만 역할 UI 착수 시 이 부채부터 처리해야 한다.
+24. **`user_roles` 기존 3행(Tester/Reviewer/Administrator)의 의미가 불명확 — ✅ 2026-09-18 정정: 운영에는 없다. 로컬 한정 문제다** — 특히 **`Reviewer` 는 ADR-0031 §1.2가 명시적으로 경고한 용어 혼동 대상**이다(통제 실행 층의 preparer/reviewer/approver vs 평가 층의 control_owner/assessor). 기존 값이 어느 층 의미인지 문서 근거가 없다. **신규 `assessor` 와 화면에서 나란히 보이면 사용자가 구분할 수 없다.** FE 역할 화면 표시를 확인하고 정리 방침을 정해야 한다. **정리는 운영 데이터 변경이므로 마스터가 직접 실행한다** — 3-1에서는 기존 3행을 건드리지 않았다(실데이터 변경은 별건). **2026-09-09 관찰 연결**: canEditHierarchy 작업에서 `/me` `tenant_roles` 실측 시 이 3행(`Administrator`/`Tester`)이 그대로 노출됨을 확인 — `can_write` 게이트와는 무관(그쪽만 사용)하지만 역할 UI 착수 시 이 부채부터 처리해야 한다.
+
+    **2026-09-18 정정 — 운영 `user_roles` 는 0행이었다(§8.5 부트스트랩 실행 전 실측).** 구 3역할은 **로컬 개발 DB 에만 있다**(`app/seeds/users.py` 가 tester/reviewer 계정과 함께 만든다). 그동안 "운영 `user_roles` 3행도 전부 구 값"(13.9-35 ⑤)이라고 적었던 것은 **로컬 실측을 운영으로 옮겨 적은 오류다.**
+
+    **영향** — ①운영 데이터 정리가 필요 없다. 마스터가 실행할 실데이터 작업이 아니다. ②역할 UI 착수 전 선결 조건이 아니다 — 화면에 구 역할명이 섞여 보이는 상황은 로컬에서만 생긴다. ③남는 것은 **시드 정리**뿐이다(`seeds/users.py` 를 ADR-0031 5역할로 갱신). 신규 배정은 이미 422 로 막혀 있어 확산 경로는 닫혔다.
+
+    **교훈: 로컬에서 본 것을 운영 상태로 적지 않는다.** 두 DB 는 시드 경로가 다르다.
 
 25. **이해상충 판정 정정 — `control_owner = dept_approver` 는 충돌이 아니다 (2026-09-04 해소)** — 3-1 구현 후 `org-contract.md` 작성 중 발견: **배정을 하나만 했는데 충돌이 잡히는 상황**이 있었다. 통제책임자를 지정했을 뿐인데 그 사람이 자기 부서의 책임자라 `dept_approver` 유도값이 자기 자신이 된 경우다. **팀장이 통제책임자인 통제는 전부 이 형태이며 실무에서 흔하다** — 경고로 두면 대부분의 통제에 사유 입력을 요구하게 되고, 그러면 사유 기록이 형식화되어 보완통제 증적으로서의 값을 잃는다. **판단: 겸직이 아니라 부서승인 단계가 성립하지 않는 상황이다.** 부서승인은 "상급자가 검토한다"는 뜻인데 통제책임자가 팀장 본인이면 그 위 단계가 없다(ADR-0031 §2.6 이 부서승인을 선택 단계로 규정한 것의 연장선). 조치: `CONFLICT_PAIRS` 에서 제거하고 `dept_approval_skipped: bool` 로 상태 표시. 정책 금지 토글 대상에서도 빠진다. **`derived` 유래 값 자체는 판정에서 빼지 않았다** — 유도값도 실제 승인자가 되므로 다른 조합에서는 계속 대상이다. ADR-0031 §2.4 에 정정 이력으로 기록.
 
@@ -2033,13 +2060,29 @@ HTTP 200
 
 34. **MIME 화이트리스트를 정책으로 옮기지 않았다 (2026-09-09 판단)** — 크기 상한은 `evidence_max_bytes` 정책으로 옮겼으나 화이트리스트는 코드에 남겼다. **값이 목록이라 key-value 정책에 담으려면 파싱 규약을 새로 만들어야 하고, 현재 실무를 막는다는 증거가 없다. 막는 사례가 나오면 그때 옮긴다.** 현재 허용: pdf / png / jpeg / xlsx / docx / hwp 2종. 증빙 형식이 다양해 화이트리스트가 실무를 막을 소지는 있으므로, 반려 사례가 보고되면 재검토 대상이다.
 
-35. **`/api/users/roles` 에 권한 가드·값 검증이 없다 — ADR-0031 테넌트 역할 5종의 배정 경로가 무방비 (2026-09-15 발견, ✅ 2026-09-16 백엔드 해소 / FE 드롭다운은 잔여)** — Regina 질문("신규 5역할 배정 가능한가")을 확인하다 발견. ①**배정 자체는 된다**: `UserRoleCreate.role_name` 은 `min_length=1, max_length=50` 뿐이고 DB 도 `String(50)` 무제약이라 5역할 모두 201, `/me` `tenant_roles` 에 즉시 나온다(`external_auditor` 는 `can_write=false`). `org-contract.md` §2.3 의 "422" 는 **`/api/org/assignments`(통제 단위) 얘기이며 의도된 동작**이다 — 지금도 422. ②**가드 없음**: POST/PATCH/DELETE `/api/users/roles` 가 `CurrentUser` 만 요구한다(`api/user_mgmt.py:122·139·151`). 실측 — **일반 사용자가 자기에게 `icfr_manager` 를 부여 → 곧바로 `PUT /api/org/policies` 200**, **`external_auditor` 가 자기 역할 행을 DELETE 204 → `can_write=true`**. `require_write`·`require_icfr_manager` 가 판정 근거로 삼는 테이블을 누구나 고칠 수 있어 두 가드가 무력화된다. ③**값 검증 없음**: `icfr_mananger` 같은 오타도 201 — 판정에 안 걸려 조용히 무효. ④**중복 허용**: 같은 사용자·역할 2행 가능(유니크 제약 없음), 1행만 지우면 역할이 남는다. ⑤**FE 로는 5역할을 만들 수 없다**: `frontend/src/features/users/types.ts` `ROLE_NAME_OPTIONS` 가 구 역할명 7종(`Administrator`/`ExternalAuditor` 등 PascalCase)이라, 화면에서 "외부감사인"을 고르면 `ExternalAuditor` 가 저장되어 **조회 전용이 걸리지 않는다.** 운영 `user_roles` 3행도 전부 구 값이다(13.9-24). **판단**: 3-1(2026-09-04)이 `user_roles` 재사용을 결정하며 "CRUD·FE 배선 기존재"를 근거로 들었으나(ADR-0031 §3.1) 그 CRUD 가 새 용도에 맞는지 — 누가 배정할 수 있는가, 어떤 값이 유효한가 — 는 점검하지 않았다. **의도가 아니라 누락이다.** 테스트도 전부 `db.add(UserRole(...))` 직접 삽입이라 API 경로가 한 번도 검증되지 않았다. 수정 시 결정 필요: 배정 권한 주체(`icfr_manager`? `require_admin`? 최초 `icfr_manager` 부트스트랩은 누가?), 허용 값 목록(5역할만? 구 3행 처리는 13.9-24 와 함께), 유니크 제약(마이그레이션 → 마스터 push).
+35. **`/api/users/roles` 에 권한 가드·값 검증이 없다 — ADR-0031 테넌트 역할 5종의 배정 경로가 무방비 (2026-09-15 발견, ✅ 2026-09-16 백엔드 해소, ✅ 2026-09-18 운영 검증 완료 / FE 드롭다운은 잔여)** — Regina 질문("신규 5역할 배정 가능한가")을 확인하다 발견. ①**배정 자체는 된다**: `UserRoleCreate.role_name` 은 `min_length=1, max_length=50` 뿐이고 DB 도 `String(50)` 무제약이라 5역할 모두 201, `/me` `tenant_roles` 에 즉시 나온다(`external_auditor` 는 `can_write=false`). `org-contract.md` §2.3 의 "422" 는 **`/api/org/assignments`(통제 단위) 얘기이며 의도된 동작**이다 — 지금도 422. ②**가드 없음**: POST/PATCH/DELETE `/api/users/roles` 가 `CurrentUser` 만 요구한다(`api/user_mgmt.py:122·139·151`). 실측 — **일반 사용자가 자기에게 `icfr_manager` 를 부여 → 곧바로 `PUT /api/org/policies` 200**, **`external_auditor` 가 자기 역할 행을 DELETE 204 → `can_write=true`**. `require_write`·`require_icfr_manager` 가 판정 근거로 삼는 테이블을 누구나 고칠 수 있어 두 가드가 무력화된다. ③**값 검증 없음**: `icfr_mananger` 같은 오타도 201 — 판정에 안 걸려 조용히 무효. ④**중복 허용**: 같은 사용자·역할 2행 가능(유니크 제약 없음), 1행만 지우면 역할이 남는다. ⑤**FE 로는 5역할을 만들 수 없다**: `frontend/src/features/users/types.ts` `ROLE_NAME_OPTIONS` 가 구 역할명 7종(`Administrator`/`ExternalAuditor` 등 PascalCase)이라, 화면에서 "외부감사인"을 고르면 `ExternalAuditor` 가 저장되어 **조회 전용이 걸리지 않는다.** ~~운영 `user_roles` 3행도 전부 구 값이다~~ **(2026-09-18 정정: 그 3행은 로컬 DB 의 것이었다. 운영은 0행. 13.9-24 참조)**. **판단**: 3-1(2026-09-04)이 `user_roles` 재사용을 결정하며 "CRUD·FE 배선 기존재"를 근거로 들었으나(ADR-0031 §3.1) 그 CRUD 가 새 용도에 맞는지 — 누가 배정할 수 있는가, 어떤 값이 유효한가 — 는 점검하지 않았다. **의도가 아니라 누락이다.** 테스트도 전부 `db.add(UserRole(...))` 직접 삽입이라 API 경로가 한 번도 검증되지 않았다. 수정 시 결정 필요: 배정 권한 주체(`icfr_manager`? `require_admin`? 최초 `icfr_manager` 부트스트랩은 누가?), 허용 값 목록(5역할만? 구 3행 처리는 13.9-24 와 함께), 유니크 제약(마이그레이션 → 마스터 push).
 
     **해소 (2026-09-16, `prompts/ICFR_role_guard_fix_20260909.md`)** — 배정·수정·삭제 **세 경로 모두** `core/permissions.require_role_assigner` 로 막았다(`icfr_manager`, 그 보유자가 0명인 테넌트에 한해 `user_roles` 의 `sys_admin` 이 첫 배정). **배정만 막으면 ②(자기 역할 삭제)가 그대로 남는다** — Regina 지적으로 결정 사항에 명시하고 검증 2건(남의 역할 수정·자기 역할 삭제)을 추가했다. 허용 값은 `models/role_assignment.TENANT_ROLES` 5종뿐이며 스키마 단계에서 **422**(구 3역할은 읽기만 허용 — `UserRoleRead` 에는 검증을 걸지 않았다). 중복은 앱 **409** + DB 부분 유니크(`uq_user_roles_active_pair`, 마이그레이션 `d6e7f8a9b0c1`). **부분 유니크여야 한다** — 소프트 삭제 테이블이라 평범한 유니크면 역할 해제 후 재배정이 IntegrityError 로 터진다(선례: `uq_user_departments_one_primary`). 검증은 전부 **API 경로**로 했다(`tests/test_user_roles_guard.py` 11건) — DB 직접 삽입이 이 결함을 놓친 원인이라서다.
 
     **잔여 ①: FE 드롭다운(⑤).** `ROLE_NAME_OPTIONS` 가 구 역할명 7종이라 **이제 화면에서 역할을 배정하면 전부 422 로 거부된다.** 잘못된 값이 저장되지 않게 된 것이지 화면이 깨진 것은 아니나, FE 수정 전까지 역할 배정은 API 로만 가능하다 — Regina 역할 UI 작업 범위.
 
-    **잔여 ②: 운영 부트스트랩.** 부트스트랩 예외의 `sys_admin` 은 `user_roles` 의 역할 값이지 `users.role == "admin"` 이 아니다(ADR-0031 §3.2 — 한쪽으로 다른 쪽을 추론하지 않는다). **운영 `user_roles` 는 구 3행뿐이라 `sys_admin` 보유자도 0명이며, 따라서 첫 행은 API 로 만들 수 없다.** 마스터가 SQL 로 첫 `sys_admin` 1행을 넣어야 열린다. **고객사 온보딩 때마다 반복되는 상황이라 절차로 고정했다 — §8.5** (실행 SQL·검증 포함). 실데이터 변경이므로 마스터가 직접 실행한다.
+    **✅ 운영 부트스트랩 완료 (2026-09-18, 마스터 실행).** 부트스트랩 예외의 `sys_admin` 은 `user_roles` 의 역할 값이지 `users.role == "admin"` 이 아니므로(ADR-0031 §3.2) 첫 행은 API 로 만들 수 없다. §8.5 절차대로 마스터가 SQL 을 실행했다 — **실행 전 운영 `user_roles` 는 0행**(구 3역할은 로컬에만 있었다. 13.9-24 정정 참조), `INSERT 0 1` 확인.
+
+    | 항목 | 값 |
+    |---|---|
+    | 계정 | `ynjun@synapsoft.co.kr` |
+    | 역할 / 테넌트 | `sys_admin` / `DEFAULT` |
+    | 감사 컬럼 | `created_by = manual-bootstrap-13.9-35`, `row_version = 1` |
+
+    **API 검증 3단계 전부 통과 — 부트스트랩 경로가 실제로 열렸고 `icfr_manager` 전환까지 확인됐다.**
+
+    1. `/me` → `tenant_roles: ['sys_admin']`, `can_write: true`, `active_tenant_id: d0000000-0000-0000-0000-000000000001`
+    2. `sys_admin` 자격으로 마스터 본인에게 `icfr_manager` 배정 → **201** (role id `01a0b240-4314-7911-a758-60fbe008249c`)
+    3. `icfr_manager` 자격으로 Regina 계정에 `external_auditor` 배정 → **201** (role id `01a0b240-958e-7a01-99ea-832afbcb1ef8`)
+
+    **3번까지 확인한 것이 핵심이다** — 2번만 보면 `sys_admin` 상시 배정 구현과 구분되지 않는다(§8.5 검증 규칙).
+
+    **회수 예정 — Regina 테스트 계정 (2026-09-18 등록).** `teilua@synapsoft.co.kr` 에 붙인 `external_auditor` 는 **검증용**이다(role id `01a0b240-958e-7a01-99ea-832afbcb1ef8`). Regina 확인이 끝나면 회수한다. **회수 전까지 Regina 계정은 편집이 막힌 상태다** — `external_auditor` 는 조회 전용이므로(ADR-0031 §2.1) 화면에서 쓰기가 되지 않는 것이 정상 동작이며 장애가 아니다.
 
 36. **`RequestValidationError` 핸들러가 커스텀 validator 를 직렬화하지 못했다 (2026-09-16 발견·수정)** — `app/main.py` 가 `exc.errors()` 를 그대로 `JSONResponse` 에 넣고 있었다. Pydantic 커스텀 validator 가 `ValueError` 를 던지면 `errors()` 의 `ctx.error` 에 **예외 객체가 그대로** 실려 있어 `TypeError: Object of type ValueError is not JSON serializable` 로 터진다 — **422 를 내려야 할 자리에서 500 이 났다.** 13.9-35 값 검증 구현 중 실측으로 드러났다(그 전까지 커스텀 validator 가 한 건도 없어 발현하지 않았다). 조치: FastAPI 기본 핸들러와 같이 `jsonable_encoder` 를 거치게 했다. **필드 제약(`Field(pattern=...)`)만 쓰던 동안은 보이지 않던 부채다** — 앞으로 validator 를 추가하는 쪽이 이 함정을 다시 밟지 않는다.
 
@@ -2079,6 +2122,8 @@ HTTP 200
 ## 14. 변경 로그 (Changelog)
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
+
+- **2026-09-18 / TrustBuilder + Claude** — **운영 부트스트랩 실행 확인 + 배포 경로 필터 적용 (13.8 해소)**. ①**13.9-35 운영 검증 완료** — 마스터가 §8.5 SQL 을 실행(`ynjun@synapsoft.co.kr` / `sys_admin` / `DEFAULT`, `INSERT 0 1`). API 검증 3단계 전부 통과: `/me` `tenant_roles: ['sys_admin']`·`can_write: true` → `sys_admin` 이 본인에게 `icfr_manager` 배정 **201** → `icfr_manager` 가 Regina 계정에 `external_auditor` 배정 **201**. **부트스트랩 경로가 실제로 열렸고 `icfr_manager` 전환까지 확인됐다.** ②**13.9-24 정정** — 구 3역할(`Administrator`/`Reviewer`/`Tester`)은 **운영에 없다. 로컬 시드(`seeds/users.py`) 산물이며 로컬 한정 문제다.** 실행 전 운영 `user_roles` 는 0행이었다. 그동안 "운영 3행"이라 적은 것은 로컬 실측을 운영으로 옮겨 적은 오류다 — **로컬에서 본 것을 운영 상태로 적지 않는다.** 남는 것은 시드 정리뿐이며 실데이터 작업이 아니다. ③**Regina 테스트 계정 회수 예정** — `teilua@synapsoft.co.kr` 의 `external_auditor`(role id `01a0b240-958e-…`)는 검증용이며 확인 후 회수한다. 회수 전까지 그 계정은 편집이 막힌다(조회 전용, 정상 동작). ④**13.8 조치 완료** — `deploy.yml` 에 `paths-ignore`(`'**.md'`·`docs/**`·`prompts/**`) 적용. **포함 목록(`paths`)이 아니라 제외 목록을 썼다** — 포함 목록은 모르는 경로를 만나면 배포를 **조용히** 건너뛰고, 제외 목록은 배포하는 쪽으로 기울어 실패가 눈에 보인다. `docker-compose*.yml`·`.github/workflows/**` 는 적지 않는 것만으로 포함된다. 근거는 §8.6.
 
 - **2026-09-18 / TrustBuilder + Claude** — **Docker Hub 다이제스트 고정 — 전 배포 차단 해소 (최우선)** (`docker-compose.prod.yml`, ADR-0028). Deploy #38·#39 가 `pull access denied for minio/minio, repository does not exist` 로 연속 실패했다. **Docker Hub 익명 pull 한도(서버 공인 IP 단위)이며 저장소 문제가 아니다.** 공개 이미지 2종을 **운영 실측 RepoDigests** 로 고정 — `minio/minio@sha256:14cea49…`, `postgres@sha256:cf78e766…`. 지금 도는 이미지를 그대로 고정한 것이라 **동작 변경 없음**. 원래 태그는 주석 보존. **`latest` 는 운영 금지 태그**라는 ADR-0028 §2.4 원칙이 우리 이미지에만 적용돼 있던 것을 공개 이미지까지 넓혔다. ADR-0028 §5.1 함정 10(증상 포함)·§2.4 수동 배포 절차(`COMPOSE_PROJECT_NAME=icfr` 누락 시 컨테이너 이름 충돌) 기록. `deploy.yml` 경로 필터 부재(13.8)가 문서 커밋마다 전체 재배포를 돌려 장애를 반복 재생시켰다는 점도 13.9-39 에 남겼다. 검증: 로컬 `compose config` 다이제스트 정상 해석. **후속(같은 날)**: 고정 후에도 Deploy #41 이 같은 지점에서 실패 — `compose pull` 이 로컬 존재 여부와 무관하게 전 서비스를 조회하기 때문이다. `deploy.yml` 의 pull 대상을 `backend frontend` 로 한정해 운영 Docker Hub 조회를 0회로 만들었다. 13.8(경로 필터 부재)은 **문서 커밋 5건이 전부 배포 실패로 남은 실사례**로 등급을 올렸다 — 빌드 시간 낭비가 아니라 장애를 반복 재생시키는 부채다.
 
