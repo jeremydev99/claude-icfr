@@ -1,5 +1,9 @@
 import {
+  Building2,
+  CalendarRange,
   LayoutDashboard,
+  SlidersHorizontal,
+  UserCog,
   Calendar,
   Target,
   ShieldCheck,
@@ -23,11 +27,13 @@ import {
  *
  * - `live`  : 실데이터가 들어 있고 화면에서 그 데이터를 다룬다
  * - `ready` : 화면이 동작하나 아직 데이터가 없다(쓰기 시작하면 바로 `live`)
+ * - `api`   : **백엔드 API 는 있고 화면이 아직 없다.** `todo` 와 구분한다 — 붙이기만 하면
+ *             되는 것과 아무것도 없는 것은 남은 일의 크기가 다르다
  * - `todo`  : 빈 페이지. 메뉴 자리만 있다
  *
  * 값이 바뀌는 시점은 "데이터가 들어왔을 때"와 "화면이 붙었을 때"뿐이라 손으로 관리한다.
  */
-export type ModuleStatus = 'live' | 'ready' | 'todo'
+export type ModuleStatus = 'live' | 'ready' | 'api' | 'todo'
 
 export interface NavItem {
   label: string
@@ -36,6 +42,13 @@ export interface NavItem {
   description: string
   /** 대시보드 카드 배지. 대시보드(자기 자신)에는 없다. */
   status?: ModuleStatus
+  /**
+   * `icfr_manager` 만 쓸 수 있는 메뉴 (ADR-0031 §2.6).
+   *
+   * **`can_write` 로 막지 않는다** — `can_write` 는 `external_auditor` 판정이지
+   * `icfr_manager` 판정이 아니다(`features/auth/permissions.pure.ts` 참조).
+   */
+  requiresIcfrManager?: boolean
 }
 
 export interface NavGroup {
@@ -135,6 +148,43 @@ export const navigation: NavGroup[] = [
         status: 'todo',
         icon: FileText,
         description: '이사회 보고서·외부감사 PBC 패키지 작성·결재·배포',
+      },
+    ],
+  },
+  {
+    // 관리자 기능 — 백엔드 API 는 3-1(부서·배정·정책)에서 이미 만들었고 화면만 없다.
+    // 자리를 먼저 만들어 두면 붙이기 쉽고, 대시보드의 "미배정 93건"과도 이어진다.
+    groupLabel: '관리자 기능',
+    items: [
+      {
+        label: '부서 관리',
+        path: '/admin/departments',
+        icon: Building2,
+        description: '부서 등록·계층·책임자 지정 (GET/POST /api/org/departments)',
+        status: 'api',
+      },
+      {
+        label: '역할 배정',
+        path: '/admin/role-assignments',
+        icon: UserCog,
+        description: '통제·프로세스 단위 역할 배정 (GET/POST /api/org/assignments)',
+        status: 'api',
+        requiresIcfrManager: true,
+      },
+      {
+        label: '정책 설정',
+        path: '/admin/policies',
+        icon: SlidersHorizontal,
+        description: '부서승인 토글·증빙 편집 토글·보존기간 (GET/PUT /api/org/policies)',
+        status: 'api',
+        requiresIcfrManager: true,
+      },
+      {
+        label: '회계연도 시작월',
+        path: '/admin/fiscal-year',
+        icon: CalendarRange,
+        description: '회계연도가 시작하는 달 (tenant_policies)',
+        status: 'api',
       },
     ],
   },
