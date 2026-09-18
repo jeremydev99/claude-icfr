@@ -130,7 +130,11 @@ jobs:
       # down -v 금지(ADR-0023). pull → up -d 로 교체 기동만 한다.
       - name: Pull & up
         run: |
-          docker compose -f docker-compose.prod.yml pull
+          # 우리 이미지(GHCR)만 당긴다. 공개 이미지는 다이제스트로 고정돼 있어
+          # 로컬에 있으면 up -d 가 그대로 쓰고, 없을 때만 1회 받는다.
+          # compose pull 은 로컬 존재 여부와 무관하게 전 서비스를 조회하므로
+          # Docker Hub 한도에 매 배포마다 부딪힌다(ADR-0028 §5.1 함정 10).
+          docker compose -f docker-compose.prod.yml pull backend frontend
           docker compose -f docker-compose.prod.yml up -d
 
       - name: Health check (최대 60초)
