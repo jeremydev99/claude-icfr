@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { useRcmSummary } from '../api/useRcmSummary'
 import { useDrilldownControls } from '../api/useDrilldownControls'
 import type { RcmSummary, SummaryBucket, SummaryGroup } from '../api/types'
@@ -13,22 +14,33 @@ function rcmLink(param: string, value: string) {
 
 function BucketRow({ group, bucket }: { group: SummaryGroup; bucket: SummaryBucket }) {
   const [open, setOpen] = useState(false)
-  const { data, isLoading, isError } = useDrilldownControls(group.filter_param, bucket.value, open)
+  // 0건은 펼칠 것이 없다 — 펼침만 막고 **항목 자체는 회색으로 보여준다.**
+  // "비핵심 0"이 보이지 않으면 93건이 전부 핵심이라는 사실이 드러나지 않는다.
+  const empty = bucket.count === 0
+  const { data, isLoading, isError } = useDrilldownControls(
+    group.filter_param, bucket.value, open && !empty,
+  )
   const Chevron = open ? ChevronDown : ChevronRight
 
   return (
-    <li className="border-b last:border-b-0">
+    <li className={cn('border-b last:border-b-0', empty && 'text-muted-foreground')}>
       <div className="flex items-center gap-2 py-1.5">
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="flex flex-1 items-center gap-1 text-left text-sm hover:underline"
-          aria-expanded={open}
+          onClick={() => !empty && setOpen((v) => !v)}
+          disabled={empty}
+          className={cn(
+            'flex flex-1 items-center gap-1 text-left text-sm',
+            empty ? 'cursor-default' : 'hover:underline',
+          )}
+          aria-expanded={empty ? undefined : open}
         >
-          <Chevron className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <Chevron className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground', empty && 'opacity-30')} />
           <span className="flex-1">{bucket.label}</span>
           <span className="tabular-nums font-medium">{bucket.count}</span>
         </button>
+        {/* 0건에도 링크는 남긴다 — 묶음마다 동작이 달라지면 "왜 이것만 안 되지"가 되고,
+            "정말 0인지" 확인하는 경로이기도 하다. 결과가 빈 목록인 것이 곧 답이다. */}
         {group.filter_param && (
           <Link
             to={rcmLink(group.filter_param, bucket.value)}
