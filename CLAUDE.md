@@ -157,14 +157,25 @@ prompts/ICFR_setup_1_20260515.md 대로 작업해줘
 2. 커밋 메시지(안)을 사용자에게 제시
 3. **사용자 OK 확인 후** `git add . → git commit -m "..."` 실행
 4. **`git pull --no-rebase` 를 반드시 먼저 실행한다. pull 없이 push 하지 않는다.**
+   **pull 이 실제로 HEAD 를 옮겼는지 함께 잡아 둔다** — 그래야 5 의 비교 대상이 정해진다.
+   ```bash
+   before=$(git rev-parse HEAD)
+   git pull --no-rebase
+   [ "$before" = "$(git rev-parse HEAD)" ] && echo "(원격 변경 없음)" || git diff --stat "$before" HEAD
+   ```
 5. **pull 결과를 확인한다.** 아래에 해당하면 **push 하지 않고 보고한다.**
    - 충돌이 발생한 경우
-   - 상대가 이번 작업과 **같은 파일**을 건드린 경우
-     ```bash
-     git diff --stat HEAD@{1} HEAD
-     ```
+   - 위 `git diff --stat` 에 이번 작업과 **같은 파일**이 있는 경우
    - 상대 커밋에 `alembic/versions/` **신규 파일**이 있는 경우
      (마이그레이션이 둘 겹치면 순서가 꼬인다)
+
+   > **`git diff --stat HEAD@{1} HEAD` 를 쓰지 않는다.** `HEAD@{1}` 은 reflog 직전
+   > 항목이라 **pull 이 HEAD 를 옮기지 않으면 직전 *내* 커밋을 가리킨다** — 자기가
+   > 건드린 파일이 "상대가 겹쳤다"로 잡히는 오탐이 된다. **오탐이 반복되면 사람이
+   > 그 경고를 무시하게 되고, 정작 진짜 충돌일 때 그냥 넘어간다. 게이트가
+   > 무력화된다.** `ORIG_HEAD` 도 no-op pull 에서 옛 값이 남아 완전하지 않다.
+   > pull 직전 해시를 직접 잡아 비교하는 것만이 판정 가능하다
+   > (2026-09-18, `ClaudeICFR.md` 13.9-38).
 6. **`git log origin/main..HEAD` 로 대기 커밋을 확인한다.**
    승인 범위 밖 커밋이 있으면 push 하지 않고 보고한다.
    대기 커밋에 마이그레이션이 있는지도 함께 본다.
