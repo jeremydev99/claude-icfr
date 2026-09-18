@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { isAxiosError } from 'axios'
 import type { Control, ControlSearchParams } from '../types'
+import { paramsFromUrl } from '../urlFilters.pure'
 import { useControls, useDeleteControl } from '../api/useControls'
 import ControlSearchBar from '../components/ControlSearchBar'
 import ControlFilterChips from '../components/ControlFilterChips'
@@ -34,7 +36,11 @@ type RcmTab = 'controls' | 'hierarchy'
 
 export default function RcmPage() {
   const [rcmTab, setRcmTab] = useState<RcmTab>('controls')
-  const [params, setParams] = useState<ControlSearchParams>(DEFAULT_PARAMS)
+  const [searchParams] = useSearchParams()
+  // 초기값 계산은 최초 렌더에서만 — 이후 URL 이 바뀌어도 화면 상태를 덮지 않는다(단방향).
+  const [params, setParams] = useState<ControlSearchParams>(() =>
+    paramsFromUrl(searchParams, DEFAULT_PARAMS),
+  )
   const [selectedControl, setSelectedControl] = useState<Control | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
 
