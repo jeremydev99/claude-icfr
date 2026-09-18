@@ -25,21 +25,46 @@
     --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
 
-    /* 사이드바 전용 토큰 (B-1).
-       hover·border 를 일반 토큰(--accent/--border)으로 두면 테마를 바꿀 때 대비가 깨진다 —
-       회색 사이드바 위에서는 --accent(96%)가 밝아서 보이지만, 흰 사이드바 위에서는
-       거의 같은 색이 된다. 그래서 사이드바 안에서 쓰는 값은 여기서 따로 정의한다. */
+    /* ── 사이드바 팔레트 ────────────────────────────────────────────
+       사이드바는 본문과 다른 배경 위에 있어 **자체 전경색·강조색을 갖는다.**
+       본문 토큰(--foreground/--muted-foreground/--accent)을 그대로 쓰면 남색 배경에서
+       글자와 호버가 사라진다. 세 테마가 같은 토큰 이름을 채운다:
+
+         --sidebar / -foreground / -muted / -hover / -border
+         --sidebar-selected / -selected-foreground
+
+       기본은 gray(회색 배경). 기존 'dark' 가 실제로는 밝은 회색이었다. */
     --sidebar: 220 14% 92%;
+    --sidebar-foreground: 222.2 84% 4.9%;
+    --sidebar-muted: 215.4 16.3% 40%;
     --sidebar-hover: 220 14% 85%;
     --sidebar-border: 220 13% 82%;
+    --sidebar-selected: 222.2 47.4% 11.2%;
+    --sidebar-selected-foreground: 210 40% 98%;
   }
 
-  /* 라이트 — 사이드바를 본문과 같은 흰색으로 두고 경계는 테두리로만 낸다.
-     선택 상태는 두 테마 모두 --primary(짙은 남색 배경 + 흰 글자)라 대비가 유지된다. */
-  :root[data-sidebar-theme='light'] {
+  /* white — 사이드바를 본문과 같은 흰색으로 두고 경계는 테두리로만 낸다.
+     호버는 gray 테마와 같은 정도(배경 대비 약 1.2)로 맞췄다 — 94% 로 두면 흰 배경과
+     거의 구분되지 않아 "눌리는 줄 모른다". */
+  :root[data-sidebar-theme='white'] {
     --sidebar: 0 0% 100%;
-    --sidebar-hover: 220 14% 94%;
+    --sidebar-hover: 220 14% 92%;
     --sidebar-border: 214.3 31.8% 88%;
+  }
+
+  /* navy — 남색 배경 + 흰 글자.
+     선택 강조는 **호박색(amber)** 이다. 남색의 보색 계열이라 색상환에서 가장 멀어
+     구분이 쉽고, 명도 차이(16% vs 55%)까지 겹쳐 회색조·저시력에서도 갈린다.
+     남색 계열 강조를 쓰면 선택/비선택이 같은 색조 안에서만 갈려 한눈에 안 보인다.
+     호박색 위 글자는 흰색이 아니라 짙은 남색이다 — 밝은 바탕에 흰 글자는 읽히지 않는다. */
+  :root[data-sidebar-theme='navy'] {
+    --sidebar: 222 47% 16%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-muted: 215 25% 72%;
+    --sidebar-hover: 222 40% 25%;
+    --sidebar-border: 222 30% 30%;
+    --sidebar-selected: 38 92% 55%;
+    --sidebar-selected-foreground: 222 47% 12%;
   }
 }
 
@@ -49,5 +74,44 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  /* 사이드바 스크롤바 — 평소엔 안 보이고 스크롤 중·마우스 올릴 때만 나타난다.
+     메뉴 폭이 좁아 상시 노출되는 스크롤바가 아깝다.
+
+     **브라우저마다 방식이 다르다.**
+     - Firefox: `scrollbar-color` 만 지원한다(의사요소 없음). 색을 투명으로 두어 숨긴다.
+     - Chrome/Edge/Safari: `::-webkit-scrollbar` 계열로 thumb 배경을 투명하게 둔다.
+     - macOS 는 OS 설정에 따라 이미 오버레이 스크롤바라 아무 것도 안 해도 자동으로 사라진다.
+
+     **폭은 항상 잡아 둔다**(width 0 으로 숨기지 않는다). 나타날 때만 폭이 생기면
+     메뉴 글자가 밀려 덜컥거린다.
+
+     `.is-scrolling` 은 스크롤 이벤트가 붙였다 떼는 클래스다 — 호버 없이 휠만 굴려도
+     보이게 하려면 CSS 만으로는 안 된다. */
+  .sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .sidebar-scroll:hover,
+  .sidebar-scroll.is-scrolling {
+    scrollbar-color: hsl(var(--sidebar-border)) transparent;
+  }
+  .sidebar-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar-scroll::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 9999px;
+    transition: background-color 150ms ease;
+  }
+  .sidebar-scroll:hover::-webkit-scrollbar-thumb,
+  .sidebar-scroll.is-scrolling::-webkit-scrollbar-thumb {
+    background: hsl(var(--sidebar-border));
   }
 }
