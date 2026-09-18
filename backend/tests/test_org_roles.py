@@ -397,6 +397,11 @@ def test_external_auditor_cannot_write(client: TestClient, org_ctx) -> None:
     """§6-12 — external_auditor 는 생성·수정 API 에서 거부된다(§2.1 조회 전용).
 
     외부감사인이 평가 데이터를 만들거나 고칠 수 있으면 독립성 훼손이다.
+
+    **2026-09-19(4-2): 문구 검사를 뺐다.** 부서 쓰기 가드가 `require_write` →
+    `require_icfr_manager` 로 강화되어(13.9-41) 외부감사인은 더 앞 단계에서 막힌다 —
+    거부는 그대로 403 이지만 문구는 "내부회계관리자 권한이 필요합니다" 다.
+    **이 테스트가 지키려는 것은 "외부감사인이 쓸 수 없다"이지 특정 문구가 아니다.**
     """
     h, db = org_ctx
     ext_id = _make_user(db, "ext@acme.example", "외부감사인")
@@ -410,7 +415,6 @@ def test_external_auditor_cannot_write(client: TestClient, org_ctx) -> None:
 
     resp = client.post("/api/org/departments", json={"name": "외부감사인생성-Z1"}, headers=ext_h)
     assert resp.status_code == 403, resp.text
-    assert "외부감사인" in resp.json()["detail"]
 
     # 조회는 가능하다
     assert client.get("/api/org/departments", headers=ext_h).status_code == 200
