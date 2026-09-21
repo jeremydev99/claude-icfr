@@ -3,6 +3,7 @@ import type {
   PreventiveDetective,
   AutoManual,
   Frequency,
+  AssessmentFrequency,
   AssertionCode,
   RiskLevel,
   PriorYearEffectiveness,
@@ -22,6 +23,7 @@ export interface ControlDto {
   preventive_detective: PreventiveDetective
   auto_manual: AutoManual
   frequency: Frequency
+  assessment_frequency: AssessmentFrequency
   ipe_relevant: 'Y' | 'N' | 'N/A'
   activity_approval: boolean
   activity_verification: boolean

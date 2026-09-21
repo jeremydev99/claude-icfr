@@ -4,6 +4,9 @@ import type { SourceEnvelope } from './api/sourceEnvelope'
 export type AssertionCode = 'E' | 'C' | 'R' | 'V' | 'P' | 'O' | 'M'
 export type RiskLevel = 'LR' | 'MR' | 'HR' | 'SR'
 export type Frequency = 'O' | 'D' | 'W' | 'M' | 'Q' | 'A'
+// 평가주기 — **`Frequency`(통제 수행주기)와 다른 축이다.** 화면에서 나란히 보이면
+// 혼동하므로 라벨을 "평가주기"/"수행주기"로 구분해 쓴다(4-1).
+export type AssessmentFrequency = 'weekly' | 'monthly' | 'quarterly' | 'semiannual' | 'annual'
 export type PreventiveDetective = 'P' | 'D'
 export type AutoManual = 'A' | 'M' | 'IT'
 
@@ -19,6 +22,7 @@ export interface Control {
   preventive_detective: PreventiveDetective
   auto_manual: AutoManual
   frequency: Frequency
+  assessment_frequency: AssessmentFrequency
   ipe_relevant: 'Y' | 'N' | 'N/A'
   activity_approval: boolean
   activity_verification: boolean
@@ -46,6 +50,10 @@ export interface ControlSearchParams {
   sub_process_code?: string
   risk_level?: RiskLevel
   frequency?: Frequency
+  assessment_frequency?: AssessmentFrequency
+  ipe_relevant?: 'Y' | 'N' | 'N/A'
+  // 통제활동 6종 중 하나의 필드명. 백엔드가 목록 밖 값을 422 로 거부한다.
+  activity?: string
   is_key_control?: boolean
   auto_manual?: AutoManual
   preventive_detective?: PreventiveDetective
@@ -70,6 +78,14 @@ export const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {
   MR: '보통',
   HR: '높음',
   SR: '유의',
+}
+
+export const ASSESSMENT_FREQUENCY_LABELS: Record<AssessmentFrequency, string> = {
+  weekly: '주',
+  monthly: '월',
+  quarterly: '분기',
+  semiannual: '반기',
+  annual: '연',
 }
 
 export const FREQUENCY_LABELS: Record<Frequency, string> = {
@@ -215,11 +231,13 @@ export const OVERALL_ASSESSMENT_LABELS: Record<OverallAssessment, string> = {
 }
 
 // POST /controls 요청 페이로드 (서버 생성 필드 + JOIN 표시 필드 + envelope 제외)
+// `assessment_frequency` 는 선택 — 백엔드 기본값이 'annual' 이다. 통제 등록 화면에
+// 아직 입력란이 없으므로 required 로 두면 화면이 값을 지어내야 한다.
 export type ControlCreatePayload = Omit<Control,
   | 'id' | 'created_at' | 'updated_at'
   | 'process_code' | 'sub_process_code' | 'risk_level' | 'assertions'
-  | 'envelope'
->
+  | 'envelope' | 'assessment_frequency'
+> & { assessment_frequency?: AssessmentFrequency }
 
 // PATCH /controls/{id} 요청 페이로드 (code·risk_id 불변 필드 제외, 전부 옵셔널)
 export type ControlUpdatePayload = Partial<Omit<ControlCreatePayload, 'code' | 'risk_id'>>

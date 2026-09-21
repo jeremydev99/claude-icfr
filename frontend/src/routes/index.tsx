@@ -15,6 +15,10 @@ import ReportPage from '@/features/report/pages/ReportPage'
 import EvidencePage from '@/features/evidence/pages/EvidencePage'
 import UsersPage from '@/features/users/pages/UsersPage'
 import NotificationPage from '@/features/notification/pages/NotificationPage'
+import DepartmentsPage from '@/features/admin/pages/DepartmentsPage'
+import RoleAssignmentsPage from '@/features/admin/pages/RoleAssignmentsPage'
+import PoliciesPage from '@/features/admin/pages/PoliciesPage'
+import FiscalYearPage from '@/features/admin/pages/FiscalYearPage'
 
 export const router = createBrowserRouter([
   {
@@ -43,6 +47,11 @@ export const router = createBrowserRouter([
       { path: 'evidence', element: <EvidencePage /> },
       { path: 'users', element: <UsersPage /> },
       { path: 'notification', element: <NotificationPage /> },
+      // 관리자 기능 — 화면 미구현(API 있음). 접근 제한은 서버가 최종 판정한다.
+      { path: 'admin/departments', element: <DepartmentsPage /> },
+      { path: 'admin/role-assignments', element: <RoleAssignmentsPage /> },
+      { path: 'admin/policies', element: <PoliciesPage /> },
+      { path: 'admin/fiscal-year', element: <FiscalYearPage /> },
       { path: '*', element: <Navigate to="/dashboard" replace /> },
     ],
   },

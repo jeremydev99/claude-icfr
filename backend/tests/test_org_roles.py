@@ -309,7 +309,12 @@ def test_policy_toggle_blocks_conflict(client: TestClient, org_ctx) -> None:
     _, ctrl_id = _chain(db, "I1")
 
     admin = db.query(User).filter(User.email == "admin@acme.example").one()
-    db.add(UserRole(user_id=admin.id, role_name="icfr_manager"))
+    # 같은 역할이 2행 저장되지 않는다(`uq_user_roles_active_pair`, 13.9-35 ④).
+    # 다른 파일의 같은 헬퍼들과 동일한 형태 — 부수효과에 기대지 않고 없을 때만 넣는다.
+    if db.query(UserRole).filter(UserRole.user_id == admin.id,
+                                 UserRole.role_name == "icfr_manager",
+                                 UserRole.is_deleted == False).first() is None:  # noqa: E712
+        db.add(UserRole(user_id=admin.id, role_name="icfr_manager"))
     db.commit()
     assert manager_id is not None
 
@@ -392,6 +397,11 @@ def test_external_auditor_cannot_write(client: TestClient, org_ctx) -> None:
     """§6-12 — external_auditor 는 생성·수정 API 에서 거부된다(§2.1 조회 전용).
 
     외부감사인이 평가 데이터를 만들거나 고칠 수 있으면 독립성 훼손이다.
+
+    **2026-09-19(4-2): 문구 검사를 뺐다.** 부서 쓰기 가드가 `require_write` →
+    `require_icfr_manager` 로 강화되어(13.9-41) 외부감사인은 더 앞 단계에서 막힌다 —
+    거부는 그대로 403 이지만 문구는 "내부회계관리자 권한이 필요합니다" 다.
+    **이 테스트가 지키려는 것은 "외부감사인이 쓸 수 없다"이지 특정 문구가 아니다.**
     """
     h, db = org_ctx
     ext_id = _make_user(db, "ext@acme.example", "외부감사인")
@@ -405,7 +415,6 @@ def test_external_auditor_cannot_write(client: TestClient, org_ctx) -> None:
 
     resp = client.post("/api/org/departments", json={"name": "외부감사인생성-Z1"}, headers=ext_h)
     assert resp.status_code == 403, resp.text
-    assert "외부감사인" in resp.json()["detail"]
 
     # 조회는 가능하다
     assert client.get("/api/org/departments", headers=ext_h).status_code == 200

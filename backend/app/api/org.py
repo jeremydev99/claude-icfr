@@ -13,7 +13,13 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser
-from app.core.permissions import require_write
+
+# 조직 구조(부서·소속)의 **쓰기는 `icfr_manager` 전용**이다(2026-09-19, 13.9-41).
+# 3-1 에서 `require_write` 로 둔 것은 누락이었다 — 그러면 `external_auditor` 만 막히고
+# 일반 사용자가 부서를 만들 수 있다(실측 201). 제도 운영 조직을 아무나 바꾸면 안 된다.
+# **조회는 인증만으로 둔다** — 대시보드 조직별 집계와 화면이 부서를 읽어야 하고,
+# 조직도를 보는 것 자체는 제한할 이유가 없다.
+from app.core.permissions import require_icfr_manager
 from app.models.org import Department, UserDepartment
 from app.models.user import User
 from app.schemas.org import (
@@ -85,7 +91,7 @@ def list_departments(skip: int = 0, limit: int = 100, user: CurrentUser = None,
 
 
 @router.post("/departments", status_code=status.HTTP_201_CREATED, response_model=DepartmentRead)
-def create_department(body: DepartmentCreate, user: User = Depends(require_write),
+def create_department(body: DepartmentCreate, user: User = Depends(require_icfr_manager),
                       db: Session = Depends(get_db)) -> DepartmentRead:
     """생성. tenant_id 는 before_flush 자동 stamp (ADR-0025, 수동 지정 금지)."""
     _assert_name_available(db, body.name)
@@ -104,7 +110,7 @@ def get_department(dept_id: UUID, user: CurrentUser = None,
 
 
 @router.patch("/departments/{dept_id}", response_model=DepartmentRead)
-def update_department(dept_id: UUID, body: DepartmentUpdate, user: User = Depends(require_write),
+def update_department(dept_id: UUID, body: DepartmentUpdate, user: User = Depends(require_icfr_manager),
                       db: Session = Depends(get_db)) -> DepartmentRead:
     """수정. `exclude_unset` — None 도 유효한 값이라 미전송 여부로만 판별한다."""
     obj = _get_department_or_404(db, dept_id)
@@ -121,7 +127,7 @@ def update_department(dept_id: UUID, body: DepartmentUpdate, user: User = Depend
 
 
 @router.delete("/departments/{dept_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_department(dept_id: UUID, user: User = Depends(require_write),
+def delete_department(dept_id: UUID, user: User = Depends(require_icfr_manager),
                       db: Session = Depends(get_db)) -> None:
     """삭제(soft). 소속이 남아 있으면 거부한다 — 소속만 남으면 어느 부서인지 알 수 없다."""
     obj = _get_department_or_404(db, dept_id)
@@ -187,7 +193,7 @@ def list_memberships(user_id: UUID | None = None, department_id: UUID | None = N
 
 
 @router.post("/memberships", status_code=status.HTTP_201_CREATED, response_model=UserDepartmentRead)
-def create_membership(body: UserDepartmentCreate, user: User = Depends(require_write),
+def create_membership(body: UserDepartmentCreate, user: User = Depends(require_icfr_manager),
                       db: Session = Depends(get_db)) -> UserDepartmentRead:
     """소속 추가. **한 사람이 여러 부서에 소속될 수 있다**(ADR-0031 §2.2 근거와 같은 실무).
 
@@ -219,7 +225,7 @@ def create_membership(body: UserDepartmentCreate, user: User = Depends(require_w
 
 @router.patch("/memberships/{membership_id}", response_model=UserDepartmentRead)
 def update_membership(membership_id: UUID, body: UserDepartmentUpdate,
-                      user: User = Depends(require_write),
+                      user: User = Depends(require_icfr_manager),
                       db: Session = Depends(get_db)) -> UserDepartmentRead:
     obj = db.query(UserDepartment).filter(
         UserDepartment.id == membership_id,
@@ -240,7 +246,7 @@ def update_membership(membership_id: UUID, body: UserDepartmentUpdate,
 
 
 @router.delete("/memberships/{membership_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_membership(membership_id: UUID, user: User = Depends(require_write),
+def delete_membership(membership_id: UUID, user: User = Depends(require_icfr_manager),
                       db: Session = Depends(get_db)) -> None:
     obj = db.query(UserDepartment).filter(
         UserDepartment.id == membership_id,

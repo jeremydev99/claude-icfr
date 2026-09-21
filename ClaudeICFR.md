@@ -1236,6 +1236,113 @@ cd claude-icfr
 - 시드 데이터 적재 스크립트
 - Docker compose 파일
 
+### 8.5 신규 테넌트 온보딩 — 첫 역할 1행은 SQL 로 넣는다 (2026-09-16 등록, ✅ 2026-09-18 운영 1회 실행 완료)
+
+**신규 테넌트는 `icfr_manager` 도 `sys_admin` 도 0명이라 역할 배정을 시작할 수 없다.**
+13.9-35 수정으로 `/api/users/roles` 가 `icfr_manager`(또는 `icfr_manager` 0명일 때
+`sys_admin`)를 요구하는데, `user_roles` 가 비어 있으면 **둘 다 없어 부트스트랩 경로도
+닫혀 있다.** `users.role == "admin"` 을 보게 하면 열리지만 **그 추론을 금지한 것이
+ADR-0031 §3.2 이고, 그 경계가 이 결함을 만든 구조적 원인과 같은 자리다.**
+코드로 풀지 않고 **첫 1행만 SQL 로 넣는다.**
+
+**고객사 온보딩 때마다 반복되는 상황이므로 온보딩 절차에 포함한다.**
+
+순서 — ①가드 배포 완료 → ②아래 SQL 로 `sys_admin` 1행 → ③그 계정이 API 로
+첫 `icfr_manager` 배정 → ④이후 `sys_admin` 경로는 자동으로 닫힌다.
+
+**실행 주체는 마스터다.** 운영 실데이터 조작이며 Claude Code 는 실행하지 않는다.
+
+```sql
+-- 대상 지정 (하드코딩하지 않는다 — 이메일·테넌트 코드로 조회한다)
+\set target_email 'jeremy@example.com'   -- 실제 마스터 계정 이메일로 교체
+\set target_tenant 'DEFAULT'             -- 대상 테넌트 코드
+
+-- ① 사전 확인 — 계정·테넌트가 유일하게 잡히는지, 현재 역할이 무엇인지
+SELECT id, email, display_name, role FROM users
+ WHERE email = :'target_email' AND is_deleted = false;
+
+SELECT id, code, name, is_active FROM tenants WHERE code = :'target_tenant';
+
+SELECT ur.id, u.email, ur.role_name, t.code AS tenant, ur.is_deleted
+  FROM user_roles ur
+  JOIN users u ON u.id = ur.user_id
+  JOIN tenants t ON t.id = ur.tenant_id
+ ORDER BY ur.created_at;
+
+-- ② 삽입 — AuditedBase 전 컬럼을 명시한다. id 는 DB 기본값이 없다(앱이 UUIDv7 생성).
+--    여기서는 gen_random_uuid()(v4)를 쓴다 — 온보딩마다 새 값이어야 하므로 고정값을
+--    적을 수 없고, 단일 행이라 ADR-0020(v7 정렬 효율)의 실익이 없다.
+--    NOT EXISTS 로 멱등하게 둔다. uq_user_roles_active_pair 가 최종 보장이다.
+BEGIN;
+
+INSERT INTO user_roles (
+    id, tenant_id, user_id, role_name, scope,
+    created_at, created_by, updated_at, updated_by,
+    is_deleted, deleted_at, deleted_by, row_version
+)
+SELECT
+    gen_random_uuid(), t.id, u.id, 'sys_admin', NULL,
+    now(), 'manual-bootstrap-13.9-35',
+    now(), 'manual-bootstrap-13.9-35',
+    false, NULL, NULL, 1
+  FROM users u
+ CROSS JOIN tenants t
+ WHERE u.email = :'target_email' AND u.is_deleted = false
+   AND t.code = :'target_tenant' AND t.is_active = true
+   AND NOT EXISTS (
+       SELECT 1 FROM user_roles ur
+        WHERE ur.user_id = u.id AND ur.tenant_id = t.id
+          AND ur.role_name = 'sys_admin' AND ur.is_deleted = false
+   );
+
+-- **`INSERT 0 1` 인지 확인하고 COMMIT 한다.** 0 이면 이미 있거나 조건이 안 맞는 것이고,
+-- 2 이상이면 대상이 유일하지 않다는 뜻이므로 ROLLBACK 하고 ① 로 돌아간다.
+COMMIT;
+
+-- ③ 검증
+SELECT ur.id, u.email, ur.role_name, t.code AS tenant,
+       ur.is_deleted, ur.row_version, ur.created_by, ur.created_at
+  FROM user_roles ur
+  JOIN users u ON u.id = ur.user_id
+  JOIN tenants t ON t.id = ur.tenant_id
+ WHERE ur.role_name = 'sys_admin' AND ur.is_deleted = false;
+```
+
+**API 로도 확인한다** (여기까지 해야 부트스트랩이 열린 것이다):
+
+1. 해당 계정 로그인 → `GET /api/auth/me` 의 `tenant_roles` 에 `sys_admin` 이 있다
+2. `POST /api/users/roles` 로 첫 `icfr_manager` 배정 → **201**
+3. 같은 계정으로 한 번 더 배정 시도 → **403** (부트스트랩이 닫혔다는 증거)
+
+3번까지 확인할 것. 2번만 보면 `sys_admin` 상시 배정 상태와 구분되지 않는다.
+
+**운영 실행 기록 (2026-09-18, 마스터)** — `ynjun@synapsoft.co.kr` / `sys_admin` / `DEFAULT`, `INSERT 0 1`, `created_by = manual-bootstrap-13.9-35`, `row_version 1`. 실행 전 운영 `user_roles` **0행**. API 검증 1~3 전부 통과(상세는 13.9-35). **이 절차가 실제로 동작함이 운영에서 확인됐다** — 고객사 온보딩에 그대로 쓴다.
+
+### 8.6 배포 트리거 경로 필터 — 제외 목록으로 둔 이유 (2026-09-18, `ClaudeICFR.md` 13.8 조치)
+
+> **규칙 — 배포 트리거는 `paths-ignore`(제외 목록)를 쓴다.**
+> 포함 목록은 모르는 경로를 만나면 배포에서 조용히 빠진다 — 새 디렉터리가 생겨도 아무도 모른다.
+> 제외 목록은 반대로 불필요한 배포 1회로 드러난다.
+> **두 실패의 성질이 비대칭이므로 시끄러운 쪽을 택한다.**
+> 보안 설정은 화이트리스트가 맞지만 배포 트리거는 반대다.
+
+`deploy.yml` 의 배포 트리거는 **`paths-ignore`(제외 목록)** 이다. `paths`(포함 목록)를 쓰지 않았다.
+
+**두 실패의 성질이 다르다.**
+
+| 방식 | 모르는 경로를 만나면 | 실패가 드러나는가 |
+|---|---|---|
+| 포함 목록(`paths`) | **배포 안 함** | ❌ 조용하다 — 운영에 옛 코드가 도는데 신호가 없다 |
+| 제외 목록(`paths-ignore`) | 배포함 | ✅ 시끄럽다 — 불필요한 배포 1회로 보인다 |
+
+**안 나가는 실패는 조용하고, 더 나가는 실패는 시끄럽다.** 배포 트리거에서는 조용한 쪽이 나쁘다 —
+"배포되어야 할 변경이 안 나간" 상태는 아무도 알아채지 못한 채 유지된다. 그래서 `docker-compose*.yml`·
+`.github/workflows/**`·`backend/**`·`frontend/**` 는 **목록에 적지 않는 것만으로** 포함되고,
+나중에 새 디렉터리가 생겨도 기본값이 "배포함" 이다.
+
+제외 목록은 `'**.md'`·`docs/**`·`prompts/**` 세 줄뿐이다. 이 셋은 **배포 산출물에 들어가지 않는 것이
+확실한 경로**이며, 늘어날 일이 있어도 사람이 의식적으로 추가해야 한다.
+
 ---
 
 ## 9. 테스트 전략
@@ -1608,6 +1715,8 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 
 | 모듈 | 명세 | ERD | API | BE | FE | 테스트 | 비고 |
 |---|---|---|---|---|---|---|---|
+| 부서 관리(관리자) | ✅ | ✅ | ✅ | ✅ 3-1 API + **쓰기 가드 `require_icfr_manager` 전환**(13.9-41) + 부분 유니크(13.9-42) | ✅ 부서 CRUD + 소속 인원 관리(주 소속 이동 안내) + 책임자 지정. 권한 없으면 읽기 전용 (4-2) | ✅ 10건 | 대시보드 조직별 집계와 직결 — 부서·주 소속·control_owner 배정이 이어지면 미배정이 줄어든다 |
+| 대시보드 | ✅ | — | ✅ | ✅ `/api/rcm/summary` 집계(resolver 경유) + 검색 필터 3종 추가(assessment_frequency·ipe_relevant·activity) | ✅ 모듈 카드(3단계 배지) + RCM 집계·드릴다운 (4-1) | ✅ 8건 | 집계↔검색 건수 일치를 테스트가 기계적으로 대조. 0건도 0으로 표시(배정 0·회차 0) |
 | 일정관리 | ✅ | ✅ | — | — | 🔄 골조 | — | 메뉴·라우트 연결 |
 | RCM 관리 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + Excel헤더자동인식 + ControlSearchOut(search 응답 확장) + owner_name 정렬·검색 | 🔄 목록·검색·필터·페이지네이션·상세·편집·추가·삭제·Excel업로드·담당자 정렬·RAWC 위험평가 섹션 모두 실 API 연결 완료 (다건 bulk 삭제/편집 남음) | ✅ 65개 | mock 완전 제거. useCreateControl·useUpdateControl·useDeleteControl 뮤테이션 훅. risk_id 자동 해결(sub-process→risk 조회). DeleteConfirmDialog 신규. 담당자 컬럼 sort_by=owner_name 정렬 연결 (de81d52). RAWC 위험평가 섹션: rawcApi·useRawc·RawcSection 신규, 통제 상세 패널 하단 연결 (fb73469). **어댑터 경계 도입 완료(2026-07-20)** — dto.ts/controlsAdapter.ts/rawcAdapter.ts, 2-B-4 계약 확정 시 흡수 지점 확보. **envelope 흡수 자리 준비 완료(2026-07-22)** — SourceEnvelope 타입·4계층 DTO/도메인 optional 필드·adapter 매핑, 백엔드 flat 계약(d325705)에 맞춰 DTO는 flat(source/baseline_id/is_overridden), 어댑터가 도메인 nested envelope로 조립(buildSourceEnvelope). 실 API 미전환, UI 무변경. **envelope required 전환 완료(2026-07-24)** — control DTO(source/baseline_id/is_overridden) optional→required, 어댑터 fallback 제거(부재 시 개발모드 throw·프로덕션 콘솔에러 1회+안전 렌더), SourceBadge(재정의/테넌트/기준) 목록·상세 노출, mutation 임시 잠금(RCM_MUTATION_LOCKED, 2-A-4 해제 대기). `npm run build` 통과. **단 로컬 DB baseline 계열 0건**(2-A-2 문서상 699행 이관 기록과 불일치, 재이관은 백엔드 소관·미실행) — 라이브 카운트(95/37/73/1)·뱃지 렌더·잠금 UI 육안 확인은 미검증 대기(13.4 참조). **2026-08-04 재확인**: baseline/instance 11테이블 스키마 존재(2-A-2 스키마 랜딩 완료 재확인)·데이터 여전히 0건(백필 미완, 13.4 신규 pending 참조). **2026-08-06 baseline seed 도입** — `backend/seeds/2026_설계평가_RCM_리스트.xlsx`(사이냅소프트 최종본, Update 2026-05-12)를 repo 단일 원천으로 두고 `seeds/seed_baseline.py`가 baseline 6테이블을 재현. 파서는 기존 `_parse_rcm_sheet`/`find_rcm_sheet`를 무변경 재사용(둘 다 이미 controls 비결합 순수 변환). 13.4 백필 미완 환경은 이 seed로 해소 가능. **2026-08-11 seed 실행 완료(Regina 로컬)** — `python -m seeds.seed_baseline --reset`, baseline_controls 93 등 전 테이블 엑셀 파싱 수와 일치·DB 직접 쿼리 교차검증, instance 0(암묵 adopt)·legacy `controls` 98 불변. baseline 데이터 최초 실제 population(13.4 항목5 해소). **흡수 레이어 단위 테스트 완료(2026-08-11)** — `sourceEnvelope.test.ts` 17건(buildSourceEnvelope·buildOptionalSourceEnvelope·isBaseline·isTenantAdd·resolveDeleteSemantics), 뮤테이션 와이어링·필드 required 전환·API 계약 변경 없이 순수 로직만 검증. **프로세스 필터 동적화 완료(2026-08-12)** — `ControlSearchBar.tsx` 하드코딩 `PROCESSES`(O2C/P2P/R2R/HR/ITG, Phase 0 데모값) 제거, `GET /api/rcm/processes` 동적 조회(라벨 `code — name`/값은 `code` 유지)로 전환. 브라우저 검증: 8개 코드 전수 노출, 93-기반 기대 분포 실측 일치(EL 37/FA 7/TR 14), SourceBadge·mutation lock·콘솔 클린 기존 상태 유지. **envelope 도메인 required 전환 완료(2026-08-13, `ICFR-PROMPT-2A3-1-envelope-required.md`)** — control 도메인 타입(`types.ts` `Control.envelope`) optional→required(DTO는 2026-07-24 선행 완료, 이번엔 도메인·어댑터·컴포넌트 계층). envelope 불필요한 경량 소비처(ControlSelector·CreateTestRunDialog·DeficiencyFormDialog) 전용 `ControlOption`(Pick id/code/name/process_code) 신설로 분리, `ControlFormDialog`는 뮤테이션 응답을 `toControl` 어댑터로 조립 후 `onSuccess` 전달. 상위 3계층(process/sub_process/risk)은 해당 API가 아직 resolver 미배선이라 이번 전환에서 제외(13.7 확장 기록). `sourceEnvelope.test.ts` 17건 통과 유지, `npm run build` 에러 0, 브라우저 검증(통제 목록·SourceBadge 정상, 콘솔 envelope 계약 위반 에러 0건) 완료. **2-A-3-2 mutation UI 배선 완료(2026-08-14)** — mutation 잠금 4곳 물리 제거(생성/편집/삭제 버튼 활성화), `RCM_MUTATION_LOCKED`→`EXCEL_UPLOAD_LOCKED` rename(Excel 업로드만 잠금 유지), `DeleteConfirmDialog` baseline/tenant source 분기 문구, `ControlFormDialog` baseline 편집 override 안내 배너. `sourceEnvelope.test.ts` 17건·`npm run build` 에러 0·브라우저 실 API 왕복 검증 완료. **BE 2-A-4-4 완료(2026-09-01)** — 어서션 junction CRUD overlay 전환(`control_assertion_instances`). `GET /risk-categories` 가 baseline 을 읽도록 바뀌어 **어서션 id 공간이 baseline 으로 확정**(FE 소비처 0건이라 현재 영향 없음, 어서션 편집 UI 착수 시 이 id 를 쓸 것). 쓰기 3개(`POST`/`PATCH`/`DELETE /risk-categories`)는 legacy 잔존 — 13.9-9-1 부채. **상위 3계층 envelope required 전환 완료(2026-09-02, `ICFR-PROMPT-envelope-required-transition.md`)** — 2-A-4-3(2026-08-24)로 process/sub_process/risk 조회가 resolver 경유로 전환되어 envelope 결측 경로가 사라진 것을 확인(라이브 API 3계층 재검증), `types.ts`의 `ProcessItem`/`SubProcessItem`/`RiskItem.envelope` 및 `dto.ts`의 대응 wire 타입 3종을 optional→required로 조여 control과 동일 패턴(`buildSourceEnvelope`)으로 통일. `buildOptionalSourceEnvelope`는 정의·테스트만 남고 실사용처 0건(제거는 범위 밖, 별도 정리 필요). 조회 경로 한정, mutation·신규 화면은 범위 밖. `tsc --noEmit` 에러 0, `sourceEnvelope.test.ts` 17건 통과, 브라우저 검증(93건 렌더·"기준" SourceBadge·콘솔 에러 0건) 완료. **상위 3계층 CRUD 프론트 배선 완료(2026-09-04, 13.9-14, 커밋 `d2c4002`)** — RCM 신규 탭 "계층 관리"에서 Process/SubProcess/Risk 목록·생성·편집·삭제. 상세는 13.9-14 참조. 로컬 검증만(tsc·build·vitest), 브라우저·운영 미확인. **canEditHierarchy 실구현 완료(2026-09-09)** — 하드코딩 `true` → `/me can_write` 위임. `permissions.pure.ts` 순수 헬퍼 분리(node 환경 테스트), `UserProfile`에 `can_write`/`tenant_roles` 추가, jsdom 설치로 CI 종료코드 복구. 브라우저 검증(편집 버튼 유지 + can_write=true 실측) 완료. |
 | Scoping | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
@@ -1615,7 +1724,7 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 | IUC | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 3 |
 | 개선계획 | ✅ | ✅ | ✅ | ✅ Phase1 풀확장 + DesignAssessment + 4단계워크플로 + 이력 + history changed_by(실명) join(test_module과 일관) + deficiency 삭제 FK가드(409) | ✅ 미비점+개선계획 단일 화면 통합 (탭 제거). 미비점 행에서 개선계획 상태 확인·바로 등록. 상세에서 미비점 code·담당자 display_name·이력 작성자 표시 (UUID 제거). prefilled deficiency_id useEffect 버그 수정 (11310dd) | ✅ 75개 | feature/fe-remediation-unify → main 머지 완료 |
 | 증빙 관리 | ✅ | ✅ | ✅ | ✅ MinIO 실연동 + SHA256 컬럼 | ✅ 업로드·목록·다운로드(blob)·삭제 (d70c849) | — | evidenceApi.ts·useEvidence.ts·EvidenceTable·EvidenceUploadDialog·types 신규. 50MB 검증. 브랜치: feature/fe-evidence-module → main 머지 완료. **사이드바 메뉴: 보고 그룹 → 평가 그룹 이동 (2026-06-30). 액션 컬럼 헤더 빈 문자열로 통일** |
-| 담당자/권한 | ✅ | ✅ | ✅ | ✅ 사용자 CRUD(생성·수정·삭제, 관리자 가드) + 비밀번호 변경(본인)·리셋(관리자) + 역할 CRUD | ✅ 사용자 CRUD(등록·편집·삭제·비번리셋) + 역할 CRUD 실 API 연결. UserFormDialog·ResetPasswordDialog 신규. 409 에러 메시지(본인·마지막관리자·이메일중복) 직접 표시. deficiency 삭제 임시 클라이언트 가드 → BE 409 전달로 대체. remediation history changed_by UUID 우회 매핑 제거 → changed_by.display_name 직접 사용. (4b2f66a) | ✅ 8개 | BE: create_user(email중복409·해시저장)·update_user·delete_user(본인·마지막관리자 가드)·reset-password / auth.change-password(old검증). require_admin 가드. UserCreate/UserUpdate 재사용(중복정의 없음). 브랜치: feature/fe-users-module·feature/fe-user-crud-cleanup → main 머지 완료. **ROLE_NAME_OPTIONS → ROLE_ASSIGN_OPTIONS(신규5역할)/ROLE_LABELS(전체 표시) 분리 완료(2026-09-16)** — 배정 셀렉터는 신규 5역할만 노출, 배정값 wire·API 변경 없음. 브라우저 확인·push 대기 |
+| 담당자/권한 | ✅ | ✅ | ✅ | ✅ 사용자 CRUD(생성·수정·삭제, 관리자 가드) + 비밀번호 변경(본인)·리셋(관리자) + 역할 CRUD + **권한 가드·값 검증·중복 방지(13.9-35 BE 해소, 2026-09-16)** — 배정·수정·삭제 `require_role_assigner`(icfr_manager, icfr_manager 0명 테넌트 한정 sys_admin 부트스트랩), 허용값 5역할 422 검증, 활성 행 부분 유니크 | ✅ 사용자 CRUD(등록·편집·삭제·비번리셋) + 역할 CRUD 실 API 연결. 역할 드롭다운 구 역할명 7종 문제(화면 배정 전부 422)는 **해소됨** — ROLE_ASSIGN_OPTIONS/ROLE_LABELS 분리 완료(`df9b542`·`fa8cb9b`, 13.9-35 잔여 해소), 브라우저 확인·push 대기. UserFormDialog·ResetPasswordDialog 신규. 409 에러 메시지(본인·마지막관리자·이메일중복) 직접 표시. deficiency 삭제 임시 클라이언트 가드 → BE 409 전달로 대체. remediation history changed_by UUID 우회 매핑 제거 → changed_by.display_name 직접 사용. (4b2f66a) | ✅ 8개 | BE: create_user(email중복409·해시저장)·update_user·delete_user(본인·마지막관리자 가드)·reset-password / auth.change-password(old검증). require_admin 가드. UserCreate/UserUpdate 재사용(중복정의 없음). 브랜치: feature/fe-users-module·feature/fe-user-crud-cleanup → main 머지 완료 |
 | 메일발송 | ✅ | ✅ | — | — | 🔄 골조 | — | Phase 2 |
 | Report | ✅ | — | — | — | 🔄 골조 | — | Phase 3 |
 | Test | ✅ | — | ✅ | ✅ Phase1 풀확장 | 🔄 목록·추가·상세패널·워크플로전이·이력타임라인·TestStep CRUD·TestRun편집 (실 API) | ✅ | RAWC+워크플로+이력. FE: TestRunTable·SearchBar·ControlSelector·CreateDialog·TestRunDetailSheet·TestRunEditDialog 완료. TestStep 인라인 추가·편집·삭제 (approved 잠금). TestRun 평가일·결과·샘플수·평가방법 편집. StepInlineForm 외부 컴포넌트 분리. (커밋: 70ca2d0) |
@@ -1807,9 +1916,16 @@ HTTP 200
 
 **2026-09-02 해소 (`ICFR-PROMPT-envelope-required-transition.md`)**: 2-A-4-3(2026-08-24)로 이 항목의 원인이던 미배선 자체가 해소된 것을 라이브 API 재검증(`/processes`·`/sub-processes`·`/risks` 3개 전부 `source`/`baseline_id`/`is_overridden` 항상 포함)으로 확인, FE `types.ts`/`dto.ts`의 상위 3계층 `envelope`를 optional→required로 전환해 control 계층과 통일했다. 본 항목은 기록 보존, 신규 결손 없음.
 
-### 13.8 배포 파이프라인 부채 — deploy.yml 경로 필터 부재 (미착수)
+### 13.8 배포 파이프라인 부채 — deploy.yml 경로 필터 부재 (**✅ 2026-09-18 조치 완료**)
 
 `.github/workflows/deploy.yml` 은 `main` push 전체를 트리거로 받는다. **문서·스크립트만 바뀌어도 이미지 재빌드 → 운영 컨테이너 전체 재시작**이 일어나 불필요한 다운타임이 발생한다.
+
+> **2026-09-18 — 이것은 "빌드 시간 낭비" 수준의 부채가 아니다. 장애를 반복 재생시키는 경로다.**
+> Docker Hub 익명 pull 한도로 배포가 막힌 동안(13.9-39), **문서만 바꾼 커밋 5건이 전부 배포 실패로 남았다** —
+> 13.9-35 해소·§8.3 개정·§8.3-5 교체·다이제스트 고정·ADR 기록. 코드가 바뀌지 않았는데도 매번 전체
+> 재배포가 돌아 같은 지점에서 깨졌고, **실패 알림이 5회 쌓이는 동안 어느 것이 진짜 문제인지 구분되지 않았다.**
+> 경로 필터가 있었다면 문서 커밋은 배포를 건드리지 않았고, 장애는 실제 코드 배포 1건에서만 드러났다.
+> **실패가 반복되면 사람이 실패 알림 자체를 무시하게 된다** — 13.9-38 의 오탐 문제와 같은 구조다.
 
 근거(2026-08-19 실측):
 
@@ -1817,8 +1933,9 @@ HTTP 200
 |---|---|---|---|---|
 | Deploy #4 | `f44a8a3` | ADR 문서만 | 4분 12초 | 운영 컨테이너 전체 재시작 |
 | Deploy #5 | `84fad4c` | 백업 스크립트만 | 4분 35초 | 운영 컨테이너 전체 재시작 |
+| Deploy #38·#39·#41 등 | 문서 5건 | 문서·ADR만 | 각 4~5분 | **전부 실패**(Docker Hub 한도, 13.9-39) |
 
-- 조치안: `on.push.paths`(또는 `paths-ignore`)로 `backend/**`·`frontend/**`·compose·워크플로 변경일 때만 배포. 문서(`docs/**`, `*.md`)·`scripts/**` 는 제외.
+- ~~조치안: `on.push.paths`(또는 `paths-ignore`)로 `backend/**`·`frontend/**`·compose·워크플로 변경일 때만 배포. 문서(`docs/**`, `*.md`)·`scripts/**` 는 제외.~~ **✅ 2026-09-18 적용** — `paths-ignore` 로 `'**.md'`·`docs/**`·`prompts/**` 3줄만 제외했다. **포함 목록(`paths`)을 쓰지 않은 이유는 §8.6** — 포함 목록은 모르는 경로를 만나면 배포를 조용히 건너뛴다. `scripts/**` 는 제외하지 않았다(배포 산출물과 무관하다고 단정하기 어렵고, 더 배포되는 쪽이 안전하다). `ci.yml` 은 필터가 없어 **문서 커밋에도 린트·테스트는 그대로 돈다** — 검증 신호를 잃지 않는다.
 - **백업 cron(03:00)과 배포가 겹치면 그날 백업이 조용히 실패할 수 있다.** `pg_dump` 도중 postgres 컨테이너가 재시작되면 덤프가 끊긴다. `backup_db.sh` 는 1KB 미만 덤프를 실패 처리하지만, 중간 크기로 끊긴 덤프는 크기 검사를 통과할 수 있다 — 경로 필터로 배포 빈도를 줄이는 것이 1차 방어이고, 필요하면 배포 시각 회피(또는 백업 중 배포 잠금)를 별도 검토한다.
 
 ### 13.9 운영 인프라 미결·후속 (2026-08-19 등록)
@@ -1907,7 +2024,34 @@ HTTP 200
 
 23. **`user_tenant_access.role` — 테넌트별 단일값 역할 컬럼. 용도 불명확** — 단일값이라 겸직 표현이 불가하며 **ADR-0031 §2.2(한 사람이 통제 A에서는 통제책임자, 통제 B에서는 평가자)와 충돌**한다. **참조 코드 유무를 확인한 결과: 판정에 쓰는 코드가 0건이다.** 쓰기는 `api/user_mgmt.py:65`(사용자 생성 시 `users.role` 과 **같은 값을 복사**), `seeds/bootstrap.py:61`·`tests/conftest.py:60`(둘 다 `"admin"` 하드코딩). 읽기는 `api/auth.py:80` 이 `/me` 응답의 `tenants[].role` 로 실어 보내고 FE `store.ts` 의 `TenantSummary.role` 타입에만 존재한다 — **그 값으로 분기하는 코드는 BE·FE 통틀어 0건.** 즉 **저장되고 응답에 실려 나가지만 아무도 판정에 쓰지 않으며, `users.role` 과 중복 저장 상태다.** 제거 또는 용도 확정 필요. 제거 시 `/me` 응답 계약(`TenantAccessRead.role`)이 바뀌므로 Regina 공유 필요.
 
-24. **`user_roles` 기존 3행(Tester/Reviewer/Administrator)의 의미가 불명확** — 특히 **`Reviewer` 는 ADR-0031 §1.2가 명시적으로 경고한 용어 혼동 대상**이다(통제 실행 층의 preparer/reviewer/approver vs 평가 층의 control_owner/assessor). 기존 값이 어느 층 의미인지 문서 근거가 없다. **신규 `assessor` 와 화면에서 나란히 보이면 사용자가 구분할 수 없다.** FE 역할 화면 표시를 확인하고 정리 방침을 정해야 한다. **정리는 운영 데이터 변경이므로 마스터가 직접 실행한다** — 3-1에서는 기존 3행을 건드리지 않았다(실데이터 변경은 별건). **2026-09-09 관찰 연결**: canEditHierarchy 작업에서 `/me` `tenant_roles` 실측 시 이 3행(`Administrator`/`Tester`)이 그대로 노출됨을 확인 — `can_write` 게이트와는 무관(그쪽만 사용)하지만 역할 UI 착수 시 이 부채부터 처리해야 한다.
+24. **`user_roles` 기존 3행(Tester/Reviewer/Administrator)의 의미가 불명확 — ✅ 2026-09-18 해소: 운영에는 없었고(로컬 한정), 시드 경로도 5역할로 교체** — 특히 **`Reviewer` 는 ADR-0031 §1.2가 명시적으로 경고한 용어 혼동 대상**이다(통제 실행 층의 preparer/reviewer/approver vs 평가 층의 control_owner/assessor). 기존 값이 어느 층 의미인지 문서 근거가 없다. **신규 `assessor` 와 화면에서 나란히 보이면 사용자가 구분할 수 없다.** FE 역할 화면 표시를 확인하고 정리 방침을 정해야 한다. **정리는 운영 데이터 변경이므로 마스터가 직접 실행한다** — 3-1에서는 기존 3행을 건드리지 않았다(실데이터 변경은 별건). **2026-09-09 관찰 연결**: canEditHierarchy 작업에서 `/me` `tenant_roles` 실측 시 이 3행(`Administrator`/`Tester`)이 그대로 노출됨을 확인 — `can_write` 게이트와는 무관(그쪽만 사용)하지만 역할 UI 착수 시 이 부채부터 처리해야 한다.
+
+    **2026-09-18 정정 — 운영 `user_roles` 는 0행이었다(§8.5 부트스트랩 실행 전 실측).** 구 3역할은 **로컬 개발 DB 에만 있다**(`app/seeds/users.py` 가 tester/reviewer 계정과 함께 만든다). 그동안 "운영 `user_roles` 3행도 전부 구 값"(13.9-35 ⑤)이라고 적었던 것은 **로컬 실측을 운영으로 옮겨 적은 오류다.**
+
+    **영향** — ①운영 데이터 정리가 필요 없다. 마스터가 실행할 실데이터 작업이 아니다. ②역할 UI 착수 전 선결 조건이 아니다 — 화면에 구 역할명이 섞여 보이는 상황은 로컬에서만 생긴다. ③남는 것은 **시드 정리**뿐이다(`seeds/users.py` 를 ADR-0031 5역할로 갱신). 신규 배정은 이미 422 로 막혀 있어 확산 경로는 닫혔다.
+
+    **교훈: 로컬에서 본 것을 운영 상태로 적지 않는다.** 두 DB 는 시드 경로가 다르다.
+
+    **✅ 해소 (2026-09-18) — `seeds/users.py` 를 ADR-0031 5역할로 교체했다.** 안 고치면 **새 개발 환경을 만들 때마다 구 역할이 계속 생기고**, 13.9-35 값 검증 이후로는 그 값으로 API 배정이 안 되는 상태가 이어진다. **1:1 매핑을 만들지 않았다** — 기존 3개가 어느 층 의미였는지 문서 근거가 없으므로(위 서술) 개발·테스트에 **무엇이 필요한가**로 다시 짰다.
+
+    | 계정 | 테넌트 역할 | 근거 |
+    |---|---|---|
+    | `admin@acme.example` | `sys_admin` | 부트스트랩 1행. 없으면 아무도 역할을 배정할 수 없다 |
+    | `icfrmgr@acme.example` (신규) | `icfr_manager` | 배정·정책 변경 주체. **시스템 관리 계정과 분리**(ADR-0031 §2.1.1) |
+    | `extaudit@acme.example` (신규) | `external_auditor` | `can_write=false` 경로 확인용. FE 쓰기 차단 작업에 필요 |
+    | `tester@`·`reviewer@` | 없음 | 역할 없는 일반 사용자(= 기본 경로) |
+
+    `ceo`·`auditor` 는 시드하지 않았다 — **현재 어떤 판정도 두 값에 의존하지 않아 계정을 만들어도 확인할 동작이 없다.** 값은 `models/role_assignment.py` 상수를 참조한다(문자열 리터럴 금지).
+
+    **시드가 §8.5 절차를 그대로 재현한다** — `sys_admin` 1행만 직접 삽입하고, 그 자격으로 첫 `icfr_manager` 를 **API 로** 배정하고, 그 뒤부터는 `icfr_manager` 가 배정한다. **부트스트랩 경로가 로컬에서 매번 실제로 돈다.** 직접 삽입을 `bootstrap.py`(앱 기동 시 실행 — **운영 포함**)에 넣지 않은 이유가 중요하다 — 거기 넣으면 모든 환경이 자동으로 `sys_admin` 을 갖게 되어 §8.5 절차가 무의미해지고 ADR-0031 §3.2 경계도 무너진다.
+
+    **부수 수정**: 시드가 `UserTenantAccess` 를 만들지 않아 **시드 계정으로 로그인은 되지만 모든 요청이 403** 이던 것을 함께 고쳤다(테넌트 접근 행 생성).
+
+    **부트스트랩 검증 자리는 그대로다** — 시드가 `icfr_manager` 를 만들어 기본 테넌트에서는 "0명" 상태를 만들 수 없지만, `tests/test_user_roles_guard.py` 의 부트스트랩 테스트는 **별도 테넌트(`ROLEGUARD_B`)** 를 쓰므로 영향받지 않는다.
+
+    **로컬 실측 (2026-09-18, 실 Postgres)** — 시드 2회 실행 멱등 확인. `/me`: `icfrmgr` → `['icfr_manager']`·`can_write=true`, `extaudit` → `['external_auditor']`·`can_write=false`. 가드: **`sys_admin` 의 배정 시도 403**(`icfr_manager` 가 이미 있어 부트스트랩이 닫힘) / `icfr_manager` 배정 **201** / 구 역할명 **422**. 마이그레이션 `d6e7f8a9b0c1` 도 로컬 Postgres 에 적용해 **부분 유니크 인덱스가 `WHERE NOT is_deleted` 로 생성됨을 확인**했다(그동안 SQLite 로만 검증돼 있었다).
+
+    **기존 로컬 DB 의 구 3행은 시드가 지우지 않는다**(추가만 한다). 정리는 각자 로컬에서 — `DELETE FROM user_roles WHERE role_name IN ('Administrator', 'Reviewer', 'Tester');`
 
 25. **이해상충 판정 정정 — `control_owner = dept_approver` 는 충돌이 아니다 (2026-09-04 해소)** — 3-1 구현 후 `org-contract.md` 작성 중 발견: **배정을 하나만 했는데 충돌이 잡히는 상황**이 있었다. 통제책임자를 지정했을 뿐인데 그 사람이 자기 부서의 책임자라 `dept_approver` 유도값이 자기 자신이 된 경우다. **팀장이 통제책임자인 통제는 전부 이 형태이며 실무에서 흔하다** — 경고로 두면 대부분의 통제에 사유 입력을 요구하게 되고, 그러면 사유 기록이 형식화되어 보완통제 증적으로서의 값을 잃는다. **판단: 겸직이 아니라 부서승인 단계가 성립하지 않는 상황이다.** 부서승인은 "상급자가 검토한다"는 뜻인데 통제책임자가 팀장 본인이면 그 위 단계가 없다(ADR-0031 §2.6 이 부서승인을 선택 단계로 규정한 것의 연장선). 조치: `CONFLICT_PAIRS` 에서 제거하고 `dept_approval_skipped: bool` 로 상태 표시. 정책 금지 토글 대상에서도 빠진다. **`derived` 유래 값 자체는 판정에서 빼지 않았다** — 유도값도 실제 승인자가 되므로 다른 조합에서는 계속 대상이다. ADR-0031 §2.4 에 정정 이력으로 기록.
 
@@ -1941,13 +2085,85 @@ HTTP 200
     | `/data/minio` | 328K — 증빙 파일 사실상 없음(`test2.pdf` 12B 1건) |
     | `/data/backup` | 316K — 90일 보존, 파일당 약 37KB |
 
-33. **§5-6 운영 실증 미완 — 삭제 후 MinIO 파일 잔존** — 대역 검증만 됐다. **테스트 환경에 MinIO 가 없어 "삭제 경로가 저장소 삭제를 호출하지 않는다"까지만 확인**했다(`tests/test_evidence_retention.py`, `test_evidence_module_has_no_storage_delete_path` 가 import 부재까지 잠금). **화면 재배선 후 실제 업로드 → 삭제 → 객체 잔존을 확인해야 한다** — `docker exec icfr-minio mc ls -r local/icfr-evidence`. 이것이 ADR-0032 §2.4 의 실증이며, 그 전까지는 "구현했다"까지만 말할 수 있다.
+33. **운영 실증 미완 — 삭제 후 MinIO 파일 잔존** (3-3 프롬프트 §5 검증 6번) — 대역 검증만 됐다. **테스트 환경에 MinIO 가 없어 "삭제 경로가 저장소 삭제를 호출하지 않는다"까지만 확인**했다(`tests/test_evidence_retention.py`, `test_evidence_module_has_no_storage_delete_path` 가 import 부재까지 잠금). **화면 재배선 후 실제 업로드 → 삭제 → 객체 잔존을 확인해야 한다** — `docker exec icfr-minio mc ls -r local/icfr-evidence`. 이것이 ADR-0032 §2.7("삭제는 물리 삭제가 아니다")의 실증이며, 그 전까지는 "구현했다"까지만 말할 수 있다.
 
 34. **MIME 화이트리스트를 정책으로 옮기지 않았다 (2026-09-09 판단)** — 크기 상한은 `evidence_max_bytes` 정책으로 옮겼으나 화이트리스트는 코드에 남겼다. **값이 목록이라 key-value 정책에 담으려면 파싱 규약을 새로 만들어야 하고, 현재 실무를 막는다는 증거가 없다. 막는 사례가 나오면 그때 옮긴다.** 현재 허용: pdf / png / jpeg / xlsx / docx / hwp 2종. 증빙 형식이 다양해 화이트리스트가 실무를 막을 소지는 있으므로, 반려 사례가 보고되면 재검토 대상이다.
 
+35. **`/api/users/roles` 에 권한 가드·값 검증이 없다 — ADR-0031 테넌트 역할 5종의 배정 경로가 무방비 (2026-09-15 발견, ✅ 2026-09-16 백엔드 해소, ✅ 2026-09-18 운영 검증 완료 / FE 드롭다운은 잔여)** — Regina 질문("신규 5역할 배정 가능한가")을 확인하다 발견. ①**배정 자체는 된다**: `UserRoleCreate.role_name` 은 `min_length=1, max_length=50` 뿐이고 DB 도 `String(50)` 무제약이라 5역할 모두 201, `/me` `tenant_roles` 에 즉시 나온다(`external_auditor` 는 `can_write=false`). `org-contract.md` §2.3 의 "422" 는 **`/api/org/assignments`(통제 단위) 얘기이며 의도된 동작**이다 — 지금도 422. ②**가드 없음**: POST/PATCH/DELETE `/api/users/roles` 가 `CurrentUser` 만 요구한다(`api/user_mgmt.py:122·139·151`). 실측 — **일반 사용자가 자기에게 `icfr_manager` 를 부여 → 곧바로 `PUT /api/org/policies` 200**, **`external_auditor` 가 자기 역할 행을 DELETE 204 → `can_write=true`**. `require_write`·`require_icfr_manager` 가 판정 근거로 삼는 테이블을 누구나 고칠 수 있어 두 가드가 무력화된다. ③**값 검증 없음**: `icfr_mananger` 같은 오타도 201 — 판정에 안 걸려 조용히 무효. ④**중복 허용**: 같은 사용자·역할 2행 가능(유니크 제약 없음), 1행만 지우면 역할이 남는다. ⑤**FE 로는 5역할을 만들 수 없다**: `frontend/src/features/users/types.ts` `ROLE_NAME_OPTIONS` 가 구 역할명 7종(`Administrator`/`ExternalAuditor` 등 PascalCase)이라, 화면에서 "외부감사인"을 고르면 `ExternalAuditor` 가 저장되어 **조회 전용이 걸리지 않는다.** ~~운영 `user_roles` 3행도 전부 구 값이다~~ **(2026-09-18 정정: 그 3행은 로컬 DB 의 것이었다. 운영은 0행. 13.9-24 참조)**. **판단**: 3-1(2026-09-04)이 `user_roles` 재사용을 결정하며 "CRUD·FE 배선 기존재"를 근거로 들었으나(ADR-0031 §3.1) 그 CRUD 가 새 용도에 맞는지 — 누가 배정할 수 있는가, 어떤 값이 유효한가 — 는 점검하지 않았다. **의도가 아니라 누락이다.** 테스트도 전부 `db.add(UserRole(...))` 직접 삽입이라 API 경로가 한 번도 검증되지 않았다. 수정 시 결정 필요: 배정 권한 주체(`icfr_manager`? `require_admin`? 최초 `icfr_manager` 부트스트랩은 누가?), 허용 값 목록(5역할만? 구 3행 처리는 13.9-24 와 함께), 유니크 제약(마이그레이션 → 마스터 push).
+
+    **해소 (2026-09-16, `prompts/ICFR_role_guard_fix_20260909.md`)** — 배정·수정·삭제 **세 경로 모두** `core/permissions.require_role_assigner` 로 막았다(`icfr_manager`, 그 보유자가 0명인 테넌트에 한해 `user_roles` 의 `sys_admin` 이 첫 배정). **배정만 막으면 ②(자기 역할 삭제)가 그대로 남는다** — Regina 지적으로 결정 사항에 명시하고 검증 2건(남의 역할 수정·자기 역할 삭제)을 추가했다. 허용 값은 `models/role_assignment.TENANT_ROLES` 5종뿐이며 스키마 단계에서 **422**(구 3역할은 읽기만 허용 — `UserRoleRead` 에는 검증을 걸지 않았다). 중복은 앱 **409** + DB 부분 유니크(`uq_user_roles_active_pair`, 마이그레이션 `d6e7f8a9b0c1`). **부분 유니크여야 한다** — 소프트 삭제 테이블이라 평범한 유니크면 역할 해제 후 재배정이 IntegrityError 로 터진다(선례: `uq_user_departments_one_primary`). 검증은 전부 **API 경로**로 했다(`tests/test_user_roles_guard.py` 11건) — DB 직접 삽입이 이 결함을 놓친 원인이라서다.
+
+    **잔여 ①: FE 드롭다운(⑤).** `ROLE_NAME_OPTIONS` 가 구 역할명 7종이라 **이제 화면에서 역할을 배정하면 전부 422 로 거부된다.** 잘못된 값이 저장되지 않게 된 것이지 화면이 깨진 것은 아니나, FE 수정 전까지 역할 배정은 API 로만 가능하다 — Regina 역할 UI 작업 범위. → 13.9-43 에서 해소
+
+    **✅ 운영 부트스트랩 완료 (2026-09-18, 마스터 실행).** 부트스트랩 예외의 `sys_admin` 은 `user_roles` 의 역할 값이지 `users.role == "admin"` 이 아니므로(ADR-0031 §3.2) 첫 행은 API 로 만들 수 없다. §8.5 절차대로 마스터가 SQL 을 실행했다 — **실행 전 운영 `user_roles` 는 0행**(구 3역할은 로컬에만 있었다. 13.9-24 정정 참조), `INSERT 0 1` 확인.
+
+    | 항목 | 값 |
+    |---|---|
+    | 계정 | `ynjun@synapsoft.co.kr` |
+    | 역할 / 테넌트 | `sys_admin` / `DEFAULT` |
+    | 감사 컬럼 | `created_by = manual-bootstrap-13.9-35`, `row_version = 1` |
+
+    **API 검증 3단계 전부 통과 — 부트스트랩 경로가 실제로 열렸고 `icfr_manager` 전환까지 확인됐다.**
+
+    1. `/me` → `tenant_roles: ['sys_admin']`, `can_write: true`, `active_tenant_id: d0000000-0000-0000-0000-000000000001`
+    2. `sys_admin` 자격으로 마스터 본인에게 `icfr_manager` 배정 → **201** (role id `01a0b240-4314-7911-a758-60fbe008249c`)
+    3. `icfr_manager` 자격으로 Regina 계정에 `external_auditor` 배정 → **201** (role id `01a0b240-958e-7a01-99ea-832afbcb1ef8`)
+
+    **3번까지 확인한 것이 핵심이다** — 2번만 보면 `sys_admin` 상시 배정 구현과 구분되지 않는다(§8.5 검증 규칙).
+
+    **✅ Regina 테스트 계정 회수 완료 (2026-09-18).** 검증용으로 `teilua@synapsoft.co.kr` 에 붙였던 `external_auditor` 를 해제했다 — `DELETE /api/users/roles/01a0b240-958e-7a01-99ea-832afbcb1ef8` → **204**. 이로써 그 계정의 편집 제한도 풀렸다(`external_auditor` 는 조회 전용, ADR-0031 §2.1). **검증용으로 부여한 권한은 그 자리에서 회수 시점까지 함께 적는다** — 적지 않으면 열린 채로 남았는지 회수됐는지 기록만으로 판별할 수 없다.
+
+36. **`RequestValidationError` 핸들러가 커스텀 validator 를 직렬화하지 못했다 (2026-09-16 발견·수정)** — `app/main.py` 가 `exc.errors()` 를 그대로 `JSONResponse` 에 넣고 있었다. Pydantic 커스텀 validator 가 `ValueError` 를 던지면 `errors()` 의 `ctx.error` 에 **예외 객체가 그대로** 실려 있어 `TypeError: Object of type ValueError is not JSON serializable` 로 터진다 — **422 를 내려야 할 자리에서 500 이 났다.** 13.9-35 값 검증 구현 중 실측으로 드러났다(그 전까지 커스텀 validator 가 한 건도 없어 발현하지 않았다). 조치: FastAPI 기본 핸들러와 같이 `jsonable_encoder` 를 거치게 했다. **필드 제약(`Field(pattern=...)`)만 쓰던 동안은 보이지 않던 부채다** — 앞으로 validator 를 추가하는 쪽이 이 함정을 다시 밟지 않는다.
+
+37. **로컬 `icfr-backend` 컨테이너가 `Restarting (255)` 로 돈다 (2026-09-16 관찰, 미수정)** — 로컬 환경 문제이며 **운영은 정상**(네 컨테이너 healthy, backend 7일째 안정, 마스터 확인). 재현 조건: `docker compose ps` 에서 `icfr-backend` 가 `Restarting (255)` 인데 `docker compose logs backend` 에는 헬스체크 200 이 계속 찍힌다. **이번 작업은 pytest/SQLite 로 진행해 막히지 않았으나, 로컬 postgres·MinIO 가 필요한 검증(예: 13.9-33 증빙 삭제 후 객체 잔존 실증)에서는 막힌다.** 손대지 않았다.
+
+**협업 방식 변경 (2026-09-18 등록)**
+
+38. **백엔드/프론트엔드 역할 구분 철폐 → push 절차에 pull 게이트 추가 (`CLAUDE.md` §8.3 개정)** — 두 사람이 같은 영역을 건드릴 수 있게 되면서 **"자기 영역이니 원격을 안 봐도 된다"는 전제가 사라졌다.** 속도를 올리되 충돌로 되돌리는 일은 만들지 않는다는 것이 목적이다. 조치 — push 전에 **`git pull --no-rebase` 를 반드시 먼저 실행**하고(4), pull 결과가 ①충돌 ②상대가 이번 작업과 같은 파일을 건드림(`git diff --stat HEAD@{1} HEAD`) ③상대 커밋에 `alembic/versions/` 신규 파일 있음 — 중 하나면 **push 하지 않고 보고한다**(5). ③은 마이그레이션이 둘 겹치면 순서가 꼬이기 때문이다. 기존 대기 커밋·마이그레이션 검사는 6 으로 밀렸고 push 는 7 이다.
+
+    **원칙: "사전에 공유했다"는 게이트로 두지 않는다.** Claude Code 가 확인할 수 없는 조건이기 때문이다 — **판정은 저장소 상태로만 한다.** 사람 간 공유는 별도로 하되 그것이 push 가드를 대신하지 않는다. **13.9-28 에서 "실행자가 확인할 수 없는 조건은 게이트가 되지 못한다"로 정리한 것과 같은 원칙이며, 이번에는 그 원칙을 사고가 나기 전에 적용한 것이다.**
+
+    부수 정리 — `CLAUDE.md` 의 하위 절 번호가 `7.1`/`7.2`/`7.3` 으로 남아 있어 상위 제목(`## 8. Git 자동화 운영 방침`)·외부 참조(`§8.3`)와 어긋나던 것을 `8.1`/`8.2`/`8.3` 으로 맞췄다.
+
+    **같은 날 첫 실행에서 5 의 체크 명령이 틀린 것이 드러났다 (2026-09-18, 즉시 교체)** — 규칙을 만든 당일 그 절차를 처음 밟으면서 나왔다. `git diff --stat HEAD@{1} HEAD` 는 **`HEAD@{1}` 이 reflog 직전 항목이라 pull 이 HEAD 를 옮기지 않으면 직전 *내* 커밋을 가리킨다.** 실제로 `Already up to date.` 인 pull 뒤에 방금 내가 커밋한 `CLAUDE.md`·`ClaudeICFR.md` 가 "겹친 파일"로 잡혔다. **오탐이 반복되면 사람이 그 경고를 무시하게 되고, 정작 진짜 충돌일 때 그냥 넘어간다 — 게이트가 무력화된다.** `ORIG_HEAD` 도 no-op pull 에서 옛 값이 남아 완전하지 않다. 교체 — pull 직전 해시를 직접 잡아 비교한다.
+
+    ```bash
+    before=$(git rev-parse HEAD)
+    git pull --no-rebase
+    [ "$before" = "$(git rev-parse HEAD)" ] && echo "(원격 변경 없음)" || git diff --stat "$before" HEAD
+    ```
+
+    **교훈은 13.9-28 의 연장이다** — 게이트로 세운 조건이 *판정 가능한지* 는 실제로 한 번 밟아 봐야 드러난다. 문서에 적힌 명령이 그럴듯해 보이는 것과 그 명령이 옳은 것을 구분하는 방법은 실행뿐이다.
+
+    **§9(Contract Sync) 동반 정리 (같은 날)** — §9.2 가 "프론트엔드 작업 시 / 백엔드 작업 시 — 자기 영역이므로 동기화 확인만"이라는 역할 구분 전제로 쓰여 있어 §8.3 개정과 모순이었다. **"자기 영역"이 없어졌으므로 점검 범위를 작업 영역으로 좁히지 않는다** — `ClaudeICFR.md`·`docs/api`·`docs/adr`·`backend/app/api`·`backend/app/schemas`·`frontend/src` 전부를 본다. **두 절이 같은 이야기를 하지 않게 경계를 명시했다** — §9 는 작업 *시작 전*, commit·push 절차는 **§8.3 이 단일 출처**이며 §9 는 참조만 한다. 같은 규칙이 두 곳에 있으면 나중에 한쪽만 고쳐진다. `git pull` 은 §8.3 과 같은 `--no-rebase` 로 통일했다.
+
+**배포 라인 (2026-09-18 등록)**
+
+39. **Docker Hub 익명 pull 한도로 전 배포가 막혔다 — 공개 이미지 다이제스트 고정으로 해소 (Deploy #38·#39 실패, #40 예정)** — 증상: `Error response from daemon: pull access denied for minio/minio, repository does not exist or may require 'docker login'`. **저장소가 없는 게 아니라 한도·인증 문제인데 문구가 "repository does not exist" 라 원인을 엉뚱한 데서 찾게 된다.** 우리 이미지(GHCR)는 정상이었다. 배포가 1초 만에 exit 1 로 끝나고 **코드와 무관하게 모든 배포가 막힌다.** `deploy.yml` 에 경로 필터가 없어(13.8) **문서 커밋에도 전체 재배포가 돌기 때문에 매번 같은 지점에서 깨졌다** — 13.8 이 "빌드 시간 낭비" 수준의 부채가 아니라 **장애를 반복 재생하는 경로**임이 드러났다. 조치 — `docker-compose.prod.yml` 의 공개 이미지 2종을 **운영 서버 실측 RepoDigests** 로 고정(`minio/minio@sha256:14cea49…`, `postgres@sha256:cf78e766…`). **지금 돌고 있는 그 이미지를 그대로 고정한 것이라 동작 변경이 없다.** 원래 태그는 주석으로 남겼다. **`latest` 는 운영에서 쓸 수 없는 태그다** — 지금 도는 버전과 다음에 받는 버전이 달라질 수 있고 언제 바뀌는지 알 수 없다(ADR-0028 §2.4 가 우리 이미지에 대해 이미 정한 원칙인데 공개 이미지에는 적용돼 있지 않았다). 고정하면 Docker Hub 조회가 줄어 한도 문제도 완화된다. **한도는 서버 공인 IP 단위라 고객사 서버에서도 그대로 발생한다** → ADR-0028 §5.1 함정 10 에 증상과 함께 등록. 수동 배포 절차도 ADR-0028 §2.4 에 기록했다 — **`COMPOSE_PROJECT_NAME=icfr` 누락 시 프로젝트명이 `claude-icfr` 로 잡혀 별도 네트워크를 만들고 컨테이너 이름 충돌로 실패한다**(실제 발생). 검증: 로컬 `docker compose -f docker-compose.prod.yml config` 로 다이제스트 정상 해석 확인.
+
+    **2단계 — 고정만으로는 부족했다 (Deploy #41 실패로 확인).** 고정 후에도 같은 `pull access denied` 가 났다. 로그에는 `Image minio/minio@sha256:14cea49… Pulling` 으로 **다이제스트가 정상 해석된 채** 실패했다. 원인은 `deploy.yml` 의 `docker compose pull` — **로컬 존재 여부와 무관하게 전 서비스를 레지스트리에서 조회한다.** 다이제스트 고정의 이점(로컬에 그 이미지 ID가 있으면 조회 생략)은 `up -d` 에서만 나온다. 조치 — `pull backend frontend` 로 **대상을 자사 이미지로 한정**해 운영 서버의 Docker Hub 조회를 0회로 만들었다. 새 서버(고객사 초기 설치)에서는 `up -d` 가 없는 이미지만 1회 받는다. **경위를 2단계로 남긴 이유: 고정만 하고 pull 을 그대로 둔 채 "고쳤다"고 넘어가면 증상이 하나도 바뀌지 않는다.** 다음 수단은 Docker Hub 로그인(시크릿 2개 필요, 마스터 등록).
+
+**대시보드 (4-1, 2026-09-18 등록)**
+
+40. **모듈 구현 상태를 사이드바 문구로 판단할 수 없다 — 실측으로 정정 (4-1 STEP 0)** — 4-1 프롬프트는 RCM 외 10개 모듈을 "준비중"으로, "증빙 관리와 담당자·권한은 백엔드가 있으나 화면이 없다"로 적었다. **실측은 달랐다.** 근거는 사이드바 `description` 문구("Phase 1에서 구현 예정")였고 실제 파일을 세지 않았다.
+
+    **2026-09-18 실측: 프론트 화면이 이미 있는 모듈 — 담당자/권한 12파일, 개선계획 11, Test 10, 증빙 6.** 빈 페이지는 일정관리·Scoping·EUC·IUC·Report·메일발송 6개다. **사이드바 문구와 실제 상태가 달랐다.** §12.2 모듈별 상태표와는 일치한다(증빙 FE ✅, 담당자/권한 FE ✅, Test·개선계획 FE 🔄) — **표는 맞았고 화면 문구가 낡아 있었다.**
+
+    **"백엔드는 있는데 화면이 없는" 모듈은 0개다.** 그래서 프롬프트가 묻던 배지 구분(백엔드 유무)은 적용 대상이 없었고, 실제로 존재하는 구분 3종으로 다시 짰다 — `live`(실데이터) / `ready`(화면 동작, 데이터 없음) / `todo`(빈 페이지). 값은 `frontend/src/config/navigation.ts` 의 `NavItem.status` 한 곳에 둔다(메뉴와 카드가 어긋나지 않게 목록을 두 곳에 두지 않는다).
+
+    **교훈: 화면에 적힌 설명 문구는 상태의 근거가 아니다.** 문구는 갱신되지 않아도 아무도 모르지만 코드는 남는다. **현황판이 현황을 틀리게 말하면 만든 의미가 없다** — 동작하는 화면 4개를 "준비중"으로 덮을 뻔했다.
+
+**조직 구조(4-2, 2026-09-19 등록)**
+
+41. **부서·소속 API 가 `require_write` 였다 — 일반 사용자가 조직을 바꿀 수 있었다 (✅ 4-2 에서 해소)** — 실측: 역할 없는 일반 사용자가 `POST /api/org/departments` **201**. `external_auditor` 만 막히는 상태였다. **3-1 에서 부서 API 를 만들 때 가드를 `require_write` 로 둔 것이 누락이다** — 조직도는 제도 운영의 기준 데이터이고(통제책임자의 주 소속이 부서승인 단계를 정한다, ADR-0031 §2.3) 아무나 바꾸면 그 판정이 흔들린다. **13.9-35 와 같은 계열이다** — 그때는 역할 배정 경로, 이번엔 조직 경로이며, 둘 다 "CRUD 가 이미 있으니 그대로 쓴다"가 원인이었다. 조치: 부서·소속의 생성·수정·삭제를 `require_icfr_manager` 로 전환(`sys_admin` 도 403 — 제도 활동 불참, §2.1.1). **조회는 인증만으로 유지** — 대시보드 조직별 집계와 부서 화면이 읽어야 하고 조직도 열람을 막을 이유가 없다. ADR-0031 §3.3·`org-contract.md` §5.4 반영. **기존 테스트 1건이 문구 검사로 걸렸다**(`test_org_roles.py::test_external_auditor_cannot_write`) — 거부는 그대로 403 이지만 더 앞 단계에서 막혀 문구가 바뀌었다. 지키려는 것은 "외부감사인이 쓸 수 없다"이지 특정 문구가 아니므로 문구 검사를 뺐다.
+
+    **교훈이 반복된다: 기존 CRUD 를 재사용할 때는 "누가 호출할 수 있는가"를 새 용도 기준으로 다시 본다.** 만들 당시의 가드는 만들 당시의 용도에 맞춰져 있다.
+
+42. **`departments`·`user_departments` 유니크가 소프트 삭제 행까지 세고 있었다 (✅ 4-2 에서 해소, 마이그레이션 `e7f8a9b0c1d2`)** — 실측으로 세 가지가 모두 409 였다: ①부서 삭제 후 **같은 이름으로 재생성 불가** ②소속 해제 후 **같은 부서에 재추가 불가** ③주 소속 해제 후 **다른 부서 주 소속 지정 불가**(소프트 삭제된 행의 `is_primary=true` 가 부분 인덱스를 계속 점유). **문구가 `데이터 무결성 제약 위반 (중복 또는 참조 오류)` 이라 사용자는 원인을 알 수 없었다** — 앱 레벨 중복 검사는 `is_deleted=false` 만 보므로 통과하고, 그 뒤 DB 제약이 터져 일반 문구가 나갔다. **13.9-35 ④(`uq_user_roles_active_pair`)와 같은 처방** — 세 인덱스를 `WHERE NOT is_deleted` 부분 유니크로 전환했다. **한 마이그레이션에 셋을 함께 담았다** — 같은 원인이고, 스키마 변경은 횟수 자체가 위험이다. 오타로 만든 부서를 지우고 다시 만드는 것은 흔한 실무다.
+
 **역할 UI (2026-09-16 등록)**
 
-35. **ROLE_ASSIGN_OPTIONS/ROLE_LABELS 분리 — 브라우저 미검증·push 대기.** FE 구조 분리만 로컬 커밋(`df9b542`). 신규 5역할만 셀렉터에 뜨는지·기존 뱃지(구7종) 정상 렌더되는지 눈으로 아직 안 봤다. 신규 5역할 한글 라벨은 임시값(TODO 주석) — 협업자 확정 대기. 13.9-24(기존 3행 의미 불명확)는 그대로 남아 있다(이번 작업 범위 밖).
+43. **ROLE_ASSIGN_OPTIONS/ROLE_LABELS 분리 — 브라우저 미검증·push 대기.** FE 구조 분리 로컬 커밋(`df9b542`) + 신규 5역할 라벨 확정(`fa8cb9b`, 협업자 확정본 반영). **13.9-35 의 FE 드롭다운 잔여(⑤)를 해소하는 작업이다.** 신규 5역할만 셀렉터에 뜨는지·기존 뱃지(구7종) 정상 렌더되는지 눈으로 아직 안 봤다. 13.9-24(기존 3행 의미 불명확)는 2026-09-18 시드 정리로 해소됨(이번 작업 범위 밖이었다).
 
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
@@ -1958,7 +2174,27 @@ HTTP 200
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-09-19 / TrustBuilder + Claude** — **4-2 부서 관리 화면 + 조직 API 결함 2건 수정** (`prompts/ICFR_4-2_department_20260918.md`). ①**권한 강화(13.9-41)**: 부서·소속 쓰기를 `require_write` → `require_icfr_manager`. 그 전에는 일반 사용자가 부서를 만들 수 있었다(실측 201). **조회는 인증만 유지** — 대시보드 집계·화면이 읽어야 한다. ②**부분 유니크(13.9-42, 마이그레이션 `e7f8a9b0c1d2`)**: 부서명·소속 짝·주 소속 세 인덱스를 `WHERE NOT is_deleted` 로. 그 전에는 지웠다 다시 만들기가 전부 409 였고 문구가 `데이터 무결성 제약 위반` 이라 원인을 알 수 없었다. 같은 원인이라 한 마이그레이션에 담았다. ③**화면**: 부서 목록·CRUD + **소속을 부서 화면 안에서** 관리(별도 메뉴를 만들지 않는다 — "자금팀에 누가 있나"가 부서를 보는 자연스러운 질문이다) + 책임자 지정(여러 부서 겸임 가능, 소속 무관). **주 소속은 서버 동작대로 "이동"** 이며 지정 전에 `기존 주 소속 「○○」에서 옮겨집니다` 를 보여준다. 삭제 409 문구는 서버 원문을 그대로 표시한다. ④**권한 없는 사용자**: 메뉴를 감추지 않고 **읽기 전용**으로 둔다(쓰기 버튼 숨김 + 배지). 조직도 열람은 막을 이유가 없고, 감추면 그런 기능이 있는지조차 모른다. ⑤**실데이터 검증(검증 9)**: 부서 「자금팀」 + 주 소속 + 통제 3건 `control_owner` 배정 → 대시보드 조직별 **미배정 93 → 90, 자금팀 3**. 정리 후 93 복귀. **이 작업이 대시보드의 0 을 실제로 푼다는 실증이다.** BE 테스트 10건 추가. 마이그레이션 포함이라 **push 대기**(CLAUDE.md §8.3).
+
+- **2026-09-19 / TrustBuilder + Claude** — **사이드바 3테마 + 스크롤바 평시 숨김 + 대시보드 카드 제목 색상**. ①**스크롤바**: 평소 숨기고 스크롤 중·호버 시에만 보인다. **브라우저마다 방식이 다르다** — Firefox 는 `scrollbar-color`(의사요소 없음), Chrome/Edge/Safari 는 `::-webkit-scrollbar` 계열, macOS 는 OS 오버레이 스크롤바라 이미 자동으로 사라진다. 세 경로를 모두 넣었다. **폭은 항상 잡아 둔다** — 나타날 때만 폭이 생기면 메뉴 글자가 밀려 덜컥거린다. 스크롤 중 표시는 CSS 만으로 안 되어 스크롤 이벤트가 `.is-scrolling` 을 700ms 붙였다 뗀다. ②**테마 3종 + 이름 변경**: `dark`/`light` → **`gray`/`white`/`navy`**. 기본값이 실제로는 밝은 회색이라 명암 축에 애매하게 걸렸다 — **"다크인데 밝다"는 설명이 필요해지는 이름은 이름이 틀린 것이다.** 색 이름은 화면과 바로 맞출 수 있고, 나중에 본문까지 테마를 넓혀도 `navy` 는 여전히 남색이라 흔들리지 않는다. 저장된 구 값은 버리지 않고 옮긴다(`dark`→`gray`, `light`→`white`, 테스트로 고정). ③**사이드바 자체 팔레트**: 전경·보조·선택 색을 `--sidebar-*` 토큰으로 분리했다. 본문 토큰(`--foreground`/`--muted-foreground`)을 그대로 쓰면 **남색 배경에 검은 글자**가 되어 그룹 라벨·하단 사용자 정보가 사라진다. ④**navy 선택 강조는 호박색**(`38 92% 55%`) — 남색의 보색 계열이라 색상환에서 가장 멀고, 명도 차이(16%→55%)까지 겹쳐 회색조·저시력에서도 갈린다. 남색 계열 강조면 선택/비선택이 같은 색조 안에서만 갈려 한눈에 안 보인다. 호박색 위 글자는 흰색이 아니라 짙은 남색이다. 실측 대비(계산): 본문글자 15.9:1 / 보조 7.6:1 / 선택 vs 배경 8.0:1 / 선택글자 8.8:1. white 테마 호버는 94%→92% 로 조정(흰 배경과 거의 구분되지 않아 "눌리는 줄 모른다"). ⑤**대시보드 카드 제목 색 4종**: 속성(파랑)·분류(보라)·주기(청록)·현황(호박). **같은 성격끼리 같은 색**이라야 색이 정보를 나른다 — 카드마다 다른 색이면 색이 의미를 잃는다. 본문은 사이드바 테마의 영향을 받지 않으므로(테마는 `--sidebar-*` 만 바꾼다) 세 테마에서 동일하게 보인다. FE 테스트 42건.
+
+- **2026-09-19 / TrustBuilder + Claude** — **대시보드 0건 표시 수정 + 관리자 기능 메뉴 신설**. ①**A-1 0건 항목 표시**: 집계가 "데이터에 있는 값"만 나열해 **비핵심 0·적발 0·자동 0 이 화면에서 사라져 있었다** — 93건이 전부 핵심·예방·수동이라는 사실은 그 대비로만 드러나는데 축이 있다는 것조차 알 수 없었다. 기준값 집합을 **상수**에서 가져오도록 바꿨다(`models/rcm_baseline.py`). **그 상수가 원래 없어서 스키마 `pattern=` 정규식 2곳(Create/Update)에만 있었다** — 값 목록을 상수로 뽑고 정규식을 `_one_of()` 로 생성해 정의처를 하나로 만들었다. 0건 행은 회색·펼침 비활성이되 **"RCM에서 보기" 링크는 남긴다**(묶음마다 동작이 다르면 "왜 이것만 안 되지"가 되고, 빈 목록이 곧 "정말 0"이라는 답이다). ②**A-2 범례 줄바꿈**: 제목과 한 줄에 두어 좁은 폭에서 끝이 잘리던 것을 줄 분리 + 항목 단위 wrap 으로 바꿨다. ③**B-1 사이드바 테마**: dark/light 2종, **개인 설정(localStorage)** 이라 백엔드가 0 이다. **hover·border 를 사이드바 전용 토큰으로 분리했다** — `--accent`(96%)를 그대로 쓰면 회색 사이드바에서는 보이지만 흰 사이드바에서는 거의 같은 색이 된다(단순 색 반전이면 대비가 깨진다는 지적의 실체). 선택 상태는 두 테마 모두 `--primary` 라 대비 유지. ④**B-2 관리자 기능 4메뉴**(부서 관리·역할 배정·정책 설정·회계연도 시작월): 빈 페이지가 아니라 **"API 있음 · 화면 미구현"** 배지 + 이미 있는 엔드포인트 목록을 화면에 적었다. 배지 상태에 `api` 를 추가해 `todo` 와 구분한다 — 붙이기만 하면 되는 것과 아무것도 없는 것은 남은 일의 크기가 다르다. ⑤**권한 게이트**: 정책 설정·역할 배정은 `tenant_roles` 에 `icfr_manager` 가 있을 때만 활성. **`can_write` 로 막지 않았다** — 그건 `external_auditor` 판정이라 일반 사용자(can_write=true)에게 메뉴가 열리고 서버는 403 을 낸다. 권한 없으면 **숨기지 않고 잠근다**(자물쇠 + 툴팁) — 숨기면 그런 기능이 있는지조차 모른다. 테스트 FE 41건(+6)·BE 유지.
+
+- **2026-09-18 / TrustBuilder + Claude** — **4-1 대시보드 — 개발 현황판 + RCM 실데이터 집계** (`prompts/ICFR_4-1_dashboard_20260918.md`). ①**모듈 카드**: 사이드바 정의(`navigation.ts`)를 그대로 써서 카드를 만들고 `NavItem.status` 3단계 배지(`live` 실데이터 / `ready` 데이터 없음 / `todo` 준비중). **"사용 가능"을 쓰지 않은 이유** — RCM 도 사용 가능하므로 구분이 안 된다. 실제로 다른 것은 데이터 유무이고 그것이 "다음에 뭘 해야 하는지"를 가리킨다. 오해를 막으려 카드 위에 범례 한 줄. 상태값은 **실측**으로 정했다(13.9-40). ②**RCM 집계 API** `GET /api/rcm/summary` — resolver 경유, 묶음 8종(핵심통제·평가주기·수행주기·프로세스·예방적발·자동수동·IPE·통제활동) + 조직별 + 진행현황. **프론트 집계로 하지 않은 이유**: 검색 API 는 페이징되고, 고객사 통제가 수백 건이면 전송량이 그대로 늘며, 조직별은 `role_resolver` 판정이 필요해 FE 에 복제하면 판정이 두 곳이 된다. ③**드릴스루**: 각 묶음을 펼치면 통제 목록(기존 검색 API 재사용), 클릭하면 `/rcm?<param>=<value>` 로 이동해 **필터가 걸린 채 진입**한다. RCM 화면은 URL 을 **1회 단방향 주입**만 한다 — 양방향 동기화는 필터 조작마다 history 가 쌓여 기존 화면의 뒤로가기 동작을 바꾼다. ④**검색 필터 3종 추가**(`assessment_frequency`·`ipe_relevant`·`activity`) — 일부 묶음만 이동이 막히면 "왜 이것만 안 되지"가 되므로 8개 묶음 전부 드릴스루 가능하게 맞췄다. **`frequency`(수행주기)와 `assessment_frequency`(평가주기)는 다른 축**이라 라벨을 구분했다. `activity` 는 목록 밖 값을 **422** 로 거부한다(조용히 무시하면 필터가 안 걸린 전체 목록이 돌아간다). ⑤**0 을 가리지 않는다** — 조직별은 "미배정 93건", 진행현황은 전부 0 으로 나온다. ⑥**"미지정" 칸 (`__none__`)**: 집계의 빈 값 칸을 빈 문자열로 내면 검색에서 "필터 없음"과 구분되지 않아 **미지정 24건을 눌렀을 때 전체 58건이 나왔다** — 테스트가 전체 실행에서 잡았다(단독 실행에서는 데이터가 없어 드러나지 않음). 센티널 값 `__none__` 을 도입해 모든 칸을 드릴스루 가능하게 했다. ⑦**테스트**: BE 9건(집계↔검색 건수 기계적 대조, 배타 묶음 합계=전체, 0 처리, 축 분리, `external_auditor` 조회 200) + FE 6건(URL 필터 파싱, 허용목록 밖 무시). 로컬 실 Postgres 실측: 통제 93·프로세스 8, 평가주기 연91/분기1/월1, 미배정 93, 진행 0. **Test 화면은 건드리지 않았다**(Regina 병행 작업).
+
+- **2026-09-18 / TrustBuilder + Claude** — **`seeds/users.py` 구 3역할 정리 (13.9-24 해소)**. 구 3역할은 로컬 시드 산물이었고(13.9-24 정정), 안 고치면 **새 개발 환경마다 계속 생기며 13.9-35 값 검증 때문에 그 값으로는 API 배정이 안 된다.** **1:1 매핑을 만들지 않고** 개발·테스트에 필요한 조합으로 다시 짰다 — `admin`=`sys_admin`(부트스트랩 1행), 신규 `icfrmgr@`=`icfr_manager`(배정·정책 주체, 시스템 관리 계정과 분리), 신규 `extaudit@`=`external_auditor`(`can_write=false` 경로), `tester@`·`reviewer@`=역할 없음. `ceo`·`auditor` 는 **의존하는 판정이 없어** 시드하지 않았다. 값은 `models/role_assignment.py` 상수 참조(리터럴 금지). **시드가 §8.5 절차를 재현한다** — `sys_admin` 1행만 직접 삽입, 첫 `icfr_manager` 는 그 자격으로 API 배정, 이후는 `icfr_manager` 가 배정. 직접 삽입을 `bootstrap.py`(운영 포함 기동 경로)에 두지 않은 이유를 코드에 남겼다. **부수 수정**: 시드가 `UserTenantAccess` 를 만들지 않아 시드 계정이 로그인 후 전부 403 이던 것을 고쳤다. 실측(실 Postgres): 시드 2회 멱등, `sys_admin` 배정 **403**(부트스트랩 닫힘)·`icfr_manager` **201**·구 역할명 **422**, 마이그레이션 `d6e7f8a9b0c1` 적용으로 부분 유니크 인덱스 생성 확인(그동안 SQLite 로만 검증).
+
+- **2026-09-18 / TrustBuilder + Claude** — **운영 부트스트랩 실행 확인 + 배포 경로 필터 적용 (13.8 해소)**. ①**13.9-35 운영 검증 완료** — 마스터가 §8.5 SQL 을 실행(`ynjun@synapsoft.co.kr` / `sys_admin` / `DEFAULT`, `INSERT 0 1`). API 검증 3단계 전부 통과: `/me` `tenant_roles: ['sys_admin']`·`can_write: true` → `sys_admin` 이 본인에게 `icfr_manager` 배정 **201** → `icfr_manager` 가 Regina 계정에 `external_auditor` 배정 **201**. **부트스트랩 경로가 실제로 열렸고 `icfr_manager` 전환까지 확인됐다.** ②**13.9-24 정정** — 구 3역할(`Administrator`/`Reviewer`/`Tester`)은 **운영에 없다. 로컬 시드(`seeds/users.py`) 산물이며 로컬 한정 문제다.** 실행 전 운영 `user_roles` 는 0행이었다. 그동안 "운영 3행"이라 적은 것은 로컬 실측을 운영으로 옮겨 적은 오류다 — **로컬에서 본 것을 운영 상태로 적지 않는다.** 남는 것은 시드 정리뿐이며 실데이터 작업이 아니다. ③**Regina 테스트 계정 회수** — `teilua@synapsoft.co.kr` 의 `external_auditor`(role id `01a0b240-958e-…`)는 검증용이었고 **같은 날 회수했다**(`DELETE /api/users/roles/...` → 204). ④**13.8 조치 완료** — `deploy.yml` 에 `paths-ignore`(`'**.md'`·`docs/**`·`prompts/**`) 적용. **포함 목록(`paths`)이 아니라 제외 목록을 썼다** — 포함 목록은 모르는 경로를 만나면 배포를 **조용히** 건너뛰고, 제외 목록은 배포하는 쪽으로 기울어 실패가 눈에 보인다. `docker-compose*.yml`·`.github/workflows/**` 는 적지 않는 것만으로 포함된다. 근거는 §8.6.
+
+- **2026-09-18 / TrustBuilder + Claude** — **Docker Hub 다이제스트 고정 — 전 배포 차단 해소 (최우선)** (`docker-compose.prod.yml`, ADR-0028). Deploy #38·#39 가 `pull access denied for minio/minio, repository does not exist` 로 연속 실패했다. **Docker Hub 익명 pull 한도(서버 공인 IP 단위)이며 저장소 문제가 아니다.** 공개 이미지 2종을 **운영 실측 RepoDigests** 로 고정 — `minio/minio@sha256:14cea49…`, `postgres@sha256:cf78e766…`. 지금 도는 이미지를 그대로 고정한 것이라 **동작 변경 없음**. 원래 태그는 주석 보존. **`latest` 는 운영 금지 태그**라는 ADR-0028 §2.4 원칙이 우리 이미지에만 적용돼 있던 것을 공개 이미지까지 넓혔다. ADR-0028 §5.1 함정 10(증상 포함)·§2.4 수동 배포 절차(`COMPOSE_PROJECT_NAME=icfr` 누락 시 컨테이너 이름 충돌) 기록. `deploy.yml` 경로 필터 부재(13.8)가 문서 커밋마다 전체 재배포를 돌려 장애를 반복 재생시켰다는 점도 13.9-39 에 남겼다. 검증: 로컬 `compose config` 다이제스트 정상 해석. **후속(같은 날)**: 고정 후에도 Deploy #41 이 같은 지점에서 실패 — `compose pull` 이 로컬 존재 여부와 무관하게 전 서비스를 조회하기 때문이다. `deploy.yml` 의 pull 대상을 `backend frontend` 로 한정해 운영 Docker Hub 조회를 0회로 만들었다. 13.8(경로 필터 부재)은 **문서 커밋 5건이 전부 배포 실패로 남은 실사례**로 등급을 올렸다 — 빌드 시간 낭비가 아니라 장애를 반복 재생시키는 부채다.
+
+- **2026-09-18 / TrustBuilder + Claude** — **push 절차 개정 — 백엔드/프론트엔드 역할 구분 철폐에 따른 pull 게이트 추가** (`CLAUDE.md` §8.3, 문서만). 두 사람이 같은 영역을 건드릴 수 있게 되면서 "자기 영역이니 원격을 안 봐도 된다"는 전제가 사라졌다. push 전에 **`git pull --no-rebase` 필수**(4), pull 결과가 ①충돌 ②같은 파일 겹침(`git diff --stat HEAD@{1} HEAD`) ③상대 커밋의 `alembic/versions/` 신규 파일 — 중 하나면 **push 중단·보고**(5). 기존 대기 커밋·마이그레이션 검사는 6, push 는 7 로 밀렸다. **"사전 공유했다"는 Claude Code 가 확인할 수 없으므로 게이트로 두지 않고 저장소 상태로만 판정한다** — 13.9-28 과 같은 원칙을 사고 전에 적용한 것이다(13.9-38). **같은 날 첫 실행에서 5 의 체크 명령(`git diff --stat HEAD@{1} HEAD`)이 no-op pull 시 직전 내 커밋을 가리키는 오탐을 내는 것이 드러나 즉시 교체했다**(pull 직전 해시를 잡아 비교). 하위 절 번호 `7.x` → `8.x` 정리 동반. **§9(Contract Sync)도 함께 고쳤다** — 점검 범위를 작업 영역과 무관하게 전부로 넓히고, commit·push 절차는 §8.3 단일 출처로 두어 §9 는 참조만 하게 했다(두 곳에 같은 규칙이 있으면 한쪽만 고쳐진다).
+
+- **2026-09-16 / TrustBuilder + Claude** — **역할 배정 API 권한 가드·값 검증 (13.9-35 백엔드 해소, 보안 결함 수정)** (`prompts/ICFR_role_guard_fix_20260909.md`). ①**가드**: `/api/users/roles` 의 생성·수정·삭제가 로그인만 확인하던 상태를 `core/permissions.require_role_assigner` 로 막았다 — **세 경로 전부**다. 배정만 막으면 `external_auditor` 가 자기 역할 행을 지워 조회 전용을 벗어나는 구멍이 남는다(Regina 지적으로 프롬프트 §2.1 에 명시 + 검증 2건 추가). `require_admin`(`users.role`)은 쓰지 않았다(ADR-0031 §3.2). **부트스트랩 예외** — `icfr_manager` 0명인 테넌트에서만 `user_roles` 의 `sys_admin` 이 첫 배정을 하고, 1명이 생기면 닫힌다(ADR-0031 §3.3 신설). ②**값 검증**: 허용 값은 `models/role_assignment.TENANT_ROLES` 5역할뿐이며 스키마 단계에서 **422**. 구 3역할은 **읽기만 허용**(`UserRoleRead` 에는 검증 미적용)해 기존 행을 깨지 않으면서 확산만 막는다(13.9-24). ③**중복**: 앱 **409** + DB 부분 유니크(`uq_user_roles_active_pair`, `d6e7f8a9b0c1`). **소프트 삭제 테이블이라 부분 유니크여야 한다** — 평범한 유니크면 역할 해제 후 재배정이 500 으로 터진다. ④**테스트 11건 전부 API 경로**(`tests/test_user_roles_guard.py`) — 기존 역할 테스트가 전부 DB 직접 삽입이라 API 가 한 번도 검증되지 않은 것이 이 결함의 원인이었다. 부트스트랩 검증은 별도 테넌트를 쓴다(기본 테넌트엔 다른 테스트의 `icfr_manager` 가 이미 있어 "0명" 상태를 만들 수 없다). ⑤**부수 수정**: `main.py` 의 422 핸들러가 커스텀 validator 의 `ValueError` 를 직렬화하지 못해 500 이 나던 것을 `jsonable_encoder` 로 고쳤다(13.9-36). `test_org_roles.py` 의 무조건 `UserRole` 삽입 1곳을 다른 파일과 같은 멱등 형태로 맞췄다. ⑥**잔여**: FE `ROLE_NAME_OPTIONS` 가 구 역할명 7종이라 **화면 배정은 전부 422** — Regina 역할 UI 작업 범위. 운영은 `user_roles` 에 `sys_admin` 도 0명이라 첫 1행을 마스터가 SQL 로 넣어야 부트스트랩이 열린다. 마이그레이션 포함이라 **push 대기**(CLAUDE.md §8.3).
+
 - **2026-09-16 / Regina + Claude** — **ROLE_NAME_OPTIONS 배정용/표시용 맵 분리** (`prompts/ICFR-PROMPT-role-map-split.md`, 커밋 `df9b542`). **FE 내부 구조 정리만 — 배정값 wire·API·검증 변경 없음.** `frontend/src/features/users/types.ts`의 단일 `ROLE_NAME_OPTIONS`(구7종 PascalCase)를 `ROLE_ASSIGN_OPTIONS`(배정용, 신규 5역할만 — ADR-0031 snake_case: `icfr_manager`/`ceo`/`auditor`/`external_auditor`/`sys_admin`, 라벨은 임시 한글값 + `TODO: 협업자 라벨 확정 대기` 주석)와 `ROLE_LABELS`(표시용, 구7종 기존 라벨 그대로 + 신규5종 통합 `Record<string,string>`)로 분리. 사용처 3곳 전환: `UserRoleFormDialog.tsx` 셀렉터 → `ROLE_ASSIGN_OPTIONS`(신규 5역할만 노출), `UserDetailSheet.tsx`·`UserRoleTable.tsx`의 `roleLabel()` → `ROLE_LABELS[role_name] ?? role_name`(미지 값 원문 폴백, 공백 없음). 다른 `ROLE_NAME_OPTIONS` 참조 0건 확인 후 제거. `tsc --noEmit` 에러 0, users feature 테스트 파일 자체가 0건(기존 공백, 이번 회귀 아님). **13.9-24(기존 3행 `Administrator`/`Tester`/`Reviewer` 의미 불명확)는 이번 범위 밖 — 손대지 않음**, 신규 셀렉터에 구7종을 노출하지 않는 방식으로 자연히 분리됨. **로컬 커밋까지만 — push 미실행**(마이그레이션 없음, 사용자 push 요청 없어 대기). 다음: 브라우저 확인(신규 5역할만 셀렉터 노출·기존 뱃지 정상 렌더), push 여부 확인.
+
+- **2026-09-15 / TrustBuilder + Claude** — **API 계약 문서 3종 참조 표기 정리 + 테넌트 역할 배정 경로 조사** (문서만, 코드 변경 0건). ①**참조 정리**: 문서명 없는 `§` 는 그 문서의 절, 다른 문서는 `ADR-0032 §2.7`·`ClaudeICFR.md` 13.9-29 처럼 문서명을 붙이는 규칙을 3종 머리말에 명시. **ADR 절 번호 오기 3건 정정** — `evidence-contract.md` 의 "ADR-0032 §2.4"(삭제 시 파일 보존)·"§2.5"(권한 두 축)는 **3-3 프롬프트의 절 번호**였고 실제 ADR 은 §2.7, `org-contract.md` 의 owner_name 근거 "ADR-0031 §2.4" 는 무관한 절(이해상충)이라 제거. 같은 오기가 13.9-33 에도 있어 함께 정정. 프롬프트 번호(§5-6·§5 검증·3-1 STEP 0·3-2·2-A-4-3)는 내용으로 풀었고, "ADR-0017 §19" 는 `ClaudeICFR.md` §19 로, 나머지 `13.9-xx` 는 문서명을 붙였다. `org-contract.md` 는 §3.4 가 §3.3 앞에 있던 순서를 바로잡고 §4 를 가리키던 교체 동작 참조를 §6-① 로 고쳤다. ②**조사(Regina 질문)**: 신규 5역할은 `/api/users/roles` 로 배정 가능하고 `/me` 에 나온다. 422 는 `/api/org/assignments` 한정이며 의도된 동작. **그러나 그 경로에 권한 가드·값 검증이 없어 자기 승격·`external_auditor` 자기 해제가 실측으로 재현되고, FE 드롭다운은 구 역할명이라 5역할을 못 만든다** → 13.9-35 등록, 수정은 별도 지시 대기.
 
 - **2026-09-09 / Regina + Claude** — **canEditHierarchy를 /me `can_write` 기반으로 전환 (ADR-0031 seam 실구현)** (`prompts/impl-canEditHierarchy.md`, `prompts/probe-role-source.md`). 2026-09-04(`d2c4002`)에 무조건 `true` 하드코딩으로 남긴 편집 게이트 seam을 실제 판정으로 교체. ①**막힌 지점 조사(read-only)**: FE가 현재 사용자의 테넌트 운영 역할(`user_roles`)을 받을 수 없음을 확인 — `/me`는 `UserTenantAccess` join만 조회해 `tenants[].role`(=`user_tenant_access.role`)만 내려오고, `require_write`가 보는 `user_roles`(`external_auditor` 판정 근거)는 응답에 없었다. → 백엔드 핸드오프. ②**백엔드 반영(`5620b68`, 배포 완료)**: `/me` top-level에 `can_write: bool`(=`core/permissions.can_write`, `require_write`와 **동일 함수**)와 `tenant_roles: string[]` 추가. 원본 역할 목록 대신 계산된 capability를 함께 내려 FE가 `external_auditor`를 재판정하지 않고 `can_write` 하나만 신뢰(권한 단일 소스, 서버 403 최종). `active_tenant_id`가 생성순 첫 테넌트를 반환하던 버그도 함께 수정 — 이제 `X-Tenant-Id` 기준으로 `tenant_roles`/`can_write`가 따라온다(테넌트 1개라 미발현, 전환 UI 시 FE가 헤더 실어야 함). ③**FE 구현**: `auth/store.ts` `UserProfile`에 두 필드 추가(spread 매핑이라 타입만 조임). `permissions.pure.ts` 신규 — `canEditHierarchyForUser(user)=user?.can_write ?? false`, zustand 비의존 순수 함수라 jsdom 없이 node 환경 테스트 가능. `permissions.ts` `canEditHierarchy()`가 `useAuthStore.getState().user`를 이 헬퍼에 위임, user null → `false` 폴백. ④**부수 — CI 게이트 복구**: `vite.config.ts`가 기본 환경을 `jsdom`으로 선언하나 미설치라, 테스트 전건 통과에도 vitest가 MISSING DEPENDENCY로 종료코드 1 → CI 빌드 실패로 잡히던 상태. `npm install -D jsdom`으로 해소(기본 환경을 node로 낮추는 대안은 컴포넌트 테스트 도입 시 retrofit이라 기각). ⑤**테스트**: `permissions.test.ts` 신규(node 환경, true/false/null 3케이스), `hierarchy.test.ts`의 canEditHierarchy 케이스는 이관 주석 남기고 제거. 전체 3 files/29 passed, **종료코드 0**. ⑥**검증**: 함께 딸려온 evidence 마이그레이션 2건(`b4c5d6e7f8a9`·`c5d6e7f8a9b0`) 실측 — 전부 nullable `add_column`, 파괴적 op 0건 확인 후 재기동(`alembic current`=`c5d6e7f8a9b0`). 브라우저: 일반 계정 계층 관리 편집 버튼 정상 노출(회귀 없음) + Network `/me` `can_write: true` 실측. ⑦**관찰**: `tenant_roles`가 `["Administrator","Tester"]` — 근거 없는 legacy 3역할(13.9-24), 이번 게이트 무관(can_write만 사용), 역할 UI 착수 시 처리. **다음**: `tenant_roles` 활용 역할 UI(신규 5역할 한국어/기존 3역할 영문), `external_auditor` 음성 케이스 브라우저 검증(해당 역할 시드 계정 필요). 마이그레이션 파일은 이번 커밋에 없어 Claude Code push 가능.
 

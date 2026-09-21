@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import CurrentUser, get_db, require_admin
+from app.core.permissions import require_role_assigner
 from app.core.security import hash_password
 from app.core.tenant_context import get_active_tenant
 from app.models.tenant import UserTenantAccess
@@ -110,6 +111,31 @@ def reset_password(user_id: UUID, body: PasswordResetRequest, admin: User = Depe
 
 
 # ── User Roles (CRUD) ──────────────────────────────────────
+#
+# **테넌트 단위 제도 운영 역할**(ADR-0031 §2.1)의 배정 경로다. 여기가 뚫리면
+# `require_write`·`require_icfr_manager` 가 판정 근거로 삼는 테이블을 누구나
+# 고칠 수 있어 두 가드가 통째로 무력화된다(13.9-35). 조회는 로그인만,
+# 생성·수정·삭제는 `require_role_assigner` 로 막는다.
+
+
+def _assert_no_active_duplicate(db: Session, user_id: UUID, role_name: str,
+                                exclude_id: UUID | None = None) -> None:
+    """같은 사용자·역할이 이미 살아 있으면 409.
+
+    DB 부분 유니크 인덱스가 최종 보장이지만(`uq_user_roles_active_pair`),
+    앱에서 먼저 보고 IntegrityError 대신 의미 있는 409 를 돌려준다 —
+    `api/org.py` 소속 중복과 같은 형태다.
+    """
+    q = db.query(UserRole).filter(
+        UserRole.user_id == user_id,
+        UserRole.role_name == role_name,
+        UserRole.is_deleted == False,  # noqa: E712
+    )
+    if exclude_id is not None:
+        q = q.filter(UserRole.id != exclude_id)
+    if q.first() is not None:
+        raise HTTPException(status_code=409, detail=f"이미 '{role_name}' 역할이 배정되어 있습니다")
+
 
 @router.get("/roles/list")
 def list_roles(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
@@ -120,7 +146,10 @@ def list_roles(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Se
 
 
 @router.post("/roles", status_code=status.HTTP_201_CREATED, response_model=UserRoleRead)
-def create_role(body: UserRoleCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> UserRole:
+def create_role(body: UserRoleCreate, user: User = Depends(require_role_assigner),
+                db: Session = Depends(get_db)) -> UserRole:
+    """역할 배정. 허용 값은 스키마가 막고(422), 중복은 여기서 막는다(409)."""
+    _assert_no_active_duplicate(db, body.user_id, body.role_name)
     obj = UserRole(**body.model_dump())
     db.add(obj)
     db.commit()
@@ -137,11 +166,15 @@ def get_role(role_id: UUID, user: CurrentUser = None, db: Session = Depends(get_
 
 
 @router.patch("/roles/{role_id}", response_model=UserRoleRead)
-def update_role(role_id: UUID, body: UserRoleUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> UserRole:
+def update_role(role_id: UUID, body: UserRoleUpdate, user: User = Depends(require_role_assigner),
+                db: Session = Depends(get_db)) -> UserRole:
     obj = db.query(UserRole).filter(UserRole.id == role_id, UserRole.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="UserRole not found")
-    for field, val in body.model_dump(exclude_none=True).items():
+    changes = body.model_dump(exclude_none=True)
+    if "role_name" in changes:
+        _assert_no_active_duplicate(db, obj.user_id, changes["role_name"], exclude_id=obj.id)
+    for field, val in changes.items():
         setattr(obj, field, val)
     db.commit()
     db.refresh(obj)
@@ -149,7 +182,10 @@ def update_role(role_id: UUID, body: UserRoleUpdate, user: CurrentUser = None, d
 
 
 @router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_role(role_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_role(role_id: UUID, user: User = Depends(require_role_assigner),
+                db: Session = Depends(get_db)) -> None:
+    """역할 해제. **자기 역할도 남이 아니라 내부회계관리자만 지울 수 있다** —
+    이게 없으면 `external_auditor` 가 스스로 조회 전용을 벗어난다(13.9-35 ②)."""
     obj = db.query(UserRole).filter(UserRole.id == role_id, UserRole.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="UserRole not found")

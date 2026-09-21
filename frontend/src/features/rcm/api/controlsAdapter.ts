@@ -26,6 +26,7 @@ export function toControl(dto: ControlDto): Control {
     preventive_detective: dto.preventive_detective,
     auto_manual: dto.auto_manual,
     frequency: dto.frequency,
+    assessment_frequency: dto.assessment_frequency,
     ipe_relevant: dto.ipe_relevant,
     activity_approval: dto.activity_approval,
     activity_verification: dto.activity_verification,

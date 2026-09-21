@@ -1,16 +1,20 @@
 # 조직·역할 배정 API 계약 (부서 / 소속 / 배정 / 해석 / 정책)
 
-> **스냅샷 문서 — 기준 커밋 `5620b68` / 2026-09-08 시점. API 변경 시 갱신 필요.**
+> **스냅샷 문서 — 기준 커밋 `d094a04` + 4-2 수정 / 2026-09-19 시점. API 변경 시 갱신 필요.**
 >
-> 자동 생성 문서(FastAPI `/docs`)가 API 스펙의 단일 진실 공급원이다(ADR-0017 §19).
+> 자동 생성 문서(FastAPI `/docs`)가 API 스펙의 단일 진실 공급원이다(`ClaudeICFR.md` §19).
 > 이 문서는 그것이 드러내지 못하는 것 — **판정 규칙, 권한 검사 위치, 실제 에러 문구** — 을
 > 코드에서 읽어 정리한 것이다. 스펙을 대체하지 않는다.
 >
 > 근거 파일: `backend/app/schemas/org.py`, `backend/app/api/org.py`,
-> `backend/app/api/role_assignment.py`, `backend/app/core/permissions.py`,
+> `backend/app/api/role_assignment.py`, `backend/app/api/user_mgmt.py`,
+> `backend/app/core/permissions.py`,
 > `backend/app/services/role_resolver.py`, `backend/app/models/role_assignment.py`
 >
 > 근거 ADR: ADR-0031(역할·권한 모델). 형식은 `rcm-hierarchy-contract.md` 와 같다.
+>
+> 참조 표기 — 문서명 없는 `§3.4` 는 이 문서의 절이다. 다른 문서는 `ADR-0031 §2.4`,
+> `ClaudeICFR.md` 13.9-23 처럼 문서명을 붙인다.
 
 **모든 응답 예시는 실제 왕복에서 얻은 원문이다.** 추정으로 적은 값은 없다.
 
@@ -35,14 +39,24 @@
 | **해석** | **통제별 역할** | **`GET /api/org/controls/{control_id}/roles`** |
 | 정책 | 목록 | `GET /api/org/policies` |
 | | 설정/변경 | `PUT /api/org/policies` → 200 |
+| **테넌트 역할** | 목록 | `GET /api/users/roles/list` |
+| | 배정 | `POST /api/users/roles` → 201 |
+| | 상세 | `GET /api/users/roles/{role_id}` |
+| | 수정 | `PATCH /api/users/roles/{role_id}` → 200 |
+| | 해제 | `DELETE /api/users/roles/{role_id}` → 204 |
 
 쿼리 파라미터 — 부서: `skip`·`limit` / 소속: `user_id`·`department_id`·`skip`·`limit` /
 배정: `scope`·`target_id`·`skip`·`limit`.
 
 **배정에는 `PATCH` 가 없다.** `POST` 가 생성과 교체를 겸한다 — 같은
-`(scope, target_id, role_name)` 이 이미 있으면 `user_id` 만 바꾼다(§4 참조).
+`(scope, target_id, role_name)` 이 이미 있으면 `user_id` 만 바꾼다(§6-①).
 
 **정책에는 `POST`/`DELETE` 가 없다.** `PUT` 이 upsert 다.
+
+**테넌트 역할은 `/api/org` 가 아니라 `/api/users` 밑에 있다.** 통제 단위 배정
+(`/api/org/assignments`)과 다른 층이다 — 전자는 사람에게 붙는 제도 운영 역할 5종
+(ADR-0031 §2.1), 후자는 통제에 붙는 역할 3종(§2.2). 저장소도 `user_roles` 와
+`role_assignments` 로 다르다. 권한·허용 값은 §5.3.
 
 ## 2. 요청/응답 스키마
 
@@ -244,6 +258,26 @@ conflict_assessor_icfr_manager_blocked
 `assessor=icfr_manager` 는 검사 방식이 다르다 — `icfr_manager` 는 `role_assignments`
 가 아니라 `user_roles` 에 있어(ADR-0031 §3.1) 그쪽을 함께 읽는다.
 
+### 3.3 `owner_name` 이 참고 정보인 이유
+
+`baseline_controls.owner_name` 문자열을 **그대로** 싣는다. 계정과 연결되지 않는다.
+
+**이관하지 않기로 한 근거는 실측이다**(2026-09-04 역할 배정 구현 착수 전 운영 DB 실측.
+ADR-0031 §5 에는 미해결로 남아 있다). 운영 93건 분포:
+
+| 유형 | 건수 | 예 |
+|---|---|---|
+| 단일 인물 | 71 (76%) | `김세영`, `이단비` |
+| **복수 인물**(개행 구분) | **18 (19%)** | `노정희\n이단비` |
+| **팀 이름** | **4 (4%)** | `솔루션사업팀` |
+
+`유헌종\n노정희` 와 `노정희\n유헌종` 이 별개 문자열로 공존한다 — 순서 정규화조차
+되어 있지 않아 계정 매핑이 불가능하다. 이관하면 RCM 문서 서술이 계정 존재 여부에
+종속되고 퇴사자 발생 시 문서가 깨진다.
+
+**용도**: "문서상 수행자: 김세영" 으로 표시해 초기 배정 힌트로 쓴다.
+**배정과 어긋나면 그 자체가 검토 대상**이 된다 — 그 판단은 화면이 한다.
+
 ### 3.4 `dept_approval_skipped` — 부서승인 단계 부재
 
 ```json
@@ -266,31 +300,13 @@ conflict_assessor_icfr_manager_blocked
 
 **`source` 에 `"skipped"` 를 넣지 않은 이유** — `source` 는 "값이 어디서 왔는가"라는
 단일 의미이고 스킵은 상태다. 섞으면 RCM `source` envelope 과 개념이 어긋나고,
-스킵일 때 유도된 부서 책임자가 누구인지 표현할 자리가 없어진다. 3-2 워크플로가 읽을
-값도 "이 통제에 부서승인 단계가 있는가" 라는 boolean 이라 최상위 필드가 직접적이다.
+스킵일 때 유도된 부서 책임자가 누구인지 표현할 자리가 없어진다. 평가 워크플로
+(ADR-0032 §2.3)가 읽을 값도 "이 통제에 부서승인 단계가 있는가" 라는 boolean 이라
+최상위 필드가 직접적이다.
 
-**이름이 `skipped` 인 이유** — `dept_approval_required` 로 두면 §2.6 의 정책 토글
+**이름이 `skipped` 인 이유** — `dept_approval_required` 로 두면 ADR-0031 §2.6 의 정책 토글
 (`dept_approval_enabled`, 아직 미배선)이 꺼진 경우와 사유가 섞인다. 지금 표현하는
 것은 "통제책임자 = 부서 책임자" 한 가지뿐이므로 이름을 좁게 뒀다.
-
-### 3.3 `owner_name` 이 참고 정보인 이유
-
-`baseline_controls.owner_name` 문자열을 **그대로** 싣는다. 계정과 연결되지 않는다.
-
-**이관하지 않기로 한 근거는 실측이다**(ADR-0031 §2.4, 3-1 STEP 0). 운영 93건 분포:
-
-| 유형 | 건수 | 예 |
-|---|---|---|
-| 단일 인물 | 71 (76%) | `김세영`, `이단비` |
-| **복수 인물**(개행 구분) | **18 (19%)** | `노정희\n이단비` |
-| **팀 이름** | **4 (4%)** | `솔루션사업팀` |
-
-`유헌종\n노정희` 와 `노정희\n유헌종` 이 별개 문자열로 공존한다 — 순서 정규화조차
-되어 있지 않아 계정 매핑이 불가능하다. 이관하면 RCM 문서 서술이 계정 존재 여부에
-종속되고 퇴사자 발생 시 문서가 깨진다.
-
-**용도**: "문서상 수행자: 김세영" 으로 표시해 초기 배정 힌트로 쓴다.
-**배정과 어긋나면 그 자체가 검토 대상**이 된다 — 그 판단은 화면이 한다.
 
 ## 4. 이해상충 409 흐름
 
@@ -365,7 +381,7 @@ HTTP 409
 | 필드 | 출처 | 의미 | 판정에 쓰는가 |
 |---|---|---|---|
 | `role` | `users.role` | **시스템 관리 권한** | `require_admin` 전용(사용자 CRUD 4곳) |
-| `tenants[].role` | `user_tenant_access.role` | 테넌트 **접근** 권한 | **아니오** — 판정 코드 0건(13.9-23) |
+| `tenants[].role` | `user_tenant_access.role` | 테넌트 **접근** 권한 | **아니오** — 판정 코드 0건(`ClaudeICFR.md` 13.9-23) |
 | **`tenant_roles`** | **`user_roles`** | **제도 운영 역할**(ADR-0031 §2.1) | **예** |
 
 **`tenant_roles`·`can_write` 는 활성 테넌트 기준이다.** `active_tenant_id` 와 같은
@@ -395,10 +411,11 @@ A사에서 `external_auditor` 인 사람이 B사에서는 아닐 수 있다.
 | 엔드포인트 | 가드 | 요구 |
 |---|---|---|
 | 모든 `GET` | `CurrentUser` | 인증만 |
-| 부서 `POST`/`PATCH`/`DELETE` | `require_write` | `external_auditor` 아닐 것 |
-| 소속 `POST`/`PATCH`/`DELETE` | `require_write` | 〃 |
+| **부서 `POST`/`PATCH`/`DELETE`** | **`require_icfr_manager`** | **`icfr_manager` 보유 (§5.4)** |
+| **소속 `POST`/`PATCH`/`DELETE`** | **`require_icfr_manager`** | **〃** |
 | 배정 `POST`/`DELETE` | `require_write` | 〃 |
 | **정책 `PUT`** | **`require_icfr_manager`** | **`icfr_manager` 보유** |
+| **테넌트 역할 `POST`/`PATCH`/`DELETE`** | **`require_role_assigner`** | **`icfr_manager` 보유 (§5.3)** |
 
 **`users.role`(시스템 관리 권한)은 이 API 들에서 검사하지 않는다.** `require_admin` 은
 사용자 CRUD 4곳 전용이며 제도 운영 권한과 서로 참조하지 않는다(ADR-0031 §3.2).
@@ -426,6 +443,88 @@ HTTP 403
 HTTP 403
 {"detail": "내부회계관리자 권한이 필요합니다"}
 ```
+
+### 5.4 조직 구조 쓰기 권한 (2026-09-19, 4-2)
+
+**부서·소속의 생성·수정·삭제는 `icfr_manager` 전용이다.** 3-1 이 `require_write` 로 둔 것은
+누락이었다 — 그러면 `external_auditor` 만 막히고 **일반 사용자가 부서를 만들 수 있었다**
+(실측 201). 조직도는 제도 운영의 기준 데이터다: 통제책임자의 주 소속이 부서승인 단계를
+정한다(ADR-0031 §2.3).
+
+```
+HTTP 403
+{"detail": "내부회계관리자 권한이 필요합니다"}
+```
+
+**조회는 인증만이다.** 대시보드 조직별 집계(`GET /api/rcm/summary`)와 부서 화면이 부서를
+읽어야 하고, 조직도 열람 자체를 막을 이유가 없다 — `external_auditor` 도 목록 조회는 200 이다.
+
+**`sys_admin` 도 막힌다.** 제도 활동에 참여하지 않는다(ADR-0031 §2.1.1) — 실측 403.
+
+### 5.5 지웠다가 다시 만들기 (2026-09-19, 4-2)
+
+부서명·소속 짝·주 소속 유니크가 **살아 있는 행만** 대상으로 바뀌었다(마이그레이션 `e7f8a9b0c1d2`).
+그 전에는 소프트 삭제된 행이 값을 계속 점유해 아래가 전부 409 였고, 문구가
+`데이터 무결성 제약 위반 (중복 또는 참조 오류)` 이라 **사용자가 원인을 알 수 없었다.**
+
+| 동작 | 지금 |
+|---|---|
+| 부서 삭제 후 같은 이름으로 재생성 | **201** |
+| 소속 해제 후 같은 부서에 재추가 | **201** |
+| 주 소속 해제 후 다른 부서 주 소속 지정 | **201** |
+
+살아 있는 중복은 앱 레벨 문구가 그대로 나온다 — `부서명 '자금팀' 은 이미 사용 중입니다`,
+`이미 해당 부서에 소속되어 있습니다`.
+
+### 5.6 주 소속은 거부가 아니라 이동이다
+
+이미 주 소속이 있는 사람을 다른 부서의 주 소속으로 지정하면 **201 이고 기존 주 소속이
+해제된다**(소속 자체는 남는다). 부서 이동이 정상 업무이므로 "이미 주 소속이 있습니다"로
+막지 않는다. 화면은 지정 전에 `기존 주 소속 「○○」에서 옮겨집니다` 를 보여준다.
+
+### 5.3 테넌트 역할 배정 — 권한과 허용 값 (2026-09-16)
+
+`/api/users/roles` 의 생성·수정·삭제가 **로그인만 확인하던 상태를 고친 것**이다.
+일반 사용자가 자기에게 `icfr_manager` 를 부여하거나 `external_auditor` 가 자기 역할
+행을 지워 조회 전용을 벗어나는 것이 실측으로 재현됐다(`ClaudeICFR.md` 13.9-35).
+**`require_write`·`require_icfr_manager` 가 보는 테이블이 여기라서** 이 경로가 뚫리면
+두 가드가 함께 무력화된다.
+
+**세 경로 모두 `icfr_manager` 다.** 배정만 막으면 삭제로 우회된다.
+
+```
+HTTP 403
+{"detail": "역할 배정은 내부회계관리자만 가능합니다 (내부회계관리자가 없는 테넌트에 한해 시스템관리자가 첫 배정을 합니다)"}
+```
+
+**부트스트랩 예외** — 테넌트에 `icfr_manager` 가 0명일 때만 `user_roles` 의
+`sys_admin` 이 배정할 수 있고, 1명이 생기면 닫힌다(ADR-0031 §3.3).
+`users.role == "admin"` 은 여기서 보지 않는다(ADR-0031 §3.2).
+
+**허용 값은 5종뿐이다** — `icfr_manager`/`ceo`/`auditor`/`external_auditor`/`sys_admin`.
+목록 밖 값은 **422**(스키마 단계에서 거부):
+
+```
+HTTP 422
+{"detail": [{"type": "value_error", "loc": ["body", "role_name"],
+             "msg": "Value error, 허용되지 않는 역할명 'icfr_mananger'. 허용: icfr_manager, ceo, auditor, external_auditor, sys_admin"}]}
+```
+
+**구 3역할(`Administrator`/`Reviewer`/`Tester`)은 읽기만 된다.** 기존 행은 `/me`
+`tenant_roles` 와 목록 조회에 그대로 나오지만 신규 배정은 422 로 막힌다
+(`ClaudeICFR.md` 13.9-24). **FE `ROLE_NAME_OPTIONS` 가 아직 구 역할명 7종이라
+화면에서는 5역할을 만들 수 없고 기존 선택지는 전부 422 가 된다** — FE 수정 전까지
+역할 배정은 API 로만 가능하다.
+
+**같은 사용자·역할 중복 배정은 409.**
+
+```
+HTTP 409
+{"detail": "이미 'ceo' 역할이 배정되어 있습니다"}
+```
+
+DB 부분 유니크 인덱스(`uq_user_roles_active_pair`)가 최종 보장이며 **살아 있는 행만
+대상**이라 해제 후 재배정은 정상 동작한다.
 
 ## 6. 기존 RCM 규약과 다른 지점
 

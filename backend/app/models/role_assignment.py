@@ -131,6 +131,25 @@ CONFLICT_PAIRS = (
 # 판정 시 그쪽을 함께 읽어야 한다. 위 두 조합과 검사 방식이 다르니 분리해 둔다.
 ROLE_ICFR_MANAGER = "icfr_manager"
 ROLE_EXTERNAL_AUDITOR = "external_auditor"
+
+# ── 테넌트 단위 역할 5종 (ADR-0031 §2.1) ─────────────────────────
+# 저장처는 `user_roles` 지만(§3.1) 상수는 여기 하나뿐이다 — 겸직 판정
+# (CROSS_LAYER_CONFLICT_PAIRS)과 배정 검증이 같은 목록을 봐야 한다.
+# **`users.role`(시스템 관리)과 무관하다**(§3.2). `sys_admin` 이 여기 있는 것은
+# 제도 운영 역할로서의 시스템관리자를 뜻하며, `users.role == "admin"` 과
+# 서로를 추론하지 않는다.
+ROLE_CEO = "ceo"
+ROLE_AUDITOR = "auditor"
+ROLE_SYS_ADMIN = "sys_admin"
+TENANT_ROLES = (
+    ROLE_ICFR_MANAGER, ROLE_CEO, ROLE_AUDITOR, ROLE_EXTERNAL_AUDITOR, ROLE_SYS_ADMIN,
+)
+
+# 구 3역할 — **읽기만 허용하고 신규 배정은 금지한다**(13.9-24, 13.9-35).
+# 기존 행을 깨지 않으면서 확산만 막는다. 어느 계층 의미인지 문서 근거가 없어
+# (`Reviewer` 는 ADR-0031 §1.2 가 경고한 용어 혼동 대상) 정리는 별건이며,
+# 실데이터 변경이라 마스터가 직접 실행한다.
+LEGACY_TENANT_ROLES = ("Administrator", "Reviewer", "Tester")
 CROSS_LAYER_CONFLICT_PAIRS = (
     (ROLE_ASSESSOR, ROLE_ICFR_MANAGER),
 )

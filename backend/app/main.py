@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -91,9 +92,13 @@ def create_app() -> FastAPI:
     async def validation_exception_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        # **`jsonable_encoder` 를 거쳐야 한다.** 커스텀 validator 가 `ValueError` 를
+        # 던지면 `exc.errors()` 의 `ctx.error` 에 예외 객체가 그대로 실려 있어
+        # 직렬화에서 터진다 — 422 를 내려야 할 자리에서 500 이 난다(13.9-36).
+        # FastAPI 기본 핸들러와 같은 처리다.
         return JSONResponse(
             status_code=422,
-            content={"detail": exc.errors()},
+            content={"detail": jsonable_encoder(exc.errors())},
             headers={"X-Request-ID": getattr(request.state, "request_id", "unknown")},
         )
 
