@@ -5,7 +5,9 @@ from app.models.assessment import (  # noqa: F401
     CycleTarget,
 )
 from app.models.base import AuditedBase, Base, IdentityBase, TenantMixin  # noqa: F401
+from app.models.euc import EucFile  # noqa: F401
 from app.models.evidence import EvidenceFile, EvidenceLink  # noqa: F401
+from app.models.iuc import InformationItem  # noqa: F401
 from app.models.org import Department, UserDepartment  # noqa: F401
 from app.models.rcm import (  # noqa: F401
     Control,
@@ -38,6 +40,18 @@ from app.models.role_assignment import (  # noqa: F401
     ConflictAcknowledgement,
     RoleAssignment,
     TenantPolicy,
+)
+from app.models.scoping import (  # noqa: F401
+    Scoping,
+    ScopingAccount,
+    ScopingAdjustment,
+    ScopingBenchmark,
+    ScopingFieldOrigin,
+    ScopingStatusHistory,
+    ScopingTemplate,
+    ScopingTemplateAccount,
+    ScopingTemplateText,
+    ScopingText,
 )
 from app.models.tenant import Tenant, UserTenantAccess  # noqa: F401
 from app.models.test_module import (  # noqa: F401

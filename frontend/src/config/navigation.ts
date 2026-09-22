@@ -81,7 +81,7 @@ export const navigation: NavGroup[] = [
       {
         label: 'Scoping',
         path: '/scoping',
-        status: 'todo',
+        status: 'ready', // 6-1 — 표준 템플릿(운영은 seed_scoping_template 실행 후). 회계연도를 만들면 live
         icon: Target,
         description: '계정과목별 평가 대상 범위 결정 (정량·정성 기준)',
       },
@@ -100,14 +100,14 @@ export const navigation: NavGroup[] = [
       {
         label: 'EUC',
         path: '/euc',
-        status: 'todo',
+        status: 'live', // 5-1 — 원천 양식 8건 시드(운영은 seed_euc_iuc 실행 후)
         icon: FileSpreadsheet,
         description: 'End User Computing 등록·테스트·변경관리',
       },
       {
         label: 'IUC',
         path: '/iuc',
-        status: 'todo',
+        status: 'live', // 5-1 — 원천 양식 8건 시드(운영은 seed_euc_iuc 실행 후)
         icon: Database,
         description: '통제에 사용된 정보(IUC/IPE) 완전성·정확성 검증',
       },
