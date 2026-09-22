@@ -7,6 +7,7 @@
 **이해상충은 막지 않고 경고 + 사유를 기록한다**(§2.5). 정책 토글이 금지로 켜져 있을
 때만 409 로 거부한다.
 """
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -26,6 +27,11 @@ from app.models.role_assignment import (
     RoleAssignment,
     TenantPolicy,
     conflict_policy_key,
+)
+from app.models.scoping import (
+    POLICY_SCOPING_QUAL_COMPARISON,
+    POLICY_SCOPING_QUAL_THRESHOLD,
+    QUAL_COMPARISONS,
 )
 from app.models.user import User
 from app.models.user_mgmt import UserRole
@@ -226,6 +232,20 @@ def get_control_roles(control_id: UUID, user: CurrentUser = None,
 
 def _assert_policy_value_valid(body: TenantPolicyUpsert) -> None:
     """값 검증이 필요한 정책만 여기서 본다. 나머지는 소비하는 쪽이 해석한다."""
+    if body.policy_key == POLICY_SCOPING_QUAL_COMPARISON:
+        if body.policy_value not in QUAL_COMPARISONS:
+            raise HTTPException(status_code=422,
+                                detail=f"질적 판정 비교 방식은 {', '.join(QUAL_COMPARISONS)} 중 하나여야 합니다")
+        return
+    if body.policy_key == POLICY_SCOPING_QUAL_THRESHOLD:
+        # H/M/L = 3/2/1 의 평균이므로 1~3 밖의 기준값은 뜻이 없다 — 저장 시 막는다(6-1)
+        try:
+            v = Decimal(body.policy_value)
+        except ArithmeticError:
+            raise HTTPException(status_code=422, detail="질적 판정 기준값은 숫자여야 합니다") from None
+        if not (Decimal(1) <= v <= Decimal(3)):
+            raise HTTPException(status_code=422, detail="질적 판정 기준값은 1 이상 3 이하여야 합니다")
+        return
     if body.policy_key == POLICY_EUC_IDENTIFICATION_THRESHOLD:
         # 목록 밖 값이 저장되면 판정이 조용히 기본값으로 떨어진다 — 저장 시점에 막는다(5-1)
         if body.policy_value not in RISK_GRADES:
