@@ -379,6 +379,5 @@ def delete_link(link_id: UUID, user: User = Depends(require_icfr_manager),
     f = db.query(EvidenceFile).filter(EvidenceFile.id == obj.file_id).first()
     if f is not None and f.cycle_id and f.control_id:
         _assert_can_edit_evidence(db, user, f.cycle_id, f.control_id)
-    obj.is_deleted = True  # deleted_by 는 before_flush 가 찍는다(ADR-0036)
-    obj.deleted_at = datetime.now(UTC)
+    obj.is_deleted = True  # deleted_by·deleted_at 은 before_flush 가 찍는다(ADR-0036)
     db.commit()

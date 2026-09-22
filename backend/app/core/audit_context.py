@@ -18,6 +18,7 @@ import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import event
@@ -108,7 +109,7 @@ def _stamp_audit_columns(session: Session, flush_context, instances) -> None:
 
     - insert: `created_by`(이미 값이 있으면 유지)·`updated_by`
     - update: `updated_by` 를 현재 행위자로 갱신
-    - `is_deleted` false→true: `deleted_by` 채움 / true→false(복구): 비움
+    - `is_deleted` false→true: `deleted_by`·`deleted_at` 채움 / true→false(복구): 둘 다 비움
     행위자가 없으면 아무것도 찍지 않고 실패한다(fail-closed). hard delete 도 쓰기이므로 같다.
     """
     new = [o for o in session.new if _is_audited(o)]
@@ -136,7 +137,12 @@ def _stamp_audit_columns(session: Session, flush_context, instances) -> None:
         if isinstance(obj, TimestampMixin):
             obj.updated_by = actor
         if isinstance(obj, SoftDeleteMixin) and get_history(obj, "is_deleted").has_changes():
-            obj.deleted_by = actor if obj.is_deleted else None
+            if obj.is_deleted:
+                obj.deleted_by = actor
+                obj.deleted_at = datetime.now(UTC)
+            else:
+                obj.deleted_by = None
+                obj.deleted_at = None
 
 
 @event.listens_for(Session, "do_orm_execute")
