@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { Judgement, Origin } from '../types'
 
@@ -13,19 +13,110 @@ export const pct = (v: string | null | undefined) => {
 }
 
 /**
- * 템플릿 배지 — **필드 단위**다. `template` 이면 "아직 회사가 직접 판단하지 않은 값"이라는 표시.
- * 사용자가 값을 바꿔 저장하면 서버가 `edited` 로 돌리고 배지가 사라진다(같은 값 재저장은 그대로).
+ * 출처 배지 — **필드 단위**다(6-1b).
+ * - `template` : "템플릿" (점선 하늘색) — 아직 아무도 보지 않은 값. 확정 경고는 이것만 센다
+ * - `confirmed`: "확인됨" (실선 초록) — 템플릿 값을 검토하고 동의함
+ * - `edited`   : 배지 없음 — 회사가 고친 값
  */
 export function TemplateBadge({ origin, className }: { origin: Origin | null | undefined; className?: string }) {
-  if (origin !== 'template') return null
-  return (
-    <span
-      title="템플릿 문구 — 아직 직접 검토·수정하지 않은 값입니다"
-      className={cn('ml-1 inline-block rounded border border-dashed border-sky-300 bg-sky-50 px-1 text-[10px] font-normal text-sky-700', className)}
-    >
-      템플릿
-    </span>
+  if (origin === 'template') {
+    return (
+      <span
+        title="템플릿 값 — 아직 아무도 검토하지 않았습니다. 동의하면 '확인', 다르면 고치세요"
+        className={cn('ml-1 inline-block rounded border border-dashed border-sky-300 bg-sky-50 px-1 text-[10px] font-normal text-sky-700', className)}
+      >
+        템플릿
+      </span>
+    )
+  }
+  if (origin === 'confirmed') {
+    return (
+      <span
+        title="템플릿 값을 검토하고 동의했습니다"
+        className={cn('ml-1 inline-block rounded border border-emerald-300 bg-emerald-50 px-1 text-[10px] font-normal text-emerald-700', className)}
+      >
+        확인됨
+      </span>
+    )
+  }
+  return null
+}
+
+/** 칸 테두리 — 배지와 같은 색 구분(선택 상자처럼 배지를 따로 붙이기 어려운 칸용) */
+export const originFieldClass = (origin: Origin | null | undefined) =>
+  origin === 'template' ? 'border-dashed border-sky-300 bg-sky-50'
+    : origin === 'confirmed' ? 'border-emerald-300 bg-emerald-50/60' : ''
+
+/**
+ * "확인" / "확인 취소" 버튼 — 범위 안에 템플릿 값이 있으면 확인, 확인한 값만 남았으면 취소.
+ * 둘 다 없으면(전부 고친 값) 아무것도 그리지 않는다.
+ */
+export function ConfirmToggle({ origins, onConfirm, disabled, label = '확인' }: {
+  origins: Array<Origin | null | undefined>
+  onConfirm: (undo: boolean) => void
+  disabled?: boolean
+  label?: string
+}) {
+  const hasTemplate = origins.includes('template')
+  const hasConfirmed = origins.includes('confirmed')
+  if (disabled || (!hasTemplate && !hasConfirmed)) return null
+  return hasTemplate ? (
+    <button type="button" onClick={() => onConfirm(false)}
+      title="템플릿 값을 검토했고 동의합니다 — 값은 바뀌지 않습니다"
+      className="rounded border border-emerald-300 px-1.5 text-[11px] text-emerald-700 hover:bg-emerald-50">
+      {label}
+    </button>
+  ) : (
+    <button type="button" onClick={() => onConfirm(true)}
+      title="확인을 취소하고 템플릿 상태로 돌립니다"
+      className="text-[11px] text-muted-foreground underline">
+      확인 취소
+    </button>
   )
+}
+
+/**
+ * 내용에 맞춰 높이가 늘어나는 입력칸 — 판단 근거·수동 판정 사유가 잘리지 않게(6-1b §3.5).
+ * 포커스를 잃을 때 저장한다.
+ */
+export function AutoTextarea({ value, onCommit, disabled, className, placeholder }: {
+  value: string
+  onCommit: (v: string) => void
+  disabled?: boolean
+  className?: string
+  placeholder?: string
+}) {
+  const [text, setText] = useState(value)
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => setText(value), [value])
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [text])
+  return (
+    <textarea
+      ref={ref} value={text} disabled={disabled} rows={1} placeholder={placeholder}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => text !== value && onCommit(text)}
+      className={cn('w-full resize-none overflow-hidden rounded border bg-background px-1.5 py-0.5 text-[11px] leading-snug disabled:bg-muted/40', className)}
+    />
+  )
+}
+
+/** 범위 표시 ["0.05","0.1"] → "5~10%" · [null,"0.03"] → "~3%" · null → 없음 */
+export function rangeText(r: [string | null, string | null] | null | undefined): string | null {
+  if (!r) return null
+  const f = (v: string | null) => (v === null ? '' : pct(v).replace('%', ''))
+  return `${f(r[0])}~${f(r[1])}%`
+}
+
+/** 증감률 "-0.7500" → "−75.0%" */
+export function changeText(v: string | null): string {
+  if (v === null) return '—'
+  const n = Number(v) * 100
+  return `${n > 0 ? '+' : ''}${n.toFixed(1)}%`
 }
 
 /** 판정 표시 — Y / N / 해당 없음 / 미평가 를 **서로 다른 모양**으로 그린다 */

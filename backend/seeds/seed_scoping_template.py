@@ -58,6 +58,7 @@ from app.models.scoping import (
     ScopingTemplateText,
 )
 from app.services import scoping_calc as calc
+from app.services.scoping import default_criteria_payload
 
 SOURCE = Path(__file__).resolve().parent / "4__내부회계관리제도_Scoping.xlsx"
 TEMPLATE_VERSION = 1
@@ -255,7 +256,10 @@ def load_template(db: Session, source: Path = SOURCE, code: str = DEFAULT_TEMPLA
 
     tpl = ScopingTemplate(code=code, version=version, name="내부회계관리제도 스코핑 표준 템플릿",
                           source=source.name, default_benchmark=BENCHMARK_ADJUSTED_PBT,
-                          default_rates=rates, default_smt_rate=str(m["G60"].value))
+                          default_rates=rates, default_smt_rate=str(m["G60"].value),
+                          # 비율 가이드 범위·설정율 범위 기본값(원천 Note 1·2, 매출액은 비움 — 6-1b).
+                          # 이미 적재된 템플릿은 마이그레이션 b1c2d3e4f5a6 이 같은 값으로 채운다
+                          default_criteria=default_criteria_payload())
     db.add(tpl)
     db.flush()
 

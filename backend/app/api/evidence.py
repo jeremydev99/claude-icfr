@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.deps import CurrentUser, get_db
-from app.core.permissions import require_write, tenant_roles
+from app.core.permissions import require_icfr_manager, require_write, tenant_roles
 from app.minio_client import build_evidence_key, get_object_stream, upload_object
 from app.models.assessment import CYCLE_OPEN, AssessmentCycle
-from app.models.evidence import EvidenceFile, EvidenceLink
+from app.models.evidence import LINK_TARGET_CONTROL, LINK_TARGET_TYPES, EvidenceFile, EvidenceLink
 from app.models.role_assignment import (
     POLICY_EVIDENCE_EDIT_ENABLED,
     POLICY_EVIDENCE_MAX_BYTES,
@@ -28,6 +28,7 @@ from app.schemas.evidence import (
     EvidenceLinkCreate,
     EvidenceLinkRead,
 )
+from app.services.control_resolver import resolve_controls
 from app.services.role_resolver import (
     resolve_control_process_id,
     resolve_roles_for_control,
@@ -145,6 +146,20 @@ def _assert_can_edit_evidence(db: Session, user: User, cycle_id: UUID,
         )
 
 
+def _assert_can_edit_file(db: Session, user: User, obj: EvidenceFile) -> None:
+    """기존 증빙 파일 수정·삭제 판정.
+
+    회차 × 통제에 붙은 파일은 업로드와 같은 판정(`_assert_can_edit_evidence`).
+    **레거시 증빙(회차 없음)은 회차·통제 판정을 걸 수 없어 `icfr_manager` 만** 고치고 지운다
+    (13.9-48). 그 전에는 `require_write` 만 적용돼 외부감사인이 아닌 누구나 지울 수 있었다.
+    """
+    if obj.cycle_id and obj.control_id:
+        _assert_can_edit_evidence(db, user, obj.cycle_id, obj.control_id)
+    elif ROLE_ICFR_MANAGER not in tenant_roles(db, user.id):
+        raise HTTPException(status_code=403,
+                            detail="회차가 없는 기존 증빙은 내부회계관리자만 수정·삭제할 수 있습니다")
+
+
 # ── Evidence Files ─────────────────────────────────────────
 
 @router.get("/files")
@@ -240,10 +255,17 @@ def download_file(file_id: UUID, user: CurrentUser = None, db: Session = Depends
 
 
 @router.patch("/files/{file_id}", response_model=EvidenceFileRead)
-def update_file(file_id: UUID, body: EvidenceFileUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> EvidenceFile:
+def update_file(file_id: UUID, body: EvidenceFileUpdate, user: User = Depends(require_write),
+                db: Session = Depends(get_db)) -> EvidenceFile:
+    """파일명 수정 — 업로드와 같은 판정(외부감사인 거부 + 회차 상태·통제 단위 역할).
+
+    **2026-09-22 전에는 로그인만 확인했고 `minio_key` 까지 바꿀 수 있었다**(13.9-48) —
+    외부감사인이 증빙 레코드가 다른 파일을 가리키게 만들 수 있었다. 경로는 스키마에서 뺐다.
+    """
     obj = db.query(EvidenceFile).filter(EvidenceFile.id == file_id, EvidenceFile.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="EvidenceFile not found")
+    _assert_can_edit_file(db, user, obj)
     for field, val in body.model_dump(exclude_none=True).items():
         setattr(obj, field, val)
     db.commit()
@@ -267,9 +289,7 @@ def delete_file(file_id: UUID, reason: str | None = None,
     obj = db.query(EvidenceFile).filter(EvidenceFile.id == file_id, EvidenceFile.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="EvidenceFile not found")
-    # 레거시 증빙(cycle_id NULL)은 회차 판정을 걸 수 없다 — require_write 만 적용된다
-    if obj.cycle_id and obj.control_id:
-        _assert_can_edit_evidence(db, user, obj.cycle_id, obj.control_id)
+    _assert_can_edit_file(db, user, obj)
     obj.is_deleted = True
     obj.deleted_by_id = user.id
     obj.deleted_at_ts = datetime.now(UTC)
@@ -317,8 +337,32 @@ def list_links(file_id: UUID | None = None, skip: int = 0, limit: int = 100, use
 
 
 @router.post("/links", status_code=status.HTTP_201_CREATED, response_model=EvidenceLinkRead)
-def create_link(body: EvidenceLinkCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> EvidenceLink:
-    obj = EvidenceLink(**body.model_dump())
+def create_link(body: EvidenceLinkCreate, user: User = Depends(require_icfr_manager),
+                db: Session = Depends(get_db)) -> EvidenceLink:
+    """증빙 연결 생성 — **`icfr_manager` 전용**(13.9-48).
+
+    쓰는 곳이 없는 경로라 통제책임자·평가자 판정을 따로 두지 않는다. 실제 용도가 생기면
+    업로드 판정과 함께 정한다. 검증 순서: 대상 종류(422) → 파일(404, 자기 회사·미삭제)
+    → 대상 존재(404) → 파일이 회차 × 통제에 붙어 있으면 업로드와 같은 회차 판정.
+    """
+    if body.linked_entity_type not in LINK_TARGET_TYPES:
+        raise HTTPException(status_code=422,
+                            detail=f"연결할 수 없는 대상 종류입니다: {body.linked_entity_type} "
+                                   f"(허용: {', '.join(LINK_TARGET_TYPES)})")
+    # 테넌트 필터가 자동으로 걸린다(ADR-0025) — 다른 회사 파일은 여기서 404 가 된다.
+    # file_id FK 가 복합 FK 가 아니라서 DB 가 막아 주지 않는다. 이 조회가 그 검증이다
+    f = db.query(EvidenceFile).filter(EvidenceFile.id == body.file_id,
+                                      EvidenceFile.is_deleted == False).first()  # noqa: E712
+    if f is None:
+        raise HTTPException(status_code=404, detail="EvidenceFile not found")
+    if body.linked_entity_type == LINK_TARGET_CONTROL:
+        ids = {str(c["id"]) for c in resolve_controls(db)}
+        if body.linked_entity_id not in ids:
+            raise HTTPException(status_code=404, detail="연결할 통제가 없습니다")
+    # 마감 회차 잠금 — 지금은 icfr_manager 만 오므로 통과한다. 권한을 넓힐 때 이 판정이 그대로 걸린다
+    if f.cycle_id and f.control_id:
+        _assert_can_edit_evidence(db, user, f.cycle_id, f.control_id)
+    obj = EvidenceLink(**body.model_dump(), created_by=str(user.id))
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -326,9 +370,16 @@ def create_link(body: EvidenceLinkCreate, user: CurrentUser = None, db: Session 
 
 
 @router.delete("/links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_link(link_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_link(link_id: UUID, user: User = Depends(require_icfr_manager),
+                db: Session = Depends(get_db)) -> None:
+    """증빙 연결 삭제 — `icfr_manager` 전용. **소프트 삭제 + 누가·언제**(13.9-48). 사유 칸은 별건."""
     obj = db.query(EvidenceLink).filter(EvidenceLink.id == link_id, EvidenceLink.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="EvidenceLink not found")
+    f = db.query(EvidenceFile).filter(EvidenceFile.id == obj.file_id).first()
+    if f is not None and f.cycle_id and f.control_id:
+        _assert_can_edit_evidence(db, user, f.cycle_id, f.control_id)
     obj.is_deleted = True
+    obj.deleted_by = str(user.id)
+    obj.deleted_at = datetime.now(UTC)
     db.commit()

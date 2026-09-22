@@ -8,7 +8,10 @@
 이력에 남는다.
 
 **산출값은 저장하지 않는다** — 매 조회가 `services/scoping.evaluate` 로 계산한다.
-확정 시점에만 `snapshot` 으로 굳혀 저장한다.
+확정 시점에만 `snapshot` 으로 결론과 기준을 굳혀 저장한다.
+
+**중요성 기준은 스코핑 필드다**(6-1b) — 비율 가이드 범위·설정율 범위·질적 기준·기준 연도를
+PATCH 로 바꾼다. 테넌트 정책은 새 연도 생성 때 기본값으로만 쓴다.
 """
 from datetime import UTC, datetime
 from uuid import UUID
@@ -24,6 +27,7 @@ from app.models.scoping import (
     BENCHMARK_GUIDE_RANGES,
     BENCHMARK_LABELS,
     BENCHMARKS,
+    CONFIRM_SCOPES,
     DEFAULT_TEMPLATE_CODE,
     ORIGIN_LABELS,
     ORIGIN_TARGET_ACCOUNT,
@@ -59,6 +63,7 @@ from app.schemas.scoping import (
     AdjustmentRead,
     BenchmarkRow,
     BenchmarkUpdate,
+    ConfirmRequest,
     HistoryRead,
     Option,
     ScopingCreate,
@@ -97,6 +102,7 @@ def get_meta(user: CurrentUser = None) -> ScopingMeta:
         qual_comparisons=_opts(QUAL_COMPARISONS),
         benchmark_guide_ranges={k: (list(v) if v else None) for k, v in BENCHMARK_GUIDE_RANGES.items()},
         smt_rate_guide_range=list(SMT_RATE_GUIDE_RANGE),
+        confirm_scopes=list(CONFIRM_SCOPES),
         quant_applicable=sorted(QUANT_APPLICABLE_STATEMENTS),
     )
 
@@ -123,8 +129,9 @@ def _detail(db: Session, s: Scoping, user_id: UUID) -> ScopingDetail:
 
     benches = []
     for r in ev["benchmarks"]:
-        badge = origins.get((ORIGIN_TARGET_BENCHMARK, r["id"]), {}).get("rate") if r["id"] else None
-        benches.append(BenchmarkRow(**{k: v for k, v in r.items() if k != "id"}, badge=badge))
+        o = origins.get((ORIGIN_TARGET_BENCHMARK, r["id"]), {}) if r["id"] else {}
+        benches.append(BenchmarkRow(**{k: v for k, v in r.items() if k != "id"},
+                                    badge=o.get("rate"), guide_badge=o.get("guide")))
 
     texts = db.query(ScopingText).filter(ScopingText.scoping_id == s.id,
                                          ScopingText.is_deleted == False).order_by(  # noqa: E712
@@ -137,7 +144,7 @@ def _detail(db: Session, s: Scoping, user_id: UUID) -> ScopingDetail:
             name=a.name, current_amount=a.current_amount, prior_amount=a.prior_amount,
             ratings={k: v for k, v in (a.ratings or {}).items() if v}, qual_basis=a.qual_basis,
             manual_conclusion=a.manual_conclusion, manual_reason=a.manual_reason,
-            quant=r["quant"], qual_average=r["qual_average"], qual=r["qual"],
+            quant=r["quant"], qual_average=r["qual_average"], change_rate=r["change_rate"], qual=r["qual"],
             computed=r["computed"], final=r["final"],
             snapshot_final=snap.get(str(a.id), {}).get("final") if snap else None,
             badges=origins.get((ORIGIN_TARGET_ACCOUNT, a.id), {}),
@@ -148,7 +155,8 @@ def _detail(db: Session, s: Scoping, user_id: UUID) -> ScopingDetail:
     ).order_by(ScopingStatusHistory.created_at).all()
     return ScopingDetail(
         id=s.id, fiscal_year=s.fiscal_year, status=s.status, template_code=s.template_code,
-        template_version=s.template_version, policy=ev["policy"], benchmarks=benches,
+        template_version=s.template_version, policy=ev["policy"],
+        base_fiscal_year=ev["base_fiscal_year"], smt_guide_range=ev["smt_guide_range"], benchmarks=benches,
         adjustments=[AdjustmentRead.model_validate(a) for a in ev["adjustments"]],
         selected_benchmark=ev["selected_benchmark"], overall_materiality=ev["overall_materiality"],
         smt=ev["smt"], smt_rate=ev["smt_rate"], smt_out_of_range=ev["smt_out_of_range"],
@@ -156,6 +164,7 @@ def _detail(db: Session, s: Scoping, user_id: UUID) -> ScopingDetail:
         texts=[TextRead(id=t.id, key=t.key, title=t.title, body=t.body,
                         badge=origins.get((ORIGIN_TARGET_TEXT, t.id), {}).get("body")) for t in texts],
         accounts=accounts, warnings=ev["warnings"], badge_count=svc.badge_count(db, s.id),
+        origin_counts=svc.origin_counts(db, s.id),
         confirmed_at=s.confirmed_at, confirm_reason=s.confirm_reason,
         confirm_badge_count=s.confirm_badge_count, confirmed_snapshot=s.confirmed_snapshot,
         review_auditor=s.review_auditor, review_date=s.review_date, review_opinion=s.review_opinion,
@@ -202,6 +211,10 @@ def get_scoping(scoping_id: UUID, user: CurrentUser = None, db: Session = Depend
 
 # ── 쓰기 (전부 icfr_manager) ───────────────────────────────
 
+def _assert_range(lo, hi, label: str) -> None:
+    if lo is not None and hi is not None and lo > hi:
+        raise HTTPException(status_code=422, detail=f"{label}: 하한이 상한보다 큽니다")
+
 def _editable(db: Session, scoping_id: UUID) -> Scoping:
     s = _get(db, scoping_id)
     if s.status == STATUS_CONFIRMED:
@@ -234,11 +247,24 @@ def create_scoping(body: ScopingCreate, user: User = Depends(require_icfr_manage
 def update_scoping(scoping_id: UUID, body: ScopingUpdate, user: User = Depends(require_icfr_manager),
                    db: Session = Depends(get_db)) -> ScopingDetail:
     s = _editable(db, scoping_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
+    changes = body.model_dump(exclude_unset=True)
+    for field in ("selected_benchmark", "smt_rate", "qual_threshold", "qual_comparison", "base_fiscal_year"):
+        # 판정 기준은 비울 수 없다 — 비우면 무엇으로 판정했는지가 사라진다
+        if field in changes and changes[field] is None:
+            raise HTTPException(status_code=422, detail=f"'{field}' 는 비울 수 없습니다")
+    lo = changes.get("smt_guide_low", s.smt_guide_low)
+    hi = changes.get("smt_guide_high", s.smt_guide_high)
+    _assert_range(lo, hi, "수행중요성 설정율 가이드 범위")
+    guide_changed = False
+    for field, value in changes.items():
         if svc.changed(getattr(s, field), value):
             setattr(s, field, value)
-            if field in ("selected_benchmark", "smt_rate", "rationale"):
+            if field in ("smt_guide_low", "smt_guide_high"):
+                guide_changed = True   # 범위는 두 칸이 한 필드(배지 하나)다
+            elif field != "base_fiscal_year" and not field.startswith("review_"):
                 svc.mark_edited(db, s.id, ORIGIN_TARGET_SCOPING, s.id, field)
+    if guide_changed:
+        svc.mark_edited(db, s.id, ORIGIN_TARGET_SCOPING, s.id, "smt_guide")
     db.commit()
     return _detail(db, s, user.id)
 
@@ -261,6 +287,13 @@ def update_benchmark(scoping_id: UUID, kind: str, body: BenchmarkUpdate,
     if "rate" in changes and svc.changed(b.rate, changes["rate"]):
         b.rate = changes["rate"]
         svc.mark_edited(db, s.id, ORIGIN_TARGET_BENCHMARK, b.id, "rate")
+    if "guide_low" in changes or "guide_high" in changes:
+        lo = changes.get("guide_low", b.guide_low)
+        hi = changes.get("guide_high", b.guide_high)
+        _assert_range(lo, hi, f"{BENCHMARK_LABELS[kind]} 비율 가이드 범위")
+        if svc.changed(b.guide_low, lo) or svc.changed(b.guide_high, hi):
+            b.guide_low, b.guide_high = lo, hi
+            svc.mark_edited(db, s.id, ORIGIN_TARGET_BENCHMARK, b.id, "guide")
     db.commit()
     return _detail(db, s, user.id)
 
@@ -348,6 +381,24 @@ def update_account(scoping_id: UUID, account_id: UUID, body: AccountUpdate,
         if svc.changed(a.manual_conclusion, new_c) or svc.changed(a.manual_reason, new_r):
             a.manual_conclusion, a.manual_reason = new_c, (new_r.strip() if new_r else None)
             svc.mark_edited(db, s.id, ORIGIN_TARGET_ACCOUNT, a.id, "manual")
+    db.commit()
+    return _detail(db, s, user.id)
+
+
+@router.post("/{scoping_id}/confirm", response_model=ScopingDetail)
+def confirm_review(scoping_id: UUID, body: ConfirmRequest, user: User = Depends(require_icfr_manager),
+                   db: Session = Depends(get_db)) -> ScopingDetail:
+    """검토 확인 / 확인 취소 (6-1b §3.1). 확정 상태면 409.
+
+    템플릿 값에 **동의한다**는 표시다 — 값은 바뀌지 않고 상태만 `template → confirmed` 가 된다.
+    누가·언제 확인했는지 남는다. 확정 경고 숫자는 `template` 만 세므로, 다 보면 0 이 된다.
+    """
+    s = _editable(db, scoping_id)
+    try:
+        targets = svc.confirm_targets(db, s, body.scope, body.target_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="확인할 대상을 찾을 수 없습니다") from None
+    svc.set_confirmed(db, s, targets, user.id, undo=body.undo)
     db.commit()
     return _detail(db, s, user.id)
 

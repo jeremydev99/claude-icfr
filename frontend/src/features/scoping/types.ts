@@ -16,14 +16,24 @@ export interface ScopingMeta {
   statuses: Option[]
   origin_statuses: Option[]
   qual_comparisons: Option[]
+  /** 템플릿 기본값(참고용) — 판정은 스코핑에 복사된 범위로만 한다(6-1b) */
   benchmark_guide_ranges: Record<string, [string | null, string | null] | null>
   smt_rate_guide_range: [string, string]
+  confirm_scopes: string[]
   /** 양적 판정을 적용하는 재무제표 종류(BS·PL). 나머지는 "해당 없음" */
   quant_applicable: string[]
 }
 
-/** 필드 출처 — `template` 이면 배지("템플릿 문구"), `edited` 면 사용자가 바꿈 */
-export type Origin = 'template' | 'edited'
+/**
+ * 필드 출처 (6-1b)
+ * - template : 템플릿 그대로, 아무도 보지 않음 → "템플릿" 배지. **확정 경고는 이것만 센다**
+ * - confirmed: 템플릿 값을 검토하고 동의함 → "확인됨" 배지
+ * - edited   : 회사가 수정함 → 배지 없음
+ */
+export type Origin = 'template' | 'confirmed' | 'edited'
+
+/** 검토 확인 범위 — 계정 한 줄 / 중요성 기준 영역 / 문구 한 항목 */
+export type ConfirmScope = 'account' | 'materiality' | 'text'
 
 export interface BenchmarkRow {
   kind: string
@@ -34,7 +44,10 @@ export interface BenchmarkRow {
   amount: number | null
   guide_range: [string | null, string | null] | null
   out_of_range: boolean
+  /** 비율 배지 */
   badge: Origin | null
+  /** 가이드 범위 배지 */
+  guide_badge: Origin | null
 }
 
 export interface Adjustment {
@@ -68,6 +81,8 @@ export interface ScopingAccount {
   manual_reason: string | null
   quant: Judgement
   qual_average: string | null
+  /** (기준 − 전년) / |전년| — 비교용. 양적 판정에는 쓰지 않는다 */
+  change_rate: string | null
   qual: Judgement
   computed: Judgement
   final: Judgement
@@ -91,7 +106,11 @@ export interface ScopingDetail {
   status: 'draft' | 'review' | 'confirmed'
   template_code: string | null
   template_version: number | null
+  /** 질적 기준 — 이 스코핑의 값(6-1b). 테넌트 정책은 새 연도의 기본값일 뿐이다 */
   policy: { threshold: string; comparison: string }
+  /** 기준 재무제표 연도 — 기준 금액은 직전 연도 결산 확정 금액이다 */
+  base_fiscal_year: number
+  smt_guide_range: [string | null, string | null] | null
   benchmarks: BenchmarkRow[]
   adjustments: Adjustment[]
   selected_benchmark: string
@@ -104,7 +123,9 @@ export interface ScopingDetail {
   texts: ScopingTextItem[]
   accounts: ScopingAccount[]
   warnings: string[]
+  /** template 만 센다 — 확정 경고 숫자 */
   badge_count: number
+  origin_counts: Record<Origin, number>
   confirmed_at: string | null
   confirm_reason: string | null
   confirm_badge_count: number | null

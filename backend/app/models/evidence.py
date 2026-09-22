@@ -61,7 +61,26 @@ class EvidenceFile(AuditedBase):
     )
 
 
+# 증빙 연결 대상 종류 — **허용 목록**(13.9-48). 목록 밖은 422.
+# 지금은 통제뿐이다. 새 종류(13.9-49 스코핑 첨부 등)는 쓰는 곳이 생길 때 여기에 더하고
+# 그때 업로드 판정과 함께 권한을 정한다.
+LINK_TARGET_CONTROL = "control"
+LINK_TARGET_LABELS = {LINK_TARGET_CONTROL: "통제"}
+LINK_TARGET_TYPES = tuple(LINK_TARGET_LABELS)
+
+
 class EvidenceLink(AuditedBase):
+    """증빙 연결 — 파일을 다른 대상에 잇는다.
+
+    **쓰는 곳이 없다**(2026-09-22 실측: FE 호출 0·백엔드 소비 0·운영 0건). 새 증빙은
+    파일 자체가 통제 × 회차에 붙는다(ADR-0032 §2.7). 그래도 쓰기 경로가 열려 있었고
+    로그인만 확인해 **외부감사인이 증빙 연결을 만들고 지울 수 있었다** — 13.9-48 에서
+    생성·삭제를 `icfr_manager` 전용으로 좁혔다.
+
+    **삭제는 소프트 삭제 + `deleted_by`(사용자 id)·`deleted_at`.** 연결을 끊는 것은
+    증빙을 빼는 것과 같은 효과라 누가·언제가 남아야 한다. 생성도 `created_by` 를 남긴다.
+    이 두 컬럼은 시스템 어디에서도 자동으로 채워지지 않는다(13.9-51) — 핸들러가 직접 채운다.
+    """
     __tablename__ = "evidence_links"
 
     file_id: Mapped[UUID] = mapped_column(

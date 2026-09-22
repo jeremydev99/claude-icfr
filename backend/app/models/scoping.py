@@ -11,8 +11,8 @@
   이후는 독립적으로 관리한다. 어느 템플릿·어느 버전에서 왔는지 기록한다
 
 **계산 결론(양적·질적·유의성)은 저장하지 않고 조회할 때 산출한다**(ADR-0029 §2.2,
-`services/scoping_calc.py`). **확정 시점의 결론만 스냅샷으로 남긴다** — 확정 뒤 정책 기준을
-바꿔도 확정 당시 판단은 보존되어야 한다.
+`services/scoping_calc.py`). **확정 시점의 결론과 그 결론을 낸 기준을 스냅샷으로 남긴다** —
+"그 해에는 어떤 기준으로 무엇이 유의였나"가 확정 뒤에도 그대로 보여야 한다(6-1b §3.3).
 
 **금액은 원 단위 정수(BigInteger)다.** float 를 쓰지 않는다 — 원천 수식과 한 원도 다르면 안 된다.
 """
@@ -74,11 +74,15 @@ BENCHMARK_LABELS = {
 }
 BENCHMARKS = tuple(BENCHMARK_LABELS)
 
-# 가이드 범위 (원천 Notes 시트 Note 1·2). (하한, 상한) — None 은 그 쪽 경계 없음.
+# 가이드 범위 **기본값** (원천 Notes 시트 Note 1·2). (하한, 상한) — None 은 그 쪽 경계 없음.
 # **벗어나면 경고하되 막지 않는다**(ADR-0034 §2.3).
+# **6-1b 부터 범위는 회사가 회계연도마다 설정한다**(`scoping_benchmarks.guide_low/high`,
+# `scopings.smt_guide_low/high`). 여기 값은 템플릿 적재 때 `scoping_templates.default_criteria` 로
+# 들어가는 **출발값**이고, 판정은 스코핑에 복사된 값으로만 한다.
 # ⚠️ **매출액은 비워 둔다.** 원천이 "0.0 ~ 5 %" 로 적었는데 통상 0.5~1% 라 오기가 의심된다
 # (원천이 실제로 매출액 벤치마크에 쓴 비율은 0.5% — G53=0.005 — 로 그 가설과 맞는다).
-# **마스터 확인 전까지 경고 판정에 쓰지 않는다**(ADR-0034 §5).
+# **기본값을 비워 둔다** — 비어 있으면 경고하지 않고, 회사가 감사인과 합의한 범위를 넣으면
+# 그때부터 경고한다(6-1b §3.2, 마스터 확인 대기).
 BENCHMARK_GUIDE_RANGES: dict[str, tuple[str | None, str | None] | None] = {
     BENCHMARK_ADJUSTED_PBT: ("0.05", "0.10"),
     "revenue": None,
@@ -112,8 +116,10 @@ RATING_SCORES = {"H": 3, "M": 2, "L": 1}
 # 원천 표기 → 코드 (템플릿 적재용)
 RATING_ALIASES = {"high": "H", "medium": "M", "low": "L"}
 
-# 질적 판정 정책 (ADR-0034 §2.4, 2026-09-22 결정) — **이상(≥) 2** 가 기본이다.
-# 하드코딩하지 않는다. 감사인이 다른 기준을 요구하면 바로 바꿀 수 있어야 한다.
+# 질적 판정 기준 (ADR-0034 §2.4, 2026-09-22 결정) — **이상(≥) 2** 가 기본이다.
+# **6-1b 부터 기준값은 회계연도 스코핑에 있다**(`scopings.qual_threshold/qual_comparison`) —
+# 매년 회사가 설정하고 감사인이 검토해 확정하는 기준이라서다. 테넌트 정책은 **새 연도를 만들 때의
+# 기본값으로만** 쓴다. 정책을 바꿔도 이미 만든 스코핑의 판정은 바뀌지 않는다.
 POLICY_SCOPING_QUAL_THRESHOLD = "scoping_qual_threshold"
 POLICY_SCOPING_QUAL_COMPARISON = "scoping_qual_comparison"
 DEFAULT_QUAL_THRESHOLD = "2"
@@ -135,11 +141,16 @@ TRANSITIONS = {
     STATUS_CONFIRMED: {STATUS_DRAFT},
 }
 
-# 필드 출처 상태 — **불리언이 아니라 값 목록이다.** ADR-0034 §5 의 "검토 확인" 상태가
-# 나중에 붙는다. 불리언이면 그때 스키마를 또 바꿔야 한다.
-ORIGIN_TEMPLATE = "template"   # 템플릿에서 온 그대로 — 배지
-ORIGIN_EDITED = "edited"       # 사용자가 바꿈 — 배지 해제
-ORIGIN_LABELS = {ORIGIN_TEMPLATE: "템플릿 문구", ORIGIN_EDITED: "직접 수정"}
+# 필드 출처 상태 — **불리언이 아니라 값 목록이다**(6-1 에서 열어 둔 자리에 6-1b 가 `confirmed` 를 넣었다).
+# - template : 템플릿 그대로, 아무도 보지 않음 → "템플릿" 배지. **확정 경고는 이것만 센다**
+# - confirmed: 템플릿 값을 **검토하고 동의함** → "확인됨" 배지. 확인자·시각이 남는다
+# - edited   : 회사가 **수정함** → 배지 없음. confirmed 를 고쳐도 edited 가 된다
+# 수정해야만 배지가 떨어지던 6-1 규칙에서는 동의하는 판단을 표시할 방법이 없어 운영 2026 스코핑에
+# "템플릿 그대로 1,889개"가 떴다 — 경고가 정보를 주지 못했다(ADR-0034 §5 → 6-1b 결정).
+ORIGIN_TEMPLATE = "template"
+ORIGIN_CONFIRMED = "confirmed"
+ORIGIN_EDITED = "edited"
+ORIGIN_LABELS = {ORIGIN_TEMPLATE: "템플릿 문구", ORIGIN_CONFIRMED: "검토 확인", ORIGIN_EDITED: "직접 수정"}
 ORIGIN_STATUSES = tuple(ORIGIN_LABELS)
 
 # 출처 대상 종류 (다형 — FK 없음, 아래 ScopingFieldOrigin)
@@ -148,6 +159,12 @@ ORIGIN_TARGET_TEXT = "text"
 ORIGIN_TARGET_ACCOUNT = "account"
 ORIGIN_TARGET_BENCHMARK = "benchmark"
 ORIGIN_TARGETS = (ORIGIN_TARGET_SCOPING, ORIGIN_TARGET_TEXT, ORIGIN_TARGET_ACCOUNT, ORIGIN_TARGET_BENCHMARK)
+
+# "검토 확인" 단위 — 한 번 누르면 그 범위의 template 필드가 전부 confirmed 가 된다
+CONFIRM_SCOPE_ACCOUNT = "account"         # 계정 한 줄
+CONFIRM_SCOPE_MATERIALITY = "materiality"  # 중요성 기준 영역(스코핑 필드 + 벤치마크 6종)
+CONFIRM_SCOPE_TEXT = "text"               # 문구 한 항목
+CONFIRM_SCOPES = (CONFIRM_SCOPE_ACCOUNT, CONFIRM_SCOPE_MATERIALITY, CONFIRM_SCOPE_TEXT)
 
 CONCLUSIONS = ("Y", "N")
 
@@ -172,6 +189,9 @@ class ScopingTemplate(IdentityBase):
                                                    default=BENCHMARK_ADJUSTED_PBT)
     default_rates: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     default_smt_rate: Mapped[str] = mapped_column(String(10), nullable=False, default=DEFAULT_SMT_RATE)
+    # 중요성 기준 기본값(6-1b) — {"benchmark_guides": {kind: [하한, 상한] | null}, "smt_guide": [하한, 상한]}.
+    # 비율은 문자열. 새 스코핑에 복사된다. 없으면(옛 행) 모델 상수로 대신한다
+    default_criteria: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class ScopingTemplateText(IdentityBase):
@@ -231,6 +251,15 @@ class Scoping(AuditedBase):
     smt_rate: Mapped[Decimal] = mapped_column(Numeric(7, 4), nullable=False,
                                               default=lambda: Decimal(DEFAULT_SMT_RATE))
     rationale: Mapped[str | None] = mapped_column(Text, nullable=True)   # 설정근거 — 확정 전 필수
+    # ── 중요성 기준 — **회계연도마다 회사가 설정하고 감사인이 검토해 확정한다**(6-1b §3.2) ──
+    # 새 연도 생성 시 템플릿 기본값·테넌트 정책에서 복사한다. **NULL 은 6-1b 이전에 확정된 스코핑**
+    # (마이그레이션이 확정 기록을 사후에 채우지 않는다) — 조회는 기본값으로 대신 보여 준다
+    # 기준 재무제표 연도 — 스코핑의 기준 금액은 **직전 연도 결산 확정 금액**이다(2026 스코핑 → FY2025)
+    base_fiscal_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    smt_guide_low: Mapped[Decimal | None] = mapped_column(Numeric(7, 4), nullable=True)
+    smt_guide_high: Mapped[Decimal | None] = mapped_column(Numeric(7, 4), nullable=True)
+    qual_threshold: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
+    qual_comparison: Mapped[str | None] = mapped_column(String(10), nullable=True)
     # 확정 (§2.2)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     confirmed_by_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
@@ -260,6 +289,9 @@ class ScopingBenchmark(AuditedBase):
     # 조정세전순이익이면 **조정 전 세전이익**이다 — 조정은 ScopingAdjustment 합으로 더한다
     base_amount: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     rate: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
+    # 비율 가이드 범위 — 회사 설정(6-1b). 둘 다 비면 경고하지 않는다(매출액 기본값)
+    guide_low: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
+    guide_high: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
 
 
 class ScopingAdjustment(AuditedBase):
@@ -346,3 +378,9 @@ class ScopingFieldOrigin(AuditedBase):
     field: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=ORIGIN_TEMPLATE)
     template_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 검토 확인(6-1b) — 누가·언제. **감사 컬럼(`updated_by`)을 빌리지 않는다** — 그 컬럼은 시스템
+    # 전체에서 채워지지 않고(13.9-51) 이후 수정 때 덮어써져 "확인"과 "수정"이 섞인다.
+    # 확인 취소·수정(edited)이면 비운다
+    confirmed_by_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"),
+                                                         nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

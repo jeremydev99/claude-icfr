@@ -11,6 +11,7 @@
 """
 import re
 from decimal import Decimal
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -205,15 +206,27 @@ def test_gt_policy_flips_exactly_the_16() -> None:
     assert {"대손충당금(매출채권)", "미수수익", "리스부채", "이연법인세자산"} <= set(flipped)
 
 
-def test_policy_switch_applies_through_api(client: TestClient, mgr: dict) -> None:
-    """API 에서도 정책이 판정을 바꾼다(하드코딩 아님). 대손충당금은 평균 2.0 이다."""
+def test_scoping_criteria_switch_applies_through_api(client: TestClient, mgr: dict) -> None:
+    """질적 기준은 **이 스코핑의 값**이다(6-1b B안). 바꾸면 판정이 바뀐다. 대손충당금은 평균 2.0 이다."""
     s = _create(client, mgr, 2093)
+    assert s["policy"] == {"threshold": "2", "comparison": "ge"}
+    assert _acc(s, "대손충당금(매출채권)")["qual"] == "Y"
+    d = client.patch(f"/api/scoping/{s['id']}", headers=mgr, json={"qual_comparison": "gt"}).json()
+    assert d["policy"]["comparison"] == "gt"
+    assert _acc(d, "대손충당금(매출채권)")["qual"] == "N"
+    assert d["scoping_badges"]["qual_comparison"] == "edited"
+
+
+def test_tenant_policy_is_only_the_default_for_new_years(client: TestClient, mgr: dict) -> None:
+    """테넌트 정책을 바꿔도 **이미 만든 스코핑의 판정은 바뀌지 않는다.** 새 연도만 그 값으로 시작한다."""
+    old = _create(client, mgr, 2081)
     try:
-        d = client.get(f"/api/scoping/{s['id']}", headers=mgr).json()
-        assert _acc(d, "대손충당금(매출채권)")["qual"] == "Y"
         _set_policy(client, mgr, "scoping_qual_comparison", "gt")
-        d = client.get(f"/api/scoping/{s['id']}", headers=mgr).json()
-        assert _acc(d, "대손충당금(매출채권)")["qual"] == "N"
+        d = client.get(f"/api/scoping/{old['id']}", headers=mgr).json()
+        assert d["policy"]["comparison"] == "ge" and _acc(d, "대손충당금(매출채권)")["qual"] == "Y"
+        new = _create(client, mgr, 2082)
+        assert new["policy"]["comparison"] == "gt" and _acc(new, "대손충당금(매출채권)")["qual"] == "N"
+        assert new["scoping_badges"]["qual_comparison"] == "template"   # 기본값 — 아직 아무도 보지 않음
     finally:
         _set_policy(client, mgr, "scoping_qual_comparison", "ge")
 
@@ -318,25 +331,49 @@ def test_confirm_records_badges_and_reason_then_locks(client: TestClient, mgr: d
     assert d["history"][-1]["reason"] == "금액 재검토"
 
 
-def test_snapshot_survives_policy_change(client: TestClient, mgr: dict) -> None:
-    """**확정 후 정책 기준을 바꿔도 확정 스냅샷의 결론은 그대로다.**"""
+def test_snapshot_keeps_criteria_and_conclusions_after_criteria_change(client: TestClient, mgr: dict) -> None:
+    """**확정 후 기준을 바꿔도 스냅샷의 기준값·결론이 그대로다**(6-1b 검증 6).
+
+    기준을 바꾸려면 재오픈해야 한다(확정 상태 쓰기는 409). 재오픈하면 `confirmed_snapshot` 은
+    비워지지만 **확정 이력의 스냅샷**이 그때의 기준과 결론을 들고 남는다.
+    """
     s = _create(client, mgr, 2097)
     base = f"/api/scoping/{s['id']}"
+    client.patch(f"{base}/benchmarks/adjusted_pbt", headers=mgr, json={"base_amount": 4818843993})
+    client.post(f"{base}/adjustments", headers=mgr, json={"amount": 1000, "reason": "비경상"})
+    aid = _acc(s, "대손충당금(매출채권)")["id"]
+    client.patch(f"{base}/accounts/{aid}", headers=mgr, json={"current_amount": 1, "prior_amount": 2})
     client.post(f"{base}/transition", headers=mgr, json={"to_status": "review"})
     d = client.post(f"{base}/transition", headers=mgr,
                     json={"to_status": "confirmed", "reason": "확정"}).json()
-    aid = _acc(d, "대손충당금(매출채권)")["id"]
-    assert d["confirmed_snapshot"]["accounts"][aid]["final"] == "Y"
+    snap = d["confirmed_snapshot"]
+    # 기준이 전부 들어 있다
+    assert snap["policy"] == {"threshold": "2", "comparison": "ge"}
+    assert snap["base_fiscal_year"] == 2096 and snap["smt_guide_range"] == ["0.5", "0.75"]
+    pbt = next(b for b in snap["benchmarks"] if b["kind"] == "adjusted_pbt")
+    assert pbt["base_amount"] == 4818843993 and pbt["effective_base"] == 4818844993
+    assert pbt["rate"] == "0.05" and pbt["guide_range"] == ["0.05", "0.1"] and pbt["amount"] is not None
+    assert len(snap["benchmarks"]) == 6 and snap["adjustments"] == [{"amount": 1000, "reason": "비경상"}]
+    acc = snap["accounts"][aid]
+    assert acc["current_amount"] == 1 and acc["prior_amount"] == 2 and acc["qual_average"] == "2"
+    assert acc["final"] == "Y"
+    # 확정 상태에서는 기준을 바꿀 수 없다
+    assert client.patch(base, headers=mgr, json={"qual_comparison": "gt"}).status_code == 409
+    # 재오픈 → 기준 변경 → 판정이 바뀐다. 확정 이력의 스냅샷은 그대로
+    client.post(f"{base}/transition", headers=mgr, json={"to_status": "draft", "reason": "기준 재검토"})
+    client.patch(f"{base}/benchmarks/adjusted_pbt", headers=mgr, json={"guide_low": "0.01", "guide_high": "0.02"})
+    d = client.patch(base, headers=mgr, json={"qual_comparison": "gt", "smt_guide_low": "0.6"}).json()
+    assert _acc(d, "대손충당금(매출채권)")["qual"] == "N"
+    kept = next(h for h in d["history"] if h["to_status"] == "confirmed")
+    db = TestingSessionLocal()
     try:
-        _set_policy(client, mgr, "scoping_qual_comparison", "gt")
-        d = client.get(base, headers=mgr).json()
-        a = _acc(d, "대손충당금(매출채권)")
-        # 현재 정책으로 산출하면 바뀐다 — 질적 N, 금액을 넣지 않아 양적 미평가 → 결론 미평가
-        assert a["qual"] == "N" and a["final"] is None
-        assert a["snapshot_final"] == "Y"    # 확정 당시 판단은 그대로
-        assert d["confirmed_snapshot"]["policy"]["comparison"] == "ge"
+        from app.models.scoping import ScopingStatusHistory
+        hs = db.query(ScopingStatusHistory).filter(ScopingStatusHistory.id == UUID(kept["id"])).one().snapshot
     finally:
-        _set_policy(client, mgr, "scoping_qual_comparison", "ge")
+        db.close()
+    assert hs["policy"]["comparison"] == "ge" and hs["smt_guide_range"] == ["0.5", "0.75"]
+    assert next(b for b in hs["benchmarks"] if b["kind"] == "adjusted_pbt")["guide_range"] == ["0.05", "0.1"]
+    assert hs["accounts"][aid]["final"] == "Y"
 
 
 def test_summary_counts_snapshot_when_confirmed(client: TestClient, mgr: dict) -> None:
@@ -366,9 +403,42 @@ def test_out_of_range_warns_but_saves(client: TestClient, mgr: dict) -> None:
     assert any("조정세전순이익" in w for w in d["warnings"])
     d = client.patch(base, headers=mgr, json={"smt_rate": "0.9"}).json()
     assert d["smt_rate"] == "0.9" and d["smt_out_of_range"] is True
-    # 매출액은 원천 범위가 오기 의심이라 경고하지 않는다
-    d = client.patch(f"{base}/benchmarks/revenue", headers=mgr, json={"rate": "0.5"}).json()
-    assert next(b for b in d["benchmarks"] if b["kind"] == "revenue")["out_of_range"] is False
+    # 매출액은 범위 기본값이 비어 있다 — 어떤 비율을 넣어도 경고하지 않는다(6-1b 검증 4)
+    for rate in ("0.5", "0.0001", "1"):
+        d = client.patch(f"{base}/benchmarks/revenue", headers=mgr, json={"rate": rate}).json()
+        rev = next(b for b in d["benchmarks"] if b["kind"] == "revenue")
+        assert rev["guide_range"] is None and rev["out_of_range"] is False
+    # 회사가 감사인과 합의한 범위를 넣으면 그때부터 경고한다
+    d = client.patch(f"{base}/benchmarks/revenue", headers=mgr,
+                     json={"guide_low": "0.005", "guide_high": "0.01"}).json()
+    rev = next(b for b in d["benchmarks"] if b["kind"] == "revenue")
+    assert rev["guide_range"] == ["0.005", "0.01"] and rev["out_of_range"] is True
+    assert rev["guide_badge"] is None   # 기본값이 없던 칸 — 배지가 붙은 적이 없다
+
+
+def test_company_sets_guide_ranges(client: TestClient, mgr: dict) -> None:
+    """다른 벤치마크 범위를 회사가 바꾸면 경고 기준이 바뀐다(6-1b 검증 5). 설정율 범위도 같다."""
+    s = _create(client, mgr, 2083)
+    base = f"/api/scoping/{s['id']}"
+    pbt = next(b for b in s["benchmarks"] if b["kind"] == "adjusted_pbt")
+    assert pbt["guide_range"] == ["0.05", "0.1"] and pbt["guide_badge"] == "template"
+    d = client.patch(f"{base}/benchmarks/adjusted_pbt", headers=mgr, json={"rate": "0.12"}).json()
+    assert next(b for b in d["benchmarks"] if b["kind"] == "adjusted_pbt")["out_of_range"] is True
+    d = client.patch(f"{base}/benchmarks/adjusted_pbt", headers=mgr, json={"guide_high": "0.15"}).json()
+    pbt = next(b for b in d["benchmarks"] if b["kind"] == "adjusted_pbt")
+    assert pbt["guide_range"] == ["0.05", "0.15"] and pbt["out_of_range"] is False
+    assert pbt["guide_badge"] == "edited"
+    # 설정율 범위
+    d = client.patch(base, headers=mgr, json={"smt_rate": "0.8"}).json()
+    assert d["smt_out_of_range"] is True and any("50%~75%" in w for w in d["warnings"])
+    d = client.patch(base, headers=mgr, json={"smt_guide_high": "0.85"}).json()
+    assert d["smt_guide_range"] == ["0.5", "0.85"] and d["smt_out_of_range"] is False
+    assert d["scoping_badges"]["smt_guide"] == "edited"
+    # 하한 > 상한 422, 질적 기준 범위 밖 422, 판정 기준 비우기 422
+    assert client.patch(f"{base}/benchmarks/adjusted_pbt", headers=mgr,
+                        json={"guide_low": "0.2"}).status_code == 422
+    assert client.patch(base, headers=mgr, json={"qual_threshold": "5"}).status_code == 422
+    assert client.patch(base, headers=mgr, json={"qual_comparison": None}).status_code == 422
 
 
 # ── 12. 템플릿 내용 ────────────────────────────────────────
@@ -439,3 +509,120 @@ def test_duplicate_year_and_recreate(client: TestClient, mgr: dict) -> None:
     _create(client, mgr, 2090)
     r = client.post("/api/scoping", headers=mgr, json={"fiscal_year": 2090})
     assert r.status_code == 409 and "2090" in r.json()["detail"]
+
+
+# ── 6-1b 검토 확인 ─────────────────────────────────────────
+
+def _origins_of(target_id: str) -> list:
+    from app.models.scoping import ScopingFieldOrigin
+    db = TestingSessionLocal()
+    try:
+        return db.query(ScopingFieldOrigin).filter(ScopingFieldOrigin.target_id == UUID(target_id),
+                                                   ScopingFieldOrigin.is_deleted == False).all()  # noqa: E712
+    finally:
+        db.close()
+
+
+def test_row_confirm_marks_all_template_fields_confirmed(client: TestClient, mgr: dict) -> None:
+    """계정 한 줄 "확인" → 그 줄의 템플릿 필드 전부 confirmed, 확인자·시각 기록(검증 1)."""
+    s = _create(client, mgr, 2084)
+    base = f"/api/scoping/{s['id']}"
+    a = _acc(s, "대손충당금(매출채권)")
+    before = s["badge_count"]
+    d = client.post(f"{base}/confirm", headers=mgr, json={"scope": "account", "target_id": a["id"]}).json()
+    badges = _acc(d, "대손충당금(매출채권)")["badges"]
+    assert len(badges) == 11 and set(badges.values()) == {"confirmed"}
+    assert d["badge_count"] == before - 11 and d["origin_counts"]["confirmed"] == 11
+    rows = _origins_of(a["id"])
+    assert all(o.confirmed_by_id is not None and o.confirmed_at is not None for o in rows)
+    # 값은 바뀌지 않는다
+    assert _acc(d, "대손충당금(매출채권)")["ratings"] == a["ratings"]
+
+
+def test_editing_confirmed_field_becomes_edited(client: TestClient, mgr: dict) -> None:
+    """confirmed 를 고치면 edited — 확인자·시각은 비운다(검증 2). 같은 값 재저장은 그대로."""
+    s = _create(client, mgr, 2085)
+    base = f"/api/scoping/{s['id']}"
+    a = _acc(s, "대손충당금(매출채권)")
+    client.post(f"{base}/confirm", headers=mgr, json={"scope": "account", "target_id": a["id"]})
+    q1 = a["ratings"]["q1"]
+    d = client.patch(f"{base}/accounts/{a['id']}", headers=mgr, json={"ratings": {"q1": q1}}).json()
+    assert _acc(d, "대손충당금(매출채권)")["badges"]["ratings.q1"] == "confirmed"
+    d = client.patch(f"{base}/accounts/{a['id']}", headers=mgr,
+                     json={"ratings": {"q1": "L" if q1 != "L" else "M"}}).json()
+    assert _acc(d, "대손충당금(매출채권)")["badges"]["ratings.q1"] == "edited"
+    o = next(o for o in _origins_of(a["id"]) if o.field == "ratings.q1")
+    assert o.confirmed_by_id is None and o.confirmed_at is None
+
+
+def test_undo_confirm_and_edited_untouched(client: TestClient, mgr: dict) -> None:
+    """확인 취소 → template 로 돌아가고 확인자·시각을 비운다. 고친(edited) 필드는 건드리지 않는다."""
+    s = _create(client, mgr, 2086)
+    base = f"/api/scoping/{s['id']}"
+    a = _acc(s, "대손충당금(매출채권)")
+    client.patch(f"{base}/accounts/{a['id']}", headers=mgr, json={"qual_basis": "회사 판단"})
+    client.post(f"{base}/confirm", headers=mgr, json={"scope": "account", "target_id": a["id"]})
+    d = client.post(f"{base}/confirm", headers=mgr,
+                    json={"scope": "account", "target_id": a["id"], "undo": True}).json()
+    badges = _acc(d, "대손충당금(매출채권)")["badges"]
+    assert badges["qual_basis"] == "edited"
+    assert {v for k, v in badges.items() if k != "qual_basis"} == {"template"}
+    assert all(o.confirmed_by_id is None for o in _origins_of(a["id"]))
+
+
+def test_confirming_everything_makes_warning_zero(client: TestClient, mgr: dict) -> None:
+    """**확정 경고 숫자 = template 만.** 계정·중요성 기준·문구를 전부 확인하면 0(검증 3)."""
+    s = _create(client, mgr, 2087)
+    base = f"/api/scoping/{s['id']}"
+    assert s["badge_count"] > 1800
+    for a in s["accounts"]:
+        if a["badges"]:
+            assert client.post(f"{base}/confirm", headers=mgr,
+                               json={"scope": "account", "target_id": a["id"]}).status_code == 200
+    for t in s["texts"]:
+        client.post(f"{base}/confirm", headers=mgr, json={"scope": "text", "target_id": t["id"]})
+    d = client.post(f"{base}/confirm", headers=mgr, json={"scope": "materiality"}).json()
+    assert d["badge_count"] == 0 and d["origin_counts"]["template"] == 0
+    assert d["origin_counts"]["confirmed"] == s["badge_count"]
+    assert set(d["scoping_badges"].values()) == {"confirmed"}
+    assert all(t["badge"] == "confirmed" for t in d["texts"])
+    # 확정 시 기록되는 숫자도 0
+    client.post(f"{base}/transition", headers=mgr, json={"to_status": "review"})
+    d = client.post(f"{base}/transition", headers=mgr, json={"to_status": "confirmed", "reason": "전부 검토"}).json()
+    assert d["confirm_badge_count"] == 0
+    # 확정 상태에서는 확인·취소도 409
+    assert client.post(f"{base}/confirm", headers=mgr, json={"scope": "materiality", "undo": True}).status_code == 409
+
+
+def test_confirm_validation_and_permissions(client: TestClient, mgr: dict) -> None:
+    s = _create(client, mgr, 2088)
+    base = f"/api/scoping/{s['id']}"
+    assert client.post(f"{base}/confirm", headers=mgr,
+                       json={"scope": "account", "target_id": str(uuid4())}).status_code == 404
+    assert client.post(f"{base}/confirm", headers=mgr, json={"scope": "account"}).status_code == 404
+    assert client.post(f"{base}/confirm", headers=mgr, json={"scope": "everything"}).status_code == 422
+    _account("scope-ext2@acme.example", ("external_auditor",))
+    h = _headers(client, "scope-ext2@acme.example")
+    assert client.post(f"{base}/confirm", headers=h, json={"scope": "materiality"}).status_code == 403
+
+
+# ── 6-1b 기준 연도·두 해 비교 ──────────────────────────────
+
+def test_base_year_and_prior_amount(client: TestClient, mgr: dict) -> None:
+    """기준 연도 = 회계연도 − 1, 바꿀 수 있다(검증 7). 전년 금액은 증감률만 — 양적 판정은 기준 금액(검증 8)."""
+    s = _create(client, mgr, 2089)
+    base = f"/api/scoping/{s['id']}"
+    assert s["base_fiscal_year"] == 2088
+    d = client.patch(base, headers=mgr, json={"base_fiscal_year": 2087}).json()
+    assert d["base_fiscal_year"] == 2087
+    assert client.patch(base, headers=mgr, json={"base_fiscal_year": None}).status_code == 422
+    client.patch(f"{base}/benchmarks/adjusted_pbt", headers=mgr, json={"base_amount": 4818843993})
+    aid = _acc(s, "현금및현금성자산")["id"]
+    # 기준 금액은 수행중요성(168,659,400) 미만, 전년 금액은 훨씬 크다 → 양적 N
+    d = client.patch(f"{base}/accounts/{aid}", headers=mgr,
+                     json={"current_amount": 100_000_000, "prior_amount": 400_000_000}).json()
+    a = _acc(d, "현금및현금성자산")
+    assert d["smt"] == 168659400 and a["quant"] == "N"
+    assert a["change_rate"] == "-0.7500"
+    d = client.patch(f"{base}/accounts/{aid}", headers=mgr, json={"prior_amount": 0}).json()
+    assert _acc(d, "현금및현금성자산")["change_rate"] is None   # 0 으로 나누지 않는다

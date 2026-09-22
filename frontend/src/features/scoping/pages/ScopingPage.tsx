@@ -15,7 +15,7 @@ import {
 } from '../api/useScoping'
 import MaterialityCard from '../components/MaterialityCard'
 import AccountsTable from '../components/AccountsTable'
-import { TemplateBadge } from '../components/bits'
+import { ConfirmToggle, TemplateBadge } from '../components/bits'
 import type { ScopingDetail, ScopingMeta } from '../types'
 import apiClient from '@/lib/axios'
 import { useQueryClient } from '@tanstack/react-query'
@@ -105,7 +105,7 @@ export default function ScopingPage() {
               {detail.warnings.map((w) => <div key={w} className="flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5" />{w}</div>)}
             </div>
           )}
-          <MaterialityCard key={`${detail.id}-m`} d={detail} write={write} />
+          <MaterialityCard key={`${detail.id}-m`} d={detail} meta={meta} write={write} />
           <Card>
             <CardHeader><CardTitle className="text-base">계정 평가</CardTitle></CardHeader>
             <CardContent><AccountsTable d={detail} meta={meta} write={write} /></CardContent>
@@ -128,7 +128,7 @@ function StatusBar({ d, meta, write, isManager }: {
     if (to === 'confirmed') {
       // 배지가 남아 있어도 막지 않는다 — 개수를 드러내고 사유를 남긴다(ADR-0034 §2.2)
       const warn = d.badge_count > 0
-        ? `아직 템플릿 그대로인 필드가 ${d.badge_count}개 있습니다. 검토하지 않은 판단이 그대로 확정됩니다.\n\n`
+        ? `아직 아무도 검토하지 않은 템플릿 값이 ${d.badge_count}개 있습니다. 검토하지 않은 판단이 그대로 확정됩니다.\n(동의하는 값은 '확인'을 누르면 이 숫자에서 빠집니다)\n\n`
         : ''
       reason = window.prompt(`${warn}확정 사유를 입력하세요 (필수)`)
       if (!reason?.trim()) return
@@ -149,11 +149,13 @@ function StatusBar({ d, meta, write, isManager }: {
         <strong>{d.fiscal_year} 회계연도</strong> · 상태 <Badge variant={d.status === 'confirmed' ? 'default' : 'secondary'}>{label(d.status)}</Badge>
       </span>
       <span className="text-xs text-muted-foreground">
-        템플릿 {d.template_code} v{d.template_version} · 아직 템플릿 그대로인 필드 <strong>{d.badge_count}</strong>개
+        템플릿 {d.template_code} v{d.template_version} · 기준 FY{d.base_fiscal_year} 결산 ·
+        검토 안 한 템플릿 값 <strong className={d.badge_count > 0 ? 'text-sky-700' : ''}>{d.badge_count}</strong>개
+        · 확인 {d.origin_counts.confirmed} · 수정 {d.origin_counts.edited}
       </span>
       {d.status === 'confirmed' && (
         <span className="text-xs text-muted-foreground">
-          확정 {d.confirmed_at?.slice(0, 10)} · 사유 「{d.confirm_reason}」 · 확정 시 템플릿 필드 {d.confirm_badge_count}개
+          확정 {d.confirmed_at?.slice(0, 10)} · 사유 「{d.confirm_reason}」 · 확정 시 검토 안 한 템플릿 값 {d.confirm_badge_count}개
         </span>
       )}
       {isManager && (
@@ -195,7 +197,7 @@ function ReviewCard({ d, write }: { d: ScopingDetail; write: (m: 'post' | 'patch
   )
 }
 
-/** 가이던스·판단 원칙·Notes — 템플릿 문구. 고치면 그 문구만 배지가 떨어진다 */
+/** 가이던스·판단 원칙·Notes — 템플릿 문구. 동의하면 항목별 "확인", 고치면 그 문구만 배지가 떨어진다 */
 function GuidanceCard({ d, write }: { d: ScopingDetail; write: (m: 'post' | 'patch' | 'delete', p: string, b?: unknown) => void }) {
   const [open, setOpen] = useState<string | null>(null)
   return (
@@ -204,11 +206,15 @@ function GuidanceCard({ d, write }: { d: ScopingDetail; write: (m: 'post' | 'pat
       <CardContent className="space-y-1">
         {d.texts.map((t) => (
           <div key={t.id} className="rounded border">
-            <button type="button" onClick={() => setOpen(open === t.key ? null : t.key)}
-              className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm">
-              <span>{t.title ?? t.key}<TemplateBadge origin={t.badge} /></span>
-              <span className="text-xs text-muted-foreground">{open === t.key ? '접기' : '펼치기'}</span>
-            </button>
+            <div className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-sm">
+              <button type="button" onClick={() => setOpen(open === t.key ? null : t.key)} className="flex-1 text-left">
+                {t.title ?? t.key}<TemplateBadge origin={t.badge} />
+              </button>
+              <ConfirmToggle origins={[t.badge]} disabled={!d.can_edit}
+                onConfirm={(undo) => write('post', `/${d.id}/confirm`, { scope: 'text', target_id: t.id, undo })} />
+              <button type="button" onClick={() => setOpen(open === t.key ? null : t.key)}
+                className="text-xs text-muted-foreground">{open === t.key ? '접기' : '펼치기'}</button>
+            </div>
             {open === t.key && (
               <textarea defaultValue={t.body} disabled={!d.can_edit} rows={8}
                 onBlur={(e) => e.target.value !== t.body && e.target.value.trim()
