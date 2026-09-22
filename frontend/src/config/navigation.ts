@@ -81,7 +81,7 @@ export const navigation: NavGroup[] = [
       {
         label: 'Scoping',
         path: '/scoping',
-        status: 'todo',
+        status: 'ready', // 6-1 — 표준 템플릿(운영은 seed_scoping_template 실행 후). 회계연도를 만들면 live
         icon: Target,
         description: '계정과목별 평가 대상 범위 결정 (정량·정성 기준)',
       },

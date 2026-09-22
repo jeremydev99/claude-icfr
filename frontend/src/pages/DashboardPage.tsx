@@ -1,6 +1,7 @@
 import ModuleCards from '@/features/dashboard/components/ModuleCards'
 import RcmSummaryCard from '@/features/dashboard/components/RcmSummaryCard'
 import EucIucSummaryCard from '@/features/dashboard/components/EucIucSummaryCard'
+import ScopingSummaryCard from '@/features/dashboard/components/ScopingSummaryCard'
 
 /**
  * 대시보드 = 개발 현황판 + RCM 실데이터 (4-1).
@@ -18,6 +19,7 @@ export default function DashboardPage() {
         </p>
       </div>
       <ModuleCards />
+      <ScopingSummaryCard />
       <RcmSummaryCard />
       <EucIucSummaryCard />
     </div>
