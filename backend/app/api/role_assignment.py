@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.core.permissions import require_icfr_manager, require_write
+from app.models.euc import POLICY_EUC_IDENTIFICATION_THRESHOLD, RISK_GRADES
 from app.models.role_assignment import (
     EVIDENCE_RETENTION_MIN_YEARS,
     EVIDENCE_RETENTION_PERMANENT,
@@ -225,6 +226,14 @@ def get_control_roles(control_id: UUID, user: CurrentUser = None,
 
 def _assert_policy_value_valid(body: TenantPolicyUpsert) -> None:
     """값 검증이 필요한 정책만 여기서 본다. 나머지는 소비하는 쪽이 해석한다."""
+    if body.policy_key == POLICY_EUC_IDENTIFICATION_THRESHOLD:
+        # 목록 밖 값이 저장되면 판정이 조용히 기본값으로 떨어진다 — 저장 시점에 막는다(5-1)
+        if body.policy_value not in RISK_GRADES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"통제 식별 임계값은 {', '.join(RISK_GRADES)} 중 하나여야 합니다",
+            )
+        return
     if body.policy_key != POLICY_EVIDENCE_RETENTION_YEARS:
         return
     try:
