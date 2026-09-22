@@ -15,8 +15,13 @@ class EvidenceFileCreate(EvidenceFileBase):
     pass
 
 class EvidenceFileUpdate(BaseModel):
+    """증빙 수정 — **파일명만.** `minio_key` 는 어떤 권한으로도 바꿀 수 없다(13.9-48).
+
+    저장 경로를 바꾸면 증빙 레코드가 다른 파일을 가리키게 된다 — 업로드 이력·해시는 그대로인데
+    내용만 바뀐다. 경로는 업로드 때 `build_evidence_key` 만 만든다. 알 수 없는 필드는 422.
+    """
+    model_config = ConfigDict(extra="forbid")
     filename: str | None = Field(None, min_length=1, max_length=255)
-    minio_key: str | None = None
 
 class EvidenceFileRead(EvidenceFileBase):
     id: UUID
