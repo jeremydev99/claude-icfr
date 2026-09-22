@@ -20,7 +20,11 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from uuid import UUID
 
+from sqlalchemy import event
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import get_history
+
+from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 
 SYSTEM_ACTOR_PATTERN = re.compile(r"^system:[a-z][a-z0-9-]*$")
 SESSION_INFO_ACTOR_KEY = "system_actor"
@@ -76,3 +80,77 @@ def resolve_actor(session: Session) -> str | None:
     if info_actor is not None:
         return _validate_system_actor(info_actor)
     return None
+
+
+class MissingActorError(RuntimeError):
+    """감사 대상 쓰기에 행위자가 없다 — 기본값으로 채우지 않고 flush 를 실패시킨다."""
+
+
+class AuditBypassError(RuntimeError):
+    """감사 대상 테이블에 before_flush 를 거치지 않는 bulk UPDATE/DELETE 를 시도했다."""
+
+
+def _is_audited(obj) -> bool:
+    # 대상 판별은 믹스인으로만 한다(테이블명 매칭 금지). 현재 매핑 52개 전부 해당
+    return isinstance(obj, TimestampMixin | SoftDeleteMixin)
+
+
+def _audited_tables() -> set:
+    return {
+        m.local_table for m in Base.registry.mappers
+        if issubclass(m.class_, TimestampMixin | SoftDeleteMixin)
+    }
+
+
+@event.listens_for(Session, "before_flush")
+def _stamp_audit_columns(session: Session, flush_context, instances) -> None:
+    """감사 컬럼 자동 기록 (ADR-0036).
+
+    - insert: `created_by`(이미 값이 있으면 유지)·`updated_by`
+    - update: `updated_by` 를 현재 행위자로 갱신
+    - `is_deleted` false→true: `deleted_by` 채움 / true→false(복구): 비움
+    행위자가 없으면 아무것도 찍지 않고 실패한다(fail-closed). hard delete 도 쓰기이므로 같다.
+    """
+    new = [o for o in session.new if _is_audited(o)]
+    dirty = [
+        o for o in session.dirty
+        if _is_audited(o) and session.is_modified(o, include_collections=False)
+    ]
+    deleted = [o for o in session.deleted if _is_audited(o)]
+    if not (new or dirty or deleted):
+        return
+    actor = resolve_actor(session)
+    if actor is None:
+        names = ", ".join(sorted({type(o).__name__ for o in (*new, *dirty, *deleted)}))
+        raise MissingActorError(
+            f"감사 컬럼 행위자가 없는 쓰기입니다({names}). 요청 경로는 get_current_user 가 "
+            "사용자를 설정하고, 사용자 없는 쓰기는 system_actor('system:<출처>') 로 "
+            "명시해야 합니다 (ADR-0036)."
+        )
+    for obj in new:
+        if isinstance(obj, TimestampMixin):
+            if obj.created_by is None:
+                obj.created_by = actor
+            obj.updated_by = actor
+    for obj in dirty:
+        if isinstance(obj, TimestampMixin):
+            obj.updated_by = actor
+        if isinstance(obj, SoftDeleteMixin) and get_history(obj, "is_deleted").has_changes():
+            obj.deleted_by = actor if obj.is_deleted else None
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _block_bulk_dml(execute_state) -> None:
+    """감사 대상 테이블의 bulk UPDATE/DELETE 차단 — before_flush 를 거치지 않아 흔적이 빈다.
+
+    ORM(`query.update()`·`update(Model)`)과 Session 으로 실행하는 Core `update(table)` 을 막는다.
+    `text()` raw SQL 은 대상 테이블을 알 수 없어 막지 못한다(ADR-0036 한계).
+    """
+    if not (execute_state.is_update or execute_state.is_delete):
+        return
+    table = getattr(execute_state.statement, "table", None)
+    if table is not None and table in _audited_tables():
+        raise AuditBypassError(
+            f"감사 대상 테이블 {table.name} 에 bulk UPDATE/DELETE 는 쓸 수 없습니다. "
+            "객체를 조회해 속성을 바꾸세요 (ADR-0036)."
+        )

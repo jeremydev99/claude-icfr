@@ -362,7 +362,7 @@ def create_link(body: EvidenceLinkCreate, user: User = Depends(require_icfr_mana
     # 마감 회차 잠금 — 지금은 icfr_manager 만 오므로 통과한다. 권한을 넓힐 때 이 판정이 그대로 걸린다
     if f.cycle_id and f.control_id:
         _assert_can_edit_evidence(db, user, f.cycle_id, f.control_id)
-    obj = EvidenceLink(**body.model_dump(), created_by=str(user.id))
+    obj = EvidenceLink(**body.model_dump())  # created_by 는 before_flush 가 찍는다(ADR-0036)
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -379,7 +379,6 @@ def delete_link(link_id: UUID, user: User = Depends(require_icfr_manager),
     f = db.query(EvidenceFile).filter(EvidenceFile.id == obj.file_id).first()
     if f is not None and f.cycle_id and f.control_id:
         _assert_can_edit_evidence(db, user, f.cycle_id, f.control_id)
-    obj.is_deleted = True
-    obj.deleted_by = str(user.id)
+    obj.is_deleted = True  # deleted_by 는 before_flush 가 찍는다(ADR-0036)
     obj.deleted_at = datetime.now(UTC)
     db.commit()
