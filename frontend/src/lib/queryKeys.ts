@@ -62,6 +62,14 @@ export const queryKeys = {
     deficienciesAll: (tenantId: TenantId) =>
       ['tenant', tenantSegment(tenantId), 'remediation', 'deficiencies'] as const,
   },
+  euc: {
+    all: (tenantId: TenantId) => ['tenant', tenantSegment(tenantId), 'euc'] as const,
+    meta: (tenantId: TenantId) => ['tenant', tenantSegment(tenantId), 'euc', 'meta'] as const,
+    files: (tenantId: TenantId) => ['tenant', tenantSegment(tenantId), 'euc', 'files'] as const,
+    items: (tenantId: TenantId) => ['tenant', tenantSegment(tenantId), 'euc', 'items'] as const,
+    summary: (tenantId: TenantId) =>
+      ['tenant', tenantSegment(tenantId), 'euc', 'summary'] as const,
+  },
   org: {
     departments: (tenantId: TenantId) =>
       ['tenant', tenantSegment(tenantId), 'org', 'departments'] as const,
