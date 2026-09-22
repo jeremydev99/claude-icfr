@@ -2224,6 +2224,11 @@ HTTP 200
 
 51. **ROLE_ASSIGN_OPTIONS/ROLE_LABELS 분리 — 브라우저 미검증·push 대기.** FE 구조 분리 로컬 커밋(`df9b542`) + 신규 5역할 라벨 확정(`fa8cb9b`, 협업자 확정본 반영). **13.9-35 의 FE 드롭다운 잔여(⑤)를 해소하는 작업이다.** 신규 5역할만 셀렉터에 뜨는지·기존 뱃지(구7종) 정상 렌더되는지 눈으로 아직 안 봤다. 13.9-24(기존 3행 의미 불명확)는 2026-09-18 시드 정리로 해소됨(이번 작업 범위 밖이었다).
 
+**Test 계열 FK 정체성 분리 (2026-09-22 등록)**
+
+52. **Test 계열 5테이블 control_id → baseline/instance FK 분리 완료 (로컬 적용·검증 완료, 마이그레이션 `6b6d7fd94f0d` push 대기)** — RCM 통제 저장 경로가 baseline/instance 로 옮겨간 뒤(ADR-0027) `control_risk_assessments`·`test_runs`·`control_assertions`·`deficiencies`·`design_assessments` 5테이블이 여전히 옛 `controls.id` 를 참조하고 있어, 그 id 로 RAWC·TestRun 을 만들면 FK 위반(409)이 났다. 통제 정체성 id 가 baseline/instance 두 테이블에 걸쳐 있어(13.9-27 과 같은 이유) FK 하나로 못 푼다 — `baseline_control_id`(→`baseline_controls(id, tenant_id)` 복합 FK)·`instance_control_id`(→`control_instances(id)` 단일 FK) 두 컬럼으로 분리, CHECK 로 "둘 다 non-null 금지"만 강제(`deficiencies.control_id` 원래 NULL 허용 2건은 그대로). 기존 `control_id` 는 지우지 않고 nullable 로 완화(추가형, 컬럼 제거는 앱 코드 전환 후 별건). 백필은 `controls.code = baseline_controls.code` + **동일 tenant**(x/b/c 3자 모두 tenant 로 묶어 교차 테넌트 매핑 차단) 조인으로, 매핑 불가 0건(`control_assertions` 469건 등 실측 확인).
+    **리비전 ID 우연 충돌 → 재배치**: 로컬에서 먼저 쓴 ID `f8a9b0c1d2e3`(down_revision `e7f8a9b0c1d2`)가 origin 에 이미 병합된 별개 리비전(EUC·IUC 인벤토리, 13.9-45)과 같은 ID 로 겹쳤다. 내용 병합 없이 로컬 쪽을 새 ID `6b6d7fd94f0d`·down_revision `a9b0c1d2e3f4`(스코핑 코어, 13.9-50 뒤)로 재배치해 해소. 로컬 DB 에 적용(head=`6b6d7fd94f0d`) 후 검증(cra=2/runs=1/assert=469/def_filled=2/orphan=0, deficiencies NULL 2건 유지) + `downgrade -1`→`upgrade head` 왕복에서 값 동일 확인. 커밋 `0707e45`, **push 는 마스터**(마이그레이션 포함 커밋 원칙, `CLAUDE.md` §8.3). 다음: 앱 모델·시드·라우트를 새 컬럼으로 전환하는 후속 작업 필요(이번엔 스키마만).
+
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
 
