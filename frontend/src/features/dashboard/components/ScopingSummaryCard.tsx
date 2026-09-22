@@ -22,7 +22,7 @@ export default function ScopingSummaryCard() {
           <Link to="/scoping" className="hover:underline">Scoping</Link>
           {data?.exists && (
             <span className="text-sm font-normal text-muted-foreground">
-              {data.fiscal_year} 회계연도 · {label(data.status)} · 템플릿 그대로인 필드 {data.badge_count}개
+              {data.fiscal_year} 회계연도 · {label(data.status)} · 검토 안 한 템플릿 값 {data.badge_count}개
             </span>
           )}
         </CardTitle>
