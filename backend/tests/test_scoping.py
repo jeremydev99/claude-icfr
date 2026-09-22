@@ -389,6 +389,36 @@ def test_template_has_no_amounts_emails_or_old_headers() -> None:
     assert "이상일 경우" in blob and "초과할 경우" not in blob     # "초과" → "이상" 반영
 
 
+def test_template_account_counts_by_statement() -> None:
+    """계정 192 = BS 58 · PL 45 · 주석 38 · 현금흐름 51.
+
+    STEP 0 보고는 191(주석 37)이었다 — `13. 사용권자산` 의 금액 칸이 `=5005866000+1227635000`
+    (숫자끼리 더한 수식)이라 "수식이면 소계"로 세어 빠뜨렸다. 평가값·결론 수식·판단 근거가 다 있는
+    실제 주석이다. 적재기는 **같은 시트 셀을 참조하는 수식만** 소계로 본다(`_is_subtotal`).
+    재고자산 그룹 행(결론 빈칸)은 계정이 아니므로 들어오지 않는다.
+    """
+    db = TestingSessionLocal()
+    try:
+        accs = db.query(ScopingTemplateAccount).all()
+    finally:
+        db.close()
+    by: dict[str, int] = {}
+    for a in accs:
+        by[a.statement_type] = by.get(a.statement_type, 0) + 1
+    assert by == {"BS": 58, "PL": 45, "NOTE": 38, "CF": 51} and len(accs) == 192
+    assert any(a.statement_type == "NOTE" and a.name == "13. 사용권자산" for a in accs)
+    # 원천 BS B34 "(2) 재   고    자   산" — 하위 계정 없는 그룹 행. 이름으로도 그룹명으로도 들어오지 않는다
+    assert not any("재고자산" in (a.name + (a.group_label or "")).replace(" ", "") for a in accs)
+
+
+def test_subtotal_rule_needs_cell_reference() -> None:
+    from seeds.seed_scoping_template import _is_subtotal
+    assert _is_subtotal("=SUM(D20:D25)") and _is_subtotal("=D20+D21")
+    assert not _is_subtotal("=5005866000+1227635000")   # 숫자 덧셈 — 값이다
+    assert not _is_subtotal("='1.1 재무상태표'!D20")     # 다른 시트 참조 — 값이다
+    assert not _is_subtotal(1234) and not _is_subtotal(None)
+
+
 # ── 13. 권한 ───────────────────────────────────────────────
 
 def test_external_auditor_and_plain_user_cannot_write(client: TestClient, mgr: dict) -> None:
