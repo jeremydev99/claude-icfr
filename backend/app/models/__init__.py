@@ -41,6 +41,18 @@ from app.models.role_assignment import (  # noqa: F401
     RoleAssignment,
     TenantPolicy,
 )
+from app.models.scoping import (  # noqa: F401
+    Scoping,
+    ScopingAccount,
+    ScopingAdjustment,
+    ScopingBenchmark,
+    ScopingFieldOrigin,
+    ScopingStatusHistory,
+    ScopingTemplate,
+    ScopingTemplateAccount,
+    ScopingTemplateText,
+    ScopingText,
+)
 from app.models.tenant import Tenant, UserTenantAccess  # noqa: F401
 from app.models.test_module import (  # noqa: F401
     ControlRiskAssessment,
