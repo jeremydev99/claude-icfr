@@ -6,6 +6,7 @@ from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
+from app.core.audit_context import set_user_actor
 from app.core.database import get_db
 from app.core.security import decode_token
 from app.core.tenant_context import get_active_tenant, set_active_tenant
@@ -92,6 +93,8 @@ async def get_current_user(
     # 활성 tenant 검증·설정 (전 비즈니스 쿼리의 자동 격리 기준)
     tenant_id = _resolve_active_tenant(db, user, x_tenant_id)
     set_active_tenant(tenant_id)
+    # 감사 컬럼 행위자 — 같은 이유로 여기서 설정한다(ADR-0036). 사용자 id 문자열만 쓴다
+    set_user_actor(user.id)
     return user
 
 

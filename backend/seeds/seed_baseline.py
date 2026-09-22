@@ -41,6 +41,7 @@ from openpyxl import load_workbook
 from sqlalchemy import text
 
 from app.api.rcm import _parse_rcm_sheet
+from app.core.audit_context import SYSTEM_SEED_BASELINE, system_actor
 from app.core.database import SessionLocal
 from app.core.tenant_context import (
     DEFAULT_TENANT_CODE,
@@ -269,6 +270,7 @@ def _seed(db, parsed) -> dict[str, int]:
     }
 
 
+@system_actor(SYSTEM_SEED_BASELINE)
 def seed(reset: bool = False, tenant_code: str = DEFAULT_TENANT_CODE) -> None:
     parsed = _load_excel()
     print(

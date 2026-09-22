@@ -11,6 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401 — 모든 모델을 Base.metadata 에 등록
+from app.core.audit_context import SESSION_INFO_ACTOR_KEY, SYSTEM_SEED_BASELINE
 from app.core.tenant_context import (
     DEFAULT_TENANT_CODE,
     DEFAULT_TENANT_ID,
@@ -58,7 +59,9 @@ def seeded(tmp_path_factory):
     db_path = tmp_path_factory.mktemp("seed") / "seed.db"
     engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
-    db = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
+    # 행위자는 실제 시드 진입점(`seed`)과 같은 출처로 명시한다(ADR-0036)
+    db = sessionmaker(autocommit=False, autoflush=False, bind=engine,
+                      info={SESSION_INFO_ACTOR_KEY: SYSTEM_SEED_BASELINE})()
 
     db.add(Tenant(id=DEFAULT_TENANT_ID, name=DEFAULT_TENANT_NAME,
                   code=DEFAULT_TENANT_CODE, is_active=True))

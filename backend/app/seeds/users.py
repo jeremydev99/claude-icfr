@@ -25,6 +25,7 @@
 
     DELETE FROM user_roles WHERE role_name IN ('Administrator', 'Reviewer', 'Tester');
 """
+from app.core.audit_context import SYSTEM_SEED_USERS, system_actor
 from app.models.role_assignment import (
     ROLE_EXTERNAL_AUDITOR,
     ROLE_ICFR_MANAGER,
@@ -49,6 +50,7 @@ SEED_USERS = [
 ]
 
 
+@system_actor(SYSTEM_SEED_USERS)
 def _ensure_users(ctx: SeedContext) -> None:
     """계정 + 테넌트 접근 권한을 직접 삽입한다(User 생성 API 는 admin 전용이라 순서가 꼬인다).
 
@@ -98,6 +100,7 @@ def _ensure_users(ctx: SeedContext) -> None:
         db.close()
 
 
+@system_actor(SYSTEM_SEED_USERS)
 def _ensure_bootstrap_sys_admin(admin_id: str) -> None:
     """admin 에게 `sys_admin` 1행을 **직접 삽입**한다 — §8.5 부트스트랩의 로컬 재현.
 
