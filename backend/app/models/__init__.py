@@ -5,7 +5,9 @@ from app.models.assessment import (  # noqa: F401
     CycleTarget,
 )
 from app.models.base import AuditedBase, Base, IdentityBase, TenantMixin  # noqa: F401
+from app.models.euc import EucFile  # noqa: F401
 from app.models.evidence import EvidenceFile, EvidenceLink  # noqa: F401
+from app.models.iuc import InformationItem  # noqa: F401
 from app.models.org import Department, UserDepartment  # noqa: F401
 from app.models.rcm import (  # noqa: F401
     Control,
