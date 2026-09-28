@@ -7,6 +7,12 @@ from app.models.assessment import (  # noqa: F401
 from app.models.base import AuditedBase, Base, IdentityBase, TenantMixin  # noqa: F401
 from app.models.euc import EucFile  # noqa: F401
 from app.models.evidence import EvidenceFile, EvidenceLink  # noqa: F401
+from app.models.financial_statement import (  # noqa: F401
+    FsAccount,
+    FsAmount,
+    FsStatement,
+    FsStatementStatusEvent,
+)
 from app.models.help_text import HelpText  # noqa: F401
 from app.models.iuc import InformationItem  # noqa: F401
 from app.models.org import Department, UserDepartment  # noqa: F401
