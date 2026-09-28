@@ -68,8 +68,20 @@ switch ($Command) {
         docker compose exec backend python -m app.seeds.run_all
     }
     "test" {
-        Write-Host "pytest 실행 중..." -ForegroundColor Green
-        docker compose exec backend python -m pytest tests/ -v
+        # 호스트에서 backend/ 를 워킹 디렉토리로 pytest 를 돈다 — CI(ci.yml·deploy.yml)와
+        # 같은 방식이다. 컨테이너 안(`docker compose exec backend`)에서 돌리면 backend/
+        # 이미지에는 없는 frontend/ 를 참조하는 테스트(예: menu.* ↔ navigation.ts 1:1 검증,
+        # ADR-0035)가 파일을 찾지 못해 실패한다 — 운영 이미지 안에서 pytest 실행은
+        # 지원하지 않는다(ADR-0035 §6).
+        $venvPython = Join-Path $PSScriptRoot "backend\.venv\Scripts\python.exe"
+        $py = if (Test-Path $venvPython) { $venvPython } else { "python" }
+        Write-Host "pytest 실행 중 (호스트, $py)..." -ForegroundColor Green
+        Push-Location (Join-Path $PSScriptRoot "backend")
+        try {
+            & $py -m pytest
+        } finally {
+            Pop-Location
+        }
     }
     default {
         Show-Help
