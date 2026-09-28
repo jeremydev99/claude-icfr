@@ -13,6 +13,7 @@ from app.api import (
     auth,
     euc,
     evidence,
+    financial_statement,
     health,
     iuc,
     notification,
@@ -124,6 +125,7 @@ def create_app() -> FastAPI:
     app.include_router(schedule.router)
     app.include_router(rcm.router)
     app.include_router(scoping.router)
+    app.include_router(financial_statement.router)
     app.include_router(euc.router)
     app.include_router(iuc.router)
     app.include_router(remediation.router)
