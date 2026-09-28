@@ -36,6 +36,7 @@ SYSTEM_SEED_USERS = "system:seed-users"
 SYSTEM_SEED_BASELINE = "system:seed-baseline"
 SYSTEM_SEED_EUC_IUC = "system:seed-euc-iuc"
 SYSTEM_SEED_SCOPING_TEMPLATE = "system:seed-scoping-template"
+SYSTEM_SEED_HELP = "system:seed-help"
 SYSTEM_MIGRATION_RCM_BASELINE = "system:migration-rcm-baseline"
 SYSTEM_TEST = "system:test"
 
