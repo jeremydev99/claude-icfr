@@ -27,6 +27,9 @@ from app.api import (
     test_module,
     user_mgmt,
 )
+from app.api import (
+    help as help_api,
+)
 from app.config import get_settings
 from app.core.database import SessionLocal
 from app.core.exceptions import ICFRException
@@ -125,6 +128,7 @@ def create_app() -> FastAPI:
     app.include_router(iuc.router)
     app.include_router(remediation.router)
     app.include_router(evidence.router)
+    app.include_router(help_api.router)
     app.include_router(user_mgmt.router)
     app.include_router(org.router)
     app.include_router(role_assignment.router)
