@@ -176,6 +176,7 @@
 | Test | 증빙 | 테스트 결과 증빙 첨부 |
 | Test | 개선계획 | 미비점 자동 등록 |
 | Scoping | RCM | Scope In → 평가 대상 통제 목록 |
+| 재무제표·계정 트리 | ✅ ADR-0037 (8-A~8-E 전체 설계) | ✅ `fs_` 4테이블 | ✅ `/api/fs` 조회·검증·확정·재오픈 | ✅ 8-A 계정 마스터(트리, 재귀 CTE)·재무제표(연결/별도·단위·허용 오차)·금액(Numeric(20,2), 원본 보존)·검증 관문(자산=부채+자본·소계=Σ하위×rollup_sign)·상태 이력 | — (8-D) | ✅ 21건 | 13.9-58. 마이그레이션 `d3e4f5a6b7c8` push 대기(로컬 검증만). 업로드 화면 없음 → 배포해도 화면 변화 없음. 다음 8-B(엑셀 파서 2종). 기존 스코핑 비침습 |
 | EUC / IUC | RCM | 통제-EUC·IUC 매핑 |
 | Report | Test / 개선계획 / Scoping | 보고서 원본 데이터 수집 |
 | Notification | 전 모듈 | 도메인 이벤트 구독 후 발송 |
@@ -1747,7 +1748,7 @@ ADR-0025 근간 구조의 1단계 구현. 결정 사항:
 | 마지막 스키마 변경 | 2026-09-02 `c9d0e1f2a3b4`. 적용 전 백업 `db/2026/09/icfr_db_20260902_105250.sql.gz.age`(35,145바이트) | ADR-0030 §7 |
 | 백업 | pg_dump→gzip→age→Object Storage, cron 03:00 KST, 보존 90일. 복구 리허설 통과 | ADR-0028 §2.8.1 |
 | 감사 컬럼 | **운영 적용 완료 (2026-09-22 구현 · push `529f9d3` · 2026-09-28 마스터 운영 확인, ADR-0036)** — 새 쓰기부터 `created_by`·`updated_by`·`deleted_by`·`deleted_at` 이 채워진다. 기존 행은 NULL 그대로. 스키마 변경 없음 | 13.9-51 |
-| CI | `ruff check .` All checks passed / pytest **441 passed·1 skipped·1 xfailed** (로컬 기준, 2026-09-28 순차 2회 재확인) | skip 1건은 교차 테넌트 거부 검증 — sqlite 가 FK 미강제라 postgres 전용 |
+| CI | `ruff check .` All checks passed / pytest **466 passed·1 skipped·1 xfailed** (로컬 기준, 2026-09-28 8-A 순차 2회) | skip 1건은 교차 테넌트 거부 검증 — sqlite 가 FK 미강제라 postgres 전용 |
 
 ---
 
@@ -2242,6 +2243,10 @@ HTTP 200
 
 57. **운영 이미지에서 `tests/` 디렉토리 제외 검토 (별건, 2026-09-28 등록, ADR-0035 §6 관련)** — `backend/Dockerfile` 이 `tests/` 를 운영 이미지에 그대로 복사한다. `menu.*` 1:1 테스트처럼 `frontend/` 를 참조하는 테스트가 늘면, 운영 이미지 안에서 pytest 를 돌리려는 시도(지원 대상 아님, ADR-0035 §6)가 반복해서 헷갈림을 만들 수 있다. 이미지 크기·빌드 단계 분리(멀티스테이지에서 테스트 스테이지 분리) 여부를 검토.
 
+58. **8-A 완료 (2026-09-28) — 재무제표·계정 트리 데이터 구조와 검증 (ADR-0037, `prompts/ICFR_backend_fs-8a_20260928.md`)** — "재무제표가 계정 행을 정하고, 템플릿은 매칭으로 기본값만 공급한다" 전환의 첫 단계. 신규 4테이블 `fs_accounts`(회사 계정 마스터 하나 — `parent_id`+`sort_order` 트리, `section`·`is_subtotal`·`rollup_sign`, 유효 회계연도 범위) · `fs_statements`(회계연도×BS/PL/CF/SCE×별도/연결, 단위·통화·`tolerance`, draft/final) · `fs_amounts`(`Numeric(20,2)` 공시 표시 그대로, `raw_*` 원본 보존) · `fs_statement_status_events`(확정·재오픈 이력, 확정 행에 tolerance·skipped 건수·tolerance≠0 이면 비교별 차액). 전부 `AuditedBase` + `(x_id, tenant_id)` 복합 FK + 부분 유니크. 마이그레이션 `d3e4f5a6b7c8`(down `c2d3e4f5a6b7`). **검증은 확정 관문** — 자산=부채+자본, 소계=Σ(하위×rollup_sign), `|diff| <= tolerance`, 소계인데 하위 0개는 실패(Q6a), 소계 금액 비어 있음은 skipped(Q6b). **계정명 문자열 비교 없음.** 재귀 CTE 는 ORM `cte(recursive=True)` — tenant 자동 필터가 재귀부에도 걸림을 실험·테스트로 확인, 로컬 Postgres 에서도 동작 확인. API `/api/fs`(meta·accounts·statements·validation·finalize·reopen) — **계정·금액 쓰기 API 없음**(8-B 가 서비스 함수 사용). 확정·재오픈 `icfr_manager`, 조회 전원. **기존 스코핑 테이블·코드·시드 변경 0건.** 테스트 21건. **로컬 검증 완료 — push 대기(마이그레이션 포함, 마스터 백업 후 직접 push).** ⚠ 확정 재무제표가 참조하는 계정의 구조(부호·부모) 변경은 아직 막지 않는다 — 8-D 에서 결정(ADR-0037 §2.10). 다음: 8-B 엑셀 업로드 파서 2종.
+
+59. **운영 백업 정책 ADR + 정기 백업 점검 (별건, 2026-09-28 등록)** — ADR-0023 이 "회계법인 PoC 시점에 백업 정책 ADR 별도 등록"으로 미뤄 둔 항목. 정기 백업 자체는 ADR-0028 §2.8.1(pg_dump→age→Object Storage, cron 03:00, 보존 90일, 복구 리허설 통과)로 운영 중이다. 남은 것은 **정책 문서화** — 목표 RPO/RTO, 마이그레이션 직전 수동 백업 절차의 정식화(§8.3·§10-7 에 흩어져 있음), 보존 기간 근거, 복구 리허설 주기. 백로그 4건 중 나머지 3건(시드별 출처명 테스트·§11 용어집 확장·운영 이미지 tests 제외)은 7-A 에서 이미 55·56·57 로 등록되어 있어 중복 등록하지 않았다.
+
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
 
@@ -2251,6 +2256,7 @@ HTTP 200
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-09-28 / TrustBuilder + Claude** — **8-A 재무제표·계정 트리 데이터 구조와 검증** (`prompts/ICFR_backend_fs-8a_20260928.md`, **ADR-0037 채택 — 8-A~8-E 전체 설계**, 마이그레이션 `d3e4f5a6b7c8` 신규 테이블 4개). STEP 0 마스터 확정: Q1 `Numeric(20,2)`(소수 3자리 이상 거부, 조용한 반올림 금지) / Q2 금액은 공시 표시 그대로·합산은 `rollup_sign` / Q3 재무제표별 `tolerance`(기본 0, `|diff|<=tol`) / Q4 재오픈 허용 + `fs_statement_status_events` 이력(확정 행에 tolerance·skipped 건수·차액) / Q5 쓰기 API 없음(서비스 함수만) / Q6 소계 하위 0개=실패, 소계 금액 빈칸=skipped. `fs_accounts`(회사 계정 마스터, 트리·section·rollup_sign·유효 연도) · `fs_statements`(연도×BS/PL/CF/SCE×별도/연결, 단위·통화) · `fs_amounts`(원본 보존 `raw_*`) · 상태 이력. 재귀 CTE(ORM, tenant 필터 재귀부 적용 확인). API `/api/fs` 조회·검증·확정(검증 실패 422 + 항목별 차액)·재오픈. **기존 스코핑 테이블·코드·시드 변경 0건.** **검증** — 테스트 21건, 로컬 dev postgres 실 DB 적용·downgrade 왕복·`alembic check` 차이 없음, 기존 건수 불변(scopings 0·scoping_field_origins 0·baseline_controls 93 — 로컬은 스코핑 0건이라 운영 psql 로 재확인 필요), 백엔드 전체 순차 2회(466 passed·1 skipped·1 xfailed·0 failed) + ruff clean. 백로그 59(백업 정책 ADR) 등록 — 나머지 3건은 55·56·57 로 이미 있음. **로컬 커밋까지 — push 대기(마스터 백업 후 직접).** 다음: 8-B 엑셀 업로드 파서 2종.
 - **2026-09-28 / TrustBuilder + Claude** — **7-A 매뉴얼 패널 백엔드 틀·키 규칙·문구 초안** (`prompts/ICFR_backend_help-7a_20260928.md`, **ADR-0035 채택**, 마이그레이션 `c2d3e4f5a6b7` 신규 테이블). `help_texts`(`IdentityBase`, `(key,locale)` 부분 유니크, `source`/`as_of`/`baseline_version`/`sort_order`) + 조회 API 2개(`GET /api/help?prefix=`·`GET /api/help/{key}`, 인증만) + 키 형식 검증(`core/help_keys.py`, 접두사는 불투명 식별자 — 문자열 일치만, 점 분해 해석 금지) + 데이터 파일(`help_texts_ko.json` 44키: menu 16·screen 18·term 10) + 멱등 시드(`system:seed-help`, 파일 upsert·소프트 삭제). `menu.*` 는 `navigation.ts` route 와 1:1 테스트로 고정(navigation.ts 없으면 실패, skip 아님) — 이 테스트 때문에 `dev.ps1 test` 를 컨테이너 실행에서 호스트 `backend/` venv 실행으로 전환(CI 와 동일 방식, ADR-0035 §6 — 운영 이미지 안 pytest 미지원). 검증: 로컬 dev postgres 실 DB 마이그레이션 적용·downgrade 왕복(기존 93/1건 불변) + 시드 2회(멱등, `created_by` 전부 `system:seed-help`), 테스트 29건 신규, 백엔드 전체 순차 2회(441 passed·1 skipped·1 xfailed) + ruff, 문구 복사 0건. 신규 백로그 55(시드 행위자 공통 테스트)·56(§11 확장)·57(운영 이미지 tests/ 제외 검토). **로컬 검증 완료(마이그레이션·시드 로컬 dev DB 적용됨) — push 대기.**
 - **2026-09-22 / TrustBuilder + Claude** — **13.9-51 감사 컬럼 자동 기록** (`prompts/ICFR_backend_13-9-51_20260922.md`, **ADR-0036 채택**, 마이그레이션 없음). `created_by`·`updated_by`·`deleted_by`·`deleted_at` 을 행위자 ContextVar + before_flush 로 자동 기록한다. 사용자는 `str(user.id)`, 사용자 없는 쓰기는 `system:<출처>` 를 명시해야만 기록된다. 행위자가 없으면 flush 실패(fail-closed). 대상은 믹스인 판별로 52개 전부이고, bulk UPDATE/DELETE 는 차단한다. 테스트 행위자는 `session.info` 전용(TestClient 로 ContextVar 가 전파되는 것을 실측). 증빙 링크 수동 대입 제거, backfill 없음. 테스트 70건 신규, 백엔드 전체 순차 2회. **push `529f9d3` · 운영 확인 완료(마스터, 2026-09-28)** — 로컬 컨테이너 확인은 못 했다(재시작 반복).
 - **2026-09-22 / TrustBuilder + Claude** — **CLAUDE.md §10 plan 모드 → 무인 실행 절차로 교체** (`prompts/ICFR_docs_1_20260922.md`, 문서만·코드 변경 0건). 실제 운영이 plan 모드(Shift+Tab) STEP 0 대신 `claude --model opus` STEP 0(조사·보고 후 정지) → `claude --continue --model sonnet` 구현의 2단계 CLI 실행이라 문서를 그에 맞게 교체. 마이그레이션·권한·금액 계산은 구현까지 Opus 유지, 운영 서버·DB 명령은 마스터 직접 실행(코드 블록 제시), 문서만 변경하는 작업은 STEP 0 생략. 테스트 실패만 표시·순차 2회 검증 항목은 유지. §7 호출 방법에 §10 참조 한 줄 추가. 아래 2026-09-22 "CLAUDE.md §10 작업 세션 규칙" 항목은 교체 전 절차의 기록으로 남겨둔다(변경 로그 불변 원칙).

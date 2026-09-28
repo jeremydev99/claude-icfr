@@ -1,0 +1,159 @@
+# ADR-0037: 재무제표·계정 트리 — 계정 마스터, 금액, 검증 관문, 업로드·매칭·스코핑 연결 (8-A~8-E)
+
+- 상태: 채택 (8-A 구현 완료, 8-B~8-E 설계 확정·구현 전)
+- 작성일: 2026-09-28
+- 관련: ADR-0034(스코핑 모델, §5 "재무제표 추출 ADR 후속"), ADR-0030(테넌트 소유·복합 FK),
+  ADR-0025/0026(자동 격리), ADR-0036(감사 컬럼), ADR-0029(산출값은 저장하지 않는다), `ClaudeICFR.md` 13.9-40
+- 프롬프트: `prompts/ICFR_backend_fs-8a_20260928.md`
+
+---
+
+## 1. 배경과 원칙
+
+스코핑(ADR-0034)은 템플릿 계정 192개를 회계연도마다 복사하고 금액을 손으로 넣는다. 회사의 실제
+재무제표 행과 템플릿 행이 일치한다는 보장이 없고, 트리(계층)도 없어 소계를 검증할 수 없다.
+
+**재무제표가 계정 행을 정하고, 템플릿은 매칭으로 기본값만 공급한다.** 이 전환을 다섯 단계로 나눈다.
+
+| 단계 | 내용 | 상태 |
+|---|---|---|
+| 8-A | 계정 트리·재무제표·금액 테이블 + 검증 규칙 + 조회·확정 API | ✅ 2026-09-28 |
+| 8-B | 엑셀 업로드 파서 2종(가로 연도형·공시양식형) | 설계만 (§3) |
+| 8-C | 템플릿 매칭 | 설계만 (§4) |
+| 8-D | 화면 | 설계만 (§5) |
+| 8-E | 스코핑 연결 + 기존 스코핑 이관 | 설계만 (§6) |
+
+**기존 스코핑 비침습.** 8-A~8-D 는 `scoping_*` 테이블·코드·시드를 바꾸지 않는다(RCM baseline/instance
+때와 같은 병행 신규 구축). 스코핑이 새 구조를 쓰게 하는 것은 8-E 이며 이관 방침을 그때 따로 정한다.
+
+## 2. 데이터 구조 (8-A 구현)
+
+### 2.1 계정은 회사 단위 마스터 하나, 금액은 연도별
+재무제표마다 계정 트리를 복제하지 않는다. 복제하면 연도 비교가 계정 매칭 문제로 바뀌고, 스코핑이
+계정을 참조할 때 어느 연도 것인지 애매해진다. 연결·별도도 같은 마스터를 쓴다(연결에만 있는
+계정은 연결 재무제표에만 금액 행이 생긴다).
+
+### 2.2 트리 = `parent_id` + `sort_order`, 조회는 재귀 CTE
+adjacency list. 경로·closure 테이블은 두지 않는다. 재귀 CTE 는 ORM `select().cte(recursive=True)` 로
+쓴다 — tenant 자동 필터가 anchor·재귀부 양쪽에 걸린다(STEP 0 실험·테스트로 확인). `text()` 원시 SQL 은
+자동 필터를 우회하므로 금지. 순환은 DB CHECK(`parent_id <> id`) + 서비스의 자손 CTE 검사로 막는다.
+재무상태표에서는 다른 섹션 아래에 매달 수 없다(부채와자본 아래 부채·자본만 예외) — 섹션 합계가 두 번 잡힌다.
+
+### 2.3 판별은 구조로
+자산·부채를 계정명으로 판정하지 않는다. `section` 과 `is_subtotal`, 트리 구조, `rollup_sign` 만 본다.
+검증 로직에 계정명 문자열 비교가 없다(응답의 `account_name` 은 표시용).
+
+| 종류 | section 값 |
+|---|---|
+| BS | asset / liability / equity / liability_equity(부채와자본총계 — 균형 판정 제외) |
+| PL | revenue / expense / profit(이익 소계) |
+| CF | operating / investing / financing / cf_other |
+| SCE | equity_change |
+
+### 2.4 부호 (마스터 확정 Q2)
+**금액은 공시 표시 그대로 저장한다** — 괄호는 음수, 비용은 양수. **합산은 계정의 `rollup_sign`(±1)으로**
+한다. 매출총이익 = 매출(+1) + 매출원가(−1). 파일별 표기 차이(비용을 음수로 표시한 파일 등)는 8-B
+preview 에서 뒤집는다.
+
+### 2.5 재무제표 종류 — BS / PL / CF / SCE
+8-A 검증 대상은 BS(균형 + 소계)·PL(소계). CF·SCE 는 값만 열어 두며 소계 규칙이 그대로 적용된다.
+주석(NOTE)은 트리형 재무제표가 아니라 넣지 않는다(8-E 에서 스코핑 주석 계정과 함께 다룬다).
+
+### 2.6 연결·별도 — `basis` 를 지금 넣는다
+회사는 별도만 쓰지만 나중에 넣으면 마이그레이션이 한 번 더 필요하다. 부분 유니크
+`(tenant, fiscal_year, statement_type, basis) WHERE NOT is_deleted` 로 같은 연도 공존. 화면 노출은 8-D.
+
+### 2.7 금액·단위
+- 금액 `Numeric(20, 2)`, nullable(빈 칸 ≠ 0). (20, 0)은 소수 입력 시 조용히 반올림하므로 쓰지 않는다.
+  서비스는 소수 3자리 이상을 **거부**한다(반올림하지 않는다). 소수는 8-B 파서가 명시적으로 거르고,
+  8-E 원 환산에서 정수가 아니면 오류다(마스터 확정 Q1).
+- 스코핑 금액(`BigInteger` 원)과 다르다 — 여기는 **재무제표 단위 그대로**다.
+- 단위(`unit` = 1/1000/1000000)·통화를 재무제표 헤더에 둔다. **검증·허용 오차·차액은 재무제표 단위 기준**이며
+  원으로 환산하지 않는다.
+
+### 2.8 원본 보존 컬럼
+금액 행에 `raw_row_no`·`raw_label`·`raw_indent`·`raw_value`(셀 원문)·`raw_meta`(JSON). 헤더에
+`source_kind`·`source_filename`·`source_sheet`. 8-B 파서가 무엇을 읽든 담을 수 있게 해 파서를 만들 때
+구조를 고치지 않는다.
+
+### 2.9 검증은 확정 관문 (마스터 확정 Q3·Q6)
+검증 결과: `errors`(확정 거부) / `skipped`(확정 허용, 건수 기록) / `checks`(수행한 금액 비교 전부).
+
+| 규칙 | 판정 | 결과 |
+|---|---|---|
+| `balance` (BS) | 자산 = 부채 + 자본. 섹션 합계 = 부모가 없거나 부모 섹션이 다른 최상위 노드 합 | \|diff\| > tolerance → error |
+| `balance_missing_section` | 자산 측 또는 부채·자본 측이 통째로 없음 | error |
+| `subtotal` | 소계 = Σ(하위 유효 금액 × rollup_sign) | \|diff\| > tolerance → error |
+| `subtotal_no_children` (Q6a) | 소계인데 이 재무제표에 하위가 0개 — 구조 오류 | error |
+| `subtotal_amount_missing` (Q6b) | 하위는 있으나 소계 금액이 비어 있음 | skipped |
+| `invalid_unit`·`invalid_section`·`account_statement_mismatch`·`account_not_valid_for_year`·`empty_statement` | 구조·무결성 | error |
+
+- **금액 트리** = 금액 행이 있는 계정 + 그 조상. 금액 행 없는 조상(중간 제목)도 노드로 넣어 윗 소계가
+  아래 금액을 빠뜨리지 않는다. **유효 금액** = 금액이 있으면 그 값, 비었으면 하위 합, 하위도 없으면 0.
+- `tolerance`(재무제표별, 기본 0, ≥ 0): `|diff| <= tolerance` 면 통과. 백만원 공시의 반올림 ±1 대응.
+- 경고만 남기고 통과시키지 않는다. 결과는 규칙·계정·기대값·실제값·차액을 항목별로 돌려준다.
+
+### 2.10 상태 draft / final + 이력 (마스터 확정 Q4)
+- `finalize`: 검증 실패면 422(항목별 오류). `reopen`: 사유 필수, final 에서만. 권한은 둘 다 `icfr_manager`.
+- 이력 `fs_statement_status_events`(statement_id, from/to, reason, actor_id, occurred_at). **확정 행**에
+  tolerance·skipped 건수, tolerance ≠ 0 이면 비교별 실제 차액(`tolerance_diffs`)을 남긴다.
+- **금액 스냅샷은 만들지 않는다.** 확정 후 금액 쓰기는 서비스가 409(재오픈 후 수정).
+  ⚠ 계정 마스터(부호·부모) 변경은 확정 재무제표를 잠그지 않는다 — 확정 후 마스터를 바꾸면 재검증 결과가
+  달라질 수 있다. 8-D 에서 "확정 재무제표가 참조하는 계정의 구조 변경" 경고·차단을 정한다.
+- 가로 연도형에서 최신 연도를 자동 final 로 두는 규칙은 8-B 파서가 적용한다. 8-A 는 전환과 검증만.
+
+### 2.11 신설·폐지
+행을 지우지 않는다. `valid_from_year`·`valid_to_year`(CHECK from ≤ to). 폐지 후 과거 연도 금액은 그대로
+조회되고, 유효 범위 밖 연도에는 금액을 넣을 수 없다. 트리 조회에 연도를 주면 유효 계정만(무효 부모 아래
+가지는 통째로 빠진다).
+
+### 2.12 테이블·API 요약
+- `fs_accounts` / `fs_statements` / `fs_amounts` / `fs_statement_status_events` — 전부 `AuditedBase`,
+  하위 참조는 `(x_id, tenant_id)` 복합 FK(부모 계정 포함), 부분 유니크. alembic `d3e4f5a6b7c8`.
+- 명명: 스코핑의 `scoping_accounts`·`STATEMENT_*` 와 겹치지 않게 `fs_` 접두·`FS_` 상수(13.9-40).
+  코드값(BS/PL/CF)은 8-E 매칭을 위해 스코핑과 같다.
+- API `/api/fs`: `GET meta`, `GET accounts?statement_type&fiscal_year`, `GET statements`,
+  `GET statements/{id}`(트리 금액·이력·검증), `GET statements/{id}/validation`,
+  `POST statements/{id}/finalize`, `POST statements/{id}/reopen`. **계정·금액 쓰기 API 는 없다**(Q5) —
+  8-B 는 서비스 함수(`create_account`·`set_parent`·`retire_account`·`create_statement`·`set_amount`)를 쓴다.
+
+## 3. 8-B 엑셀 업로드 (설계 확정)
+
+- 파서 2종: **가로 연도형**(한 시트에 여러 연도 열) / **공시양식형**(DART 표준 양식, 한 연도).
+- RCM `upload-excel` 선례대로 `mode=preview|commit`. preview 는 저장하지 않고 트리·금액·검증 결과를 보여 준다.
+- 파서가 하는 일: 단위 감지(표 머리 "단위: 백만원" 등 — 못 찾으면 사용자 선택 필수, 추정 금지),
+  괄호 → 음수, 들여쓰기 → 트리, 소계 판정 후보, 부호 관행 감지·뒤집기 제안, 소수 금액 명시 거부,
+  원본 보존 컬럼 채우기.
+- 가로 연도형은 연도마다 `fs_statements` 1건. 최신 연도를 final 후보로 두되 **검증을 통과해야 final**.
+- 기존 계정과의 대응: `raw_label` 로 기존 마스터 후보를 제안하고 사람이 확정한다(§4 와 같은 원칙).
+
+## 4. 8-C 템플릿 매칭 (방침 확정)
+
+- **자동 매칭은 제안일 뿐이다.** 사람이 확인한 링크만 저장한다.
+- **확정된 링크만** 스코핑 기본값(질적 평가값·판단 근거 등) 공급에 쓴다.
+- 링크에 **매칭 근거**를 남긴다: `exact`(정확일치) / `normalized`(정규화일치) / `manual`(수동). 확인자·시각.
+- 링크는 회사 계정(`fs_accounts`) ↔ 템플릿 계정(`scoping_template_accounts`, code·version). 템플릿 개정 시
+  옛 버전 링크는 유지하고 새 버전 재매칭을 제안한다.
+
+## 5. 8-D 화면 (범위)
+
+재무제표 목록(연도·연결/별도)·트리 금액 보기·검증 결과(차액 항목 이동)·확정/재오픈(사유)·허용 오차 설정·
+업로드 preview. 연결 재무제표 노출 여부 스위치.
+
+## 6. 8-E 스코핑 연결 (방향)
+
+- 스코핑 계정 행을 템플릿 복사가 아니라 **기준 연도 final 재무제표의 계정**에서 만든다. 템플릿은 8-C 링크로
+  기본값만 공급.
+- 금액 = final 재무제표 금액 × unit → 원(정수 아니면 오류). 기준 연도는 `scopings.base_fiscal_year`.
+- **기존 스코핑 이관 방침은 8-E 착수 시 별도 결정** — 템플릿 배지 1,897개가 붙은 2026 스코핑 처리 포함.
+- 8-E 변경 대상(STEP 0 실측): `models/scoping.py`, `services/scoping.py`(create_from_template·evaluate·snapshot),
+  `services/scoping_calc.py`(quantitative), `api/scoping.py`(templates·summary·PATCH accounts),
+  `schemas/scoping.py`, `seeds/seed_scoping_template.py`, FE `features/scoping/*`·`ScopingSummaryCard`.
+
+## 7. 검증 (8-A)
+
+`tests/test_financial_statement.py` 21건 — 4단 트리(CTE), 자기·자손 부모 거부(+DB CHECK), 균형 통과/차액,
+소계 통과/계정·차액, PL 부호, 제목 행 롤업, 확정 거부(422), Q6(a)/(b), 허용 오차 경계(diff = tol 통과,
+tol+1 실패)·이력 기록, 재오픈 2회 이력 보존·사유 필수·권한, 확정 후 쓰기 409, 소수 거부, 단위별 검증,
+연결·별도 공존, 폐지 후 과거 금액, tenant 격리, 감사 컬럼 사용자 id.
+실 DB(로컬 Postgres): 마이그레이션 upgrade·downgrade 왕복, `alembic check` 차이 없음, 기존 테이블 건수 불변.
