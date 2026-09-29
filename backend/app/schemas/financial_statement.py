@@ -115,3 +115,91 @@ class FinalizeRequest(BaseModel):
 
 class ReopenRequest(BaseModel):
     reason: str = Field(max_length=2000)
+
+
+# ── 8-B 업로드 ───────────────────────────────────────────────
+
+class UploadSheetCandidate(BaseModel):
+    sheet: str
+    kind: str
+    statement_type: str | None
+
+
+class UploadRow(BaseModel):
+    """파싱·추론된 행. `match` 는 대응 계정 id 또는 "new"(신규 생성)."""
+    row_no: int
+    raw_label: str
+    label: str
+    depth: int
+    parent_row_no: int | None
+    kind: str
+    is_subtotal: bool
+    rollup_sign: int
+    section: str
+    amounts: dict[str, Decimal | None]
+    flags: list[str]
+    errors: list[str]
+    excluded: bool
+    match: str | None
+
+
+class UploadSubtotalDiff(BaseModel):
+    row_no: int
+    label: str
+    fiscal_year: int
+    expected: Decimal
+    actual: Decimal
+    diff: Decimal
+
+
+class UploadConflict(BaseModel):
+    fiscal_year: int
+    statement_id: UUID
+    status: str
+
+
+class UploadValidationItem(BaseModel):
+    rule: str
+    raw_row_no: int | None   # 원본 행 — preview 에서는 계정 id 가 롤백되므로 이것으로 찾는다
+    account_id: UUID | None  # commit 에서만
+    account_name: str | None
+    expected: Decimal | None
+    actual: Decimal | None
+    diff: Decimal | None
+
+
+class UploadStatementResult(BaseModel):
+    fiscal_year: int
+    statement_id: UUID | None   # commit 에서만
+    status: str                 # draft / final (preview 는 draft)
+    finalize_candidate: bool    # 최신 연도(자동 확정 대상)
+    finalized: bool
+    ok: bool
+    errors: list[UploadValidationItem]
+    skipped: list[UploadValidationItem]
+    checks_count: int
+
+
+class UploadResponse(BaseModel):
+    mode: str
+    committed: bool
+    can_commit: bool
+    filename: str | None
+    sheet: str | None
+    kind: str | None
+    statement_type: str | None
+    basis: str | None
+    unit: int | None
+    unit_label: str | None       # 시트 표기(감지값)
+    periods: list[int]           # 시트에 있는 연도
+    fiscal_years: list[int]      # 이번에 저장할(한) 연도
+    sheets: list[UploadSheetCandidate]
+    errors: list[str]            # 업로드를 막는 오류(commit 422)
+    warnings: list[str]
+    master_empty: bool
+    mapping_required: bool       # commit 409 — mapping 을 명시해야 한다
+    suggested_mapping: dict[str, str]
+    conflicts: list[UploadConflict]   # commit 409
+    rows: list[UploadRow]
+    subtotal_diffs: list[UploadSubtotalDiff]
+    statements: list[UploadStatementResult]
