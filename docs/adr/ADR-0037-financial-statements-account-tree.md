@@ -22,7 +22,7 @@
 | 8-B2 | 정산표 결합 — 공시 행 아래 COA 계정 | ✅ 2026-09-30 (§3.2) |
 | 8-C | 템플릿 매칭 | ✅ 2026-09-30 (§4.1) |
 | 8-D | 화면 | ✅ 2026-09-30 — 8-D1 조회·검증·확정·임시계정 · 8-D2 업로드·결합 · 8-D3 템플릿 연결 (§5) |
-| 8-E | 스코핑 연결 + 기존 스코핑 이관 | 설계만 (§6) |
+| 8-E | 스코핑 연결 + 기존 스코핑 이관 | ✅ 2026-09-30 (§6.1, A안) |
 
 **기존 스코핑 비침습.** 8-A~8-D 는 `scoping_*` 테이블·코드·시드를 바꾸지 않는다(RCM baseline/instance
 때와 같은 병행 신규 구축). 스코핑이 새 구조를 쓰게 하는 것은 8-E 이며 이관 방침을 그때 따로 정한다.
@@ -188,6 +188,14 @@ preview 에서 뒤집는다.
 - 8-E 변경 대상(STEP 0 실측): `models/scoping.py`, `services/scoping.py`(create_from_template·evaluate·snapshot),
   `services/scoping_calc.py`(quantitative), `api/scoping.py`(templates·summary·PATCH accounts),
   `schemas/scoping.py`, `seeds/seed_scoping_template.py`, FE `features/scoping/*`·`ScopingSummaryCard`.
+
+### 6.1 구현 기록 (8-E, 2026-09-30) — 마스터 확정 A안
+- **기존 스코핑 이관 방침 = A안**: 2026 스코핑(템플릿 복사·배지)은 그대로 둔다. **다음 회계연도부터** 재무제표 기반으로 만든다.
+  B안(2026 재생성·기존 입력 이관)·C안(병행)은 채택하지 않았다.
+- `POST /api/scoping` `source=financial_statements`: 기준 연도(회계연도 − 1) 확정 별도재무제표 BS·PL 필수, CF 는 없으면 템플릿 대체,
+  주석은 템플릿. 계정 행 = 금액 트리의 잎(COA), 그룹 = 부모 공시 행, 임시계정 제외. 금액 × 단위 → 원(정수 아니면 오류).
+  전기 = 기준 연도 − 1 확정본 우선, 없으면 작성 중. 기본값 = 확정 템플릿 링크(§4.1)가 있는 계정만 + 배지.
+- `scoping_accounts.fs_account_id`(nullable, 복합 FK) — 원천 추적. 마이그레이션 `f5a6b7c8d9e0`(컬럼 추가만).
 
 ## 7. 검증 (8-A)
 
