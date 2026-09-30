@@ -15,6 +15,7 @@ import {
   Paperclip,
   Users,
   Mail,
+  Table2,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -77,6 +78,13 @@ export const navigation: NavGroup[] = [
         status: 'todo',
         icon: Calendar,
         description: '연간 ICFR 평가 일정 수립·진행률 추적',
+      },
+      {
+        label: '재무제표',
+        path: '/financial-statements',
+        status: 'ready', // 8-D1 — 업로드(API)한 재무제표의 트리·검증·확정·임시계정 해소. 업로드 화면은 8-D2
+        icon: Table2,
+        description: '재무제표 계정 트리·금액 검증·확정 (스코핑의 계정 원천)',
       },
       {
         label: 'Scoping',

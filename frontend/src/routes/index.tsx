@@ -6,6 +6,7 @@ import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
 import SchedulePage from '@/features/schedule/pages/SchedulePage'
 import ScopingPage from '@/features/scoping/pages/ScopingPage'
+import FinancialStatementsPage from '@/features/financial-statements/pages/FinancialStatementsPage'
 import RcmPage from '@/features/rcm/pages/RcmPage'
 import EucPage from '@/features/euc/pages/EucPage'
 import IucPage from '@/features/iuc/pages/IucPage'
@@ -37,6 +38,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
       { path: 'schedule', element: <SchedulePage /> },
+      { path: 'financial-statements', element: <FinancialStatementsPage /> },
       { path: 'scoping', element: <ScopingPage /> },
       { path: 'rcm', element: <RcmPage /> },
       { path: 'euc', element: <EucPage /> },
