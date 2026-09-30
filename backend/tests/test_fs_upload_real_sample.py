@@ -7,6 +7,7 @@ CI 에는 파일이 없으므로 skip 된다.
 
 STEP 0 실측(prompts/ICFR_backend_fs-8b_20260929.md 0.3)을 고정한다.
 """
+import json
 import os
 from pathlib import Path
 
@@ -76,3 +77,46 @@ def test_horizontal_pl_commit(client: TestClient, content) -> None:
     assert r.status_code == 200, r.text
     assert {s["fiscal_year"]: s["status"] for s in r.json()["statements"]} == \
         {2025: "final", 2024: "draft", 2023: "draft"}
+
+
+# ── 8-B2 정산표 결합 (8-C STEP 0 0.3 실측 고정) ──────────────────
+
+PL_CATEGORY_MAP = {"매출액": "영업수익", "판매비와관리비": "영업비용", "금융이익": "금융수익", "금융원가": "금융비용",
+                   "기타영업외이익": "기타영업외수익", "기타영업외비용": "기타영업외비용", "법인세비용": "법인세비용"}
+
+
+def _up(client, h, content, path="/api/fs/upload", **data):
+    return client.post(path, headers=h, data={k: str(v) for k, v in data.items()},
+                       files={"file": ("sample.xlsx", content, XLSX)})
+
+
+def _reopen_2025(client, h, sts) -> None:
+    sid = next(s["statement_id"] for s in sts if s["fiscal_year"] == 2025)
+    assert client.post(f"/api/fs/statements/{sid}/reopen", headers=h, json={"reason": "정산표 결합"}).status_code == 200
+
+
+@pytest.mark.parametrize("stype,disc,hz,extra", [
+    ("BS", "BS공시", "BS정산표", {}),
+    ("PL", "PL공시", "PL정산표", {"category_map": json.dumps(PL_CATEGORY_MAP)}),   # 분류명 → 공시 행(추정 금지)
+])
+def test_attach_worksheet_to_disclosure(client: TestClient, content, stype, disc, hz, extra) -> None:
+    """공시 행 = COA 합이 두 연도 모두 맞아 결합 후에도 8-A 관문을 통과한다(BS 58/58·PL 14/14)."""
+    h, _ = _tenant(client)
+    up = _up(client, h, content, mode="commit", sheet=disc, include_prior="true")
+    assert up.status_code == 200, up.text
+    sts = up.json()["statements"]
+
+    blocked = _up(client, h, content, "/api/fs/upload/attach", mode="commit", sheet=hz, unit=1, **extra)
+    assert blocked.status_code == 409                                   # 2025 는 final — 재오픈 후
+    pre = _up(client, h, content, "/api/fs/upload/attach", mode="preview", sheet=hz, unit=1, **extra).json()
+    assert pre["errors"] == [], pre["errors"]
+    assert pre["fiscal_years"] == [2025, 2024] and all(s["ok"] for s in pre["statements"]), pre["statements"]
+
+    _reopen_2025(client, h, sts)
+    com = _up(client, h, content, "/api/fs/upload/attach", mode="commit", sheet=hz, unit=1, **extra)
+    assert com.status_code == 200, com.text
+    got = {s["fiscal_year"]: (s["ok"], s["status"]) for s in com.json()["statements"]}
+    assert got == {2025: (True, "final"), 2024: (True, "draft")}
+    names = {r["name"] for r in com.json()["rows"]}
+    if stype == "BS":
+        assert {"감가상각누계액_건물", "감가상각누계액_차량운반구", "감가상각누계액_비품"} <= names

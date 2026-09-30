@@ -552,3 +552,144 @@ def test_tenant_isolation_of_upload(client: TestClient) -> None:
     b = _post(client, h2, bs_wb(), mode="preview").json()
     assert b["master_empty"] and not b["conflicts"]                             # 다른 테넌트 마스터는 안 보인다
     assert _count(t2, FsAccount) == 0 and _count(t1, FsAccount) == 13
+
+
+# ── 8-B2 정산표 결합 ──────────────────────────────────────────
+# 합성 공시 BS(BS_ROWS) 의 잎 공시 행과 금액이 맞는 합성 정산표. 매핑 열은 D.
+
+def worksheet_bs(*, years=(2024, 2025), over: dict | None = None, remap: dict | None = None) -> Workbook:
+    over, remap = over or {}, remap or {}
+    rows = [  # (라벨, 굵게, 매핑, 2024, 2025)
+        ("자산", True, None, None, None),
+        ("Ⅰ.유동자산", True, None, 250, 300),
+        ("현금", False, "현금및현금성자산", 100, 100),
+        ("받을어음", False, "매출채권", 60, 80),
+        ("외상매출금", False, "매출채권", 100, 130),
+        ("대손충당금", False, "매출채권", -10, -10),
+        ("재고자산", False, None, 0, 0),                        # 대응 없음·0 → 건너뜀
+        ("Ⅱ.비유동자산", True, None, 450, 500),
+        ("건물", False, "유형자산", 300, 300),
+        ("감가상각누계액", False, "유형자산", -50, -60),
+        ("비품", False, "유형자산", 220, 290),
+        ("감가상각누계액", False, "유형자산", -20, -30),        # 같은 공시 행 아래 반복 이름
+        ("자산총계", True, None, 700, 800),
+        ("부채", True, None, None, None),
+        ("Ⅰ.유동부채", True, None, 100, 120),
+        ("외상매입금", False, "매입채무", 100, 120),
+        ("부채총계", True, None, 100, 120),
+        ("자본", True, None, None, None),
+        ("Ⅰ.자본금", True, None, 500, 500),
+        ("보통주자본금", False, "I. 자본금", 500, 500),          # 접두 번호가 붙은 매핑 값
+        ("Ⅱ.이익잉여금", True, None, 100, 180),
+        ("미처분이익잉여금", False, "이익잉여금", 100, 180),
+        ("자본총계", True, None, 600, 680),
+        ("부채및자본총계", True, None, 700, 800),
+    ]
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "BS정산표"
+    ws.append(["과목", *years])
+    for label, bold, mapto, a, b in rows:
+        vals = {2024: a, 2025: b, 2026: b}
+        if label in over:
+            vals.update(over[label])
+        ws.append([label, *[vals[y] for y in years], remap.get(label, mapto)])
+        ws.cell(ws.max_row, 1).font = Font(bold=bold)
+    return wb
+
+
+def _attach(client, h, wb, **form):
+    buf = BytesIO()
+    wb.save(buf)
+    return client.post("/api/fs/upload/attach", headers=h, data={k: str(v) for k, v in form.items()},
+                       files={"file": ("ws.xlsx", buf.getvalue(), XLSX)})
+
+
+def _disclosure_2y(client, h) -> dict[int, str]:
+    r = _post(client, h, bs_wb(), mode="commit", include_prior="true")
+    assert r.status_code == 200, r.text
+    return {s["fiscal_year"]: s["statement_id"] for s in r.json()["statements"]}
+
+
+def _reopen(client, h, sid) -> None:
+    assert client.post(f"/api/fs/statements/{sid}/reopen", headers=h, json={"reason": "결합"}).status_code == 200
+
+
+def test_attach_worksheet_makes_disclosure_lines_subtotals(client: TestClient) -> None:
+    h, tid = _tenant(client)
+    sids = _disclosure_2y(client, h)
+    before = _count(tid, FsAccount)
+
+    assert _attach(client, h, worksheet_bs(), mode="commit", unit=1).status_code == 409   # 2025 final
+    pre = _attach(client, h, worksheet_bs(), mode="preview", unit=1).json()
+    assert pre["errors"] == [] and pre["bridge_column"] == "D" and pre["fiscal_years"] == [2025, 2024]
+    assert [s["ok"] for s in pre["statements"]] == [True, True]
+    assert any("재고자산" in w for w in pre["warnings"])
+    assert _count(tid, FsAccount) == before                                               # preview 저장 안 함
+
+    _reopen(client, h, sids[2025])
+    com = _attach(client, h, worksheet_bs(), mode="commit", unit=1)
+    assert com.status_code == 200, com.text
+    body = com.json()
+    assert {s["fiscal_year"]: s["status"] for s in body["statements"]} == {2025: "final", 2024: "draft"}
+    names = {r["name"] for r in body["rows"] if not r["skip_reason"]}
+    assert {"감가상각누계액_건물", "감가상각누계액_비품", "보통주자본금"} <= names
+    assert _count(tid, FsAccount) == before + 11
+
+    d = client.get(f"/api/fs/statements/{sids[2024]}", headers=h).json()
+    ar = next(n for n in d["tree"][0]["children"][0]["children"] if n["name"] == "매출채권")
+    assert ar["is_subtotal"] and {c["name"] for c in ar["children"]} == {"받을어음", "외상매출금", "대손충당금"}
+    bad_debt = next(c for c in ar["children"] if c["name"] == "대손충당금")
+    assert bad_debt["raw_meta"]["attach"] and bad_debt["raw_meta"]["source_path"] == ["자산총계", "유동자산"]
+
+    # 다시 붙이면 기존 COA 계정을 쓴다(계정 수 불변)
+    _reopen(client, h, sids[2025])
+    again = _attach(client, h, worksheet_bs(), mode="commit", unit=1)
+    assert again.status_code == 200, again.text
+    assert all(r["existing_account_id"] for r in again.json()["rows"] if not r["skip_reason"])
+    assert _count(tid, FsAccount) == before + 11
+
+
+def test_attach_mismatch_keeps_draft(client: TestClient) -> None:
+    h, _ = _tenant(client)
+    sids = _disclosure_2y(client, h)
+    _reopen(client, h, sids[2025])
+    r = _attach(client, h, worksheet_bs(over={"외상매출금": {2025: 131}}), mode="commit", unit=1)
+    assert r.status_code == 200, r.text
+    st = {s["fiscal_year"]: s for s in r.json()["statements"]}
+    assert not st[2025]["ok"] and st[2025]["status"] == "draft"
+    assert {(e["rule"], e["account_name"]) for e in st[2025]["errors"]} >= {("subtotal", "매출채권")}
+    assert st[2024]["ok"]
+
+
+def test_attach_unmatched_bridge_needs_category_map(client: TestClient) -> None:
+    h, _ = _tenant(client)
+    sids = _disclosure_2y(client, h)
+    _reopen(client, h, sids[2025])
+    wb = worksheet_bs(remap={"외상매입금": "매입채무및기타채무"})
+    r = _attach(client, h, wb, mode="commit", unit=1)
+    assert r.status_code == 422 and _body(r)["unmatched"] == ["매입채무및기타채무"]
+    ok = _attach(client, h, wb, mode="commit", unit=1,
+                 category_map=json.dumps({"매입채무및기타채무": "매입채무"}))
+    assert ok.status_code == 200, ok.text
+
+
+def test_attach_guards(client: TestClient) -> None:
+    h, _ = _tenant(client)
+    r = _attach(client, h, worksheet_bs(), mode="commit", unit=1)                  # 공시 재무제표 없음
+    assert r.status_code == 422 and any("공시양식을 먼저" in e for e in _body(r)["errors"])
+
+    sids = _disclosure_2y(client, h)
+    _reopen(client, h, sids[2025])
+    for form, word in (({}, "단위"), ({"unit": 1000}, "단위")):
+        r = _attach(client, h, worksheet_bs(), mode="commit", **form)
+        assert r.status_code == 422 and any(word in e for e in _body(r)["errors"])
+    r = _attach(client, h, worksheet_bs(remap={"현금": "유동자산"}), mode="commit", unit=1)
+    assert r.status_code == 422 and any("소계라" in e for e in _body(r)["errors"])
+    # 2024 공시 재무제표에도 쓰이는 공시 행 — 정산표에 2024 열이 없으면 막는다(소계가 되면 2024 가 깨진다).
+    # 연도 열이 하나면 가로 연도형이 아니므로 2025·2026 으로 만든다(2026 은 공시 재무제표가 없어 건너뜀)
+    r = _attach(client, h, worksheet_bs(years=(2025, 2026)), mode="commit", unit=1)
+    assert r.status_code == 422 and any("[2024]" in e for e in _body(r)["errors"])
+
+    viewer, _ = _tenant(client, roles=("external_auditor",))
+    assert _attach(client, viewer, worksheet_bs(), mode="preview", unit=1).status_code == 403
