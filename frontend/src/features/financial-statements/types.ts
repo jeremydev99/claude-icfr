@@ -120,3 +120,97 @@ export interface SuspenseItem {
 }
 
 export type SuspenseAction = 'fix_subtotal' | 'reclass' | 'accept'
+
+// ── 8-D2 업로드 (백엔드 UploadResponse·AttachResponse) ─────────────
+
+export interface UploadSheetCandidate {
+  sheet: string
+  kind: 'disclosure_form' | 'horizontal_years'
+  statement_type: string | null
+}
+
+export interface UploadStatementResult {
+  fiscal_year: number
+  statement_id: string | null
+  status: string
+  finalize_candidate: boolean
+  finalized: boolean
+  ok: boolean
+  errors: { rule: string; raw_row_no: number | null; account_name: string | null; diff: Amount | null }[]
+  skipped: unknown[]
+  checks_count: number
+  suspense: { parent_account_id: string; parent_name: string; amount: Amount }[]
+}
+
+export interface UploadConflict {
+  fiscal_year: number
+  statement_id: string
+  status: string
+}
+
+export interface UploadRow {
+  row_no: number
+  label: string
+  kind: string
+  excluded: boolean
+  match: string | null
+}
+
+export interface UploadResponse {
+  mode: string
+  committed: boolean
+  can_commit: boolean
+  sheet: string | null
+  kind: string | null
+  statement_type: string | null
+  basis: string | null
+  unit: number | null
+  unit_label: string | null
+  periods: number[]
+  fiscal_years: number[]
+  sheets: UploadSheetCandidate[]
+  errors: string[]
+  warnings: string[]
+  master_empty: boolean
+  mapping_required: boolean
+  suggested_mapping: Record<string, string>
+  conflicts: UploadConflict[]
+  rows: UploadRow[]
+  subtotal_diffs: { row_no: number; label: string; fiscal_year: number; diff: Amount }[]
+  statements: UploadStatementResult[]
+}
+
+export interface AttachRowOut {
+  row_no: number
+  name: string
+  target_name: string | null
+  existing_account_id: string | null
+  skip_reason: string | null
+}
+
+export interface AttachResponse {
+  mode: string
+  committed: boolean
+  can_commit: boolean
+  sheet: string | null
+  statement_type: string | null
+  basis: string | null
+  unit: number | null
+  bridge_column: string | null
+  bridge_candidates: { column: string; values: number; matched: number }[]
+  periods: number[]
+  fiscal_years: number[]
+  errors: string[]
+  warnings: string[]
+  conflicts: UploadConflict[]
+  unmatched: string[]
+  rows: AttachRowOut[]
+  statements: UploadStatementResult[]
+}
+
+export interface AccountNode {
+  id: string
+  name: string
+  is_subtotal: boolean
+  children: AccountNode[]
+}

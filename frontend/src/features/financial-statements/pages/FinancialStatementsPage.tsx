@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, Lock } from 'lucide-react'
+import { Loader2, Lock, Upload } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,6 +21,7 @@ import { UNIT_LABEL, allExpanded, errorsByAccount, formatAmount, initialExpanded
 import StatementTree from '../components/StatementTree'
 import ValidationPanel from '../components/ValidationPanel'
 import SuspensePanel from '../components/SuspensePanel'
+import UploadDialog from '../components/UploadDialog'
 import type { StatementDetail, ValidationResult } from '../types'
 
 /**
@@ -37,6 +38,16 @@ export default function FinancialStatementsPage() {
   const [year, setYear] = useState<number | null>(null)
   const [basis, setBasis] = useState('separate')
   const [stype, setStype] = useState('BS')
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const uploadDialog = (
+    <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} onDone={(t, y) => {
+      if (t) setStype(t)
+      if (y) setYear(y)
+    }} />
+  )
+  const uploadButton = isManager && (
+    <Button size="sm" onClick={() => setUploadOpen(true)}><Upload className="mr-1 h-4 w-4" />엑셀 업로드</Button>
+  )
 
   const years = useMemo(() => [...new Set((list ?? []).map((s) => s.fiscal_year))].sort((a, b) => b - a), [list])
   const bases = useMemo(() => new Set((list ?? []).filter((s) => s.fiscal_year === year).map((s) => s.basis)), [list, year])
@@ -57,8 +68,9 @@ export default function FinancialStatementsPage() {
       <Card className="m-6">
         <CardHeader><CardTitle>재무제표</CardTitle></CardHeader>
         <CardContent className="text-sm text-muted-foreground">
-          아직 올린 재무제표가 없습니다. 공시양식(재무상태표·손익계산서·현금흐름표) 엑셀을 업로드하면 여기에 나타납니다.
-          {' '}업로드 화면은 다음 단계(8-D2)에서 제공됩니다 — 지금은 API(<code>POST /api/fs/upload</code>)로 올릴 수 있습니다.
+          <p>아직 올린 재무제표가 없습니다. 공시양식(재무상태표·손익계산서·현금흐름표) 엑셀을 올리고, 정산표를 결합하세요.</p>
+          {isManager ? <div className="mt-3">{uploadButton}</div> : <p className="mt-2">업로드는 내부회계관리자가 합니다.</p>}
+          {uploadDialog}
         </CardContent>
       </Card>
     )
@@ -92,7 +104,9 @@ export default function FinancialStatementsPage() {
         {!isManager && (
           <Badge variant="outline" className="gap-1"><Lock className="h-3 w-3" /> 읽기 전용 · 내부회계관리자만 확정</Badge>
         )}
+        <span className="ml-auto">{uploadButton}</span>
       </div>
+      {uploadDialog}
 
       {!current && <p className="text-sm text-muted-foreground">이 연도·구분에 {typeLabel(stype)}가 없습니다.</p>}
       {current && loadingDetail && <Loader2 className="h-5 w-5 animate-spin" />}

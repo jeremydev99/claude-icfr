@@ -110,7 +110,7 @@ function SuspenseRow({ item, statementId, tree, canEdit, onSelect }: {
               소계를 하위 합으로 정정
             </Button>
             <select value={target} onChange={(e) => setTarget(e.target.value)}
-              className="h-8 rounded border bg-background px-2 text-xs" disabled={!targets.length}>
+              className="h-9 rounded border bg-background px-2 py-1 text-xs leading-normal" disabled={!targets.length}>
               <option value="">옮길 계정 선택…</option>
               {targets.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
