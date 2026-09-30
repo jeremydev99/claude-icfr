@@ -30,7 +30,7 @@ from app.models.financial_statement import (
 from app.services import financial_statement as svc
 from app.services import fs_suspense
 from app.services.fs_upload.cells import norm
-from app.services.fs_upload.parsed import KIND_DISCLOSURE, ParsedRow, ParsedSheet
+from app.services.fs_upload.parsed import KIND_DISCLOSURE, KIND_HORIZONTAL, ParsedRow, ParsedSheet
 from app.services.fs_upload.structure import subtotal_diffs
 
 NEW = "new"
@@ -163,9 +163,13 @@ def plan(db: Session, sheet: ParsedSheet, opts: UploadOptions) -> Plan:
     else:
         paths = _account_paths(existing)
         for r in rows:
-            # 소계 여부가 같은 계정만 제안한다 — 정산표 결합(8-B2)으로 소계가 된 공시 행에 정산표 잎을 대응시키면
-            # 이 재무제표에서 하위 0개 소계가 된다(검증 subtotal_no_children, 2026-09-30 로컬 화면 검증 중 발견)
-            cands = [a for a in paths.get(_path(r), []) if a.is_subtotal == r.is_subtotal]
+            # 정산표(가로 연도형) 단독 업로드는 소계 여부가 같은 계정만 제안한다 — 결합(8-B2)으로 소계가 된 공시 행에
+            # 정산표 잎을 대응시키면 하위 0개 소계가 된다(2026-09-30 로컬 화면 검증 중 발견).
+            # **공시양식은 제외** — 다음 연도 공시를 올릴 때는 결합으로 소계가 된 기존 공시 행을 그대로 써야 한다
+            # (그 뒤 같은 연도 정산표를 결합한다). 필터하면 중복 계정이 생긴다.
+            cands = paths.get(_path(r), [])
+            if sheet.kind == KIND_HORIZONTAL:
+                cands = [a for a in cands if a.is_subtotal == r.is_subtotal]
             p.suggested[_key(r)] = str(cands[0].id) if len(cands) == 1 else NEW
     if opts.mapping is None:
         p.mapping = dict(p.suggested)

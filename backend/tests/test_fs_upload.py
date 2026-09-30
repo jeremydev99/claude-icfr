@@ -725,3 +725,24 @@ def test_suggestion_skips_account_whose_subtotal_flag_differs(client: TestClient
     assert pre["suggested_mapping"][str(row["row_no"])] == "new"
     assert cash_id not in pre["suggested_mapping"].values()
     assert pre["suggested_mapping"][str(next(r for r in pre["rows"] if r["label"] == "토지")["row_no"])] != "new"
+
+
+def test_disclosure_reupload_reuses_lines_that_became_subtotals(client: TestClient) -> None:
+    """다음 연도 공시는 결합으로 소계가 된 기존 공시 행을 그대로 쓴다 — 중복 계정을 만들지 않는다."""
+    h, tid = _tenant(client)
+    assert _post(client, h, bs_wb(), mode="commit").status_code == 200           # 2025 만
+    db = TestingSessionLocal()
+    tok = set_active_tenant(tid)
+    try:
+        ar = db.scalars(select(FsAccount).where(FsAccount.name == "매출채권")).one()
+        svc_fs.create_account(db, statement_type="BS", name="외상매출금", section="asset", parent_id=ar.id)
+        ar.is_subtotal = True               # 정산표 결합 뒤처럼
+        db.commit()
+        ar_id = str(ar.id)
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+    pre = _post(client, h, bs_wb(), mode="preview", fiscal_years="2024").json()
+    row = next(r for r in pre["rows"] if r["label"] == "매출채권")
+    assert pre["suggested_mapping"][str(row["row_no"])] == ar_id
+    assert "new" not in pre["suggested_mapping"].values()
