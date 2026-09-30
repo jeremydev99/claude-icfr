@@ -445,3 +445,17 @@ def test_meta(client: TestClient, viewer: dict) -> None:
     assert [o["value"] for o in m["statement_types"]] == ["BS", "PL", "CF", "SCE"]
     assert "liability_equity" in m["sections_by_statement"]["BS"]
     assert client.get("/api/fs/accounts", params={"statement_type": "NOTE"}, headers=viewer).status_code == 422
+
+
+def test_update_tolerance(client: TestClient, mgr: dict, viewer: dict) -> None:
+    """허용 오차 설정(8-D) — draft 에서만, 음수 거부, icfr_manager 전용."""
+    with session() as db:
+        st, _ = _bs(db, 2122, {**BALANCED, "A": 301})           # 자산총계 1 차이
+        sid = st.id
+    r = client.patch(f"/api/fs/statements/{sid}", headers=mgr, json={"tolerance": "1"})
+    assert r.status_code == 200, r.text
+    assert r.json()["validation"]["ok"] and D(r.json()["tolerance"]) == D(1)
+    assert client.patch(f"/api/fs/statements/{sid}", headers=mgr, json={"tolerance": "-1"}).status_code == 422
+    assert client.patch(f"/api/fs/statements/{sid}", headers=viewer, json={"tolerance": "0"}).status_code == 403
+    assert client.post(f"/api/fs/statements/{sid}/finalize", headers=mgr, json={}).status_code == 200
+    assert client.patch(f"/api/fs/statements/{sid}", headers=mgr, json={"tolerance": "0"}).status_code == 409

@@ -42,6 +42,7 @@ from app.schemas.financial_statement import (
     ReopenRequest,
     StatementDetail,
     StatementListItem,
+    StatementUpdate,
     StatusEventRead,
     SuspenseItem,
     SuspenseResolveRequest,
@@ -562,6 +563,21 @@ def resolve_suspense(statement_id: UUID, amount_id: UUID, body: SuspenseResolveR
         raise HTTPException(status_code=409, detail=str(e)) from None
     except svc.FsError as e:
         db.rollback()
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    db.commit()
+    return _detail(db, s)
+
+
+@router.patch("/statements/{statement_id}", response_model=StatementDetail)
+def update_statement(statement_id: UUID, body: StatementUpdate, user: User = Depends(require_icfr_manager),
+                     db: Session = Depends(get_db)) -> StatementDetail:
+    """허용 오차 설정(8-D) — 백만원 공시의 반올림 ±1 등. draft 에서만(확정이면 409). 권한 `icfr_manager`."""
+    s = _get(db, statement_id)
+    try:
+        svc.set_tolerance(db, s, body.tolerance)
+    except svc.FsConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    except svc.FsError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
     db.commit()
     return _detail(db, s)

@@ -342,3 +342,8 @@ class SuspenseResolveRequest(BaseModel):
 
 # SuspenseAbsorbed 가 UploadStatementResult 보다 뒤에 정의돼 전방 참조를 여기서 푼다
 UploadStatementResult.model_rebuild()
+
+
+class StatementUpdate(BaseModel):
+    """재무제표 헤더 수정 — 지금은 허용 오차만(8-D). 확정 상태면 409."""
+    tolerance: Decimal = Field(ge=0)
