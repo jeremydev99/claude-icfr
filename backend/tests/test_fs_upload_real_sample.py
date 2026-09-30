@@ -120,3 +120,46 @@ def test_attach_worksheet_to_disclosure(client: TestClient, content, stype, disc
     names = {r["name"] for r in com.json()["rows"]}
     if stype == "BS":
         assert {"감가상각누계액_건물", "감가상각누계액_차량운반구", "감가상각누계액_비품"} <= names
+
+
+# ── 8-C 템플릿 제안 (실 데이터 마스터) ─────────────────────────
+
+@pytest.fixture(scope="module")
+def real_master(client: TestClient, content):
+    """공시 BS·PL·CF(2025·2024) + 정산표 BS·PL 결합 — 8-B2 까지 마친 실 데이터 마스터."""
+    from seeds.seed_scoping_template import load_template
+    from tests.conftest import TestingSessionLocal
+    db = TestingSessionLocal()
+    try:
+        _, _, created = load_template(db)
+        if created:
+            db.commit()
+    finally:
+        db.close()
+    h, _ = _tenant(client)
+    for disc, hz, extra in (("BS공시", "BS정산표", {}), ("PL공시", "PL정산표", {"category_map": json.dumps(PL_CATEGORY_MAP)}),
+                            ("CF공시", None, {})):
+        up = _up(client, h, content, mode="commit", sheet=disc, include_prior="true", finalize="false")
+        assert up.status_code == 200, up.text
+        if hz:
+            r = _up(client, h, content, "/api/fs/upload/attach", mode="commit", sheet=hz, unit=1, **extra)
+            assert r.status_code == 200, r.text
+    return h
+
+
+def _suggest_summary(client, h, stype) -> dict:
+    m = client.get("/api/fs/template-matches", headers=h, params={"statement_type": stype}).json()
+    used = {r["suggestion"]["template_account_id"] for r in m["accounts"] if r["suggestion"]}
+    return {"accounts": len(m["accounts"]), "templates": len(m["template_accounts"]),
+            "exact": sum(1 for r in m["accounts"] if (r["suggestion"] or {}).get("basis") == "exact"),
+            "normalized": sum(1 for r in m["accounts"] if (r["suggestion"] or {}).get("basis") == "normalized"),
+            "templates_covered": len(used),
+            "templates_left": sorted(t["name"] for t in m["template_accounts"] if t["id"] not in used)}
+
+
+@pytest.mark.parametrize("stype", ["BS", "PL", "CF"])
+def test_template_suggestions_on_real_master(client: TestClient, real_master, stype) -> None:
+    """2026-09-30 실측 고정 — 남는 것은 회사 쪽 반복 이름(감가상각누계액·리스부채·정부보조금)이나 회사에
+    없는 계정(선수수익·대여금 등)으로 수동 대상이다."""
+    s = _suggest_summary(client, real_master, stype)
+    assert s["templates_covered"] == {"BS": 48, "PL": 45, "CF": 35}[stype], s
