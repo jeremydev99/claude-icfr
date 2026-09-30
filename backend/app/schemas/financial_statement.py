@@ -178,6 +178,7 @@ class UploadStatementResult(BaseModel):
     errors: list[UploadValidationItem]
     skipped: list[UploadValidationItem]
     checks_count: int
+    suspense: list["SuspenseAbsorbed"] = []   # 이번에 임시계정으로 받은 소계 불일치
 
 
 class UploadResponse(BaseModel):
@@ -310,3 +311,34 @@ class TemplateLinkRequest(BaseModel):
 class TemplateLinkResponse(BaseModel):
     links: list[TemplateLinkOut]
     warnings: list[str]
+
+
+# ── 임시계정(원본 차이) ──────────────────────────────────────
+
+class SuspenseAbsorbed(BaseModel):
+    parent_account_id: UUID
+    parent_name: str
+    amount: Decimal
+
+
+class SuspenseItem(BaseModel):
+    amount_id: UUID
+    account_id: UUID
+    parent_account_id: UUID | None
+    parent_name: str | None
+    amount: Decimal | None
+    source_amount: Decimal | None   # 흡수 당시 차액
+    expected: str | None            # 흡수 당시 하위 합
+    actual: str | None              # 흡수 당시 소계 금액(원본)
+    resolved: dict | None           # {action, reason, by, at, amount, target_account_id?}
+    is_deleted: bool                # fix_subtotal·reclass 로 해소되면 True(이력으로 남는다)
+
+
+class SuspenseResolveRequest(BaseModel):
+    action: str                       # fix_subtotal / reclass / accept
+    reason: str = Field(max_length=2000)
+    target_account_id: UUID | None = None   # reclass 에서만 — 같은 소계 아래 형제 계정
+
+
+# SuspenseAbsorbed 가 UploadStatementResult 보다 뒤에 정의돼 전방 참조를 여기서 푼다
+UploadStatementResult.model_rebuild()

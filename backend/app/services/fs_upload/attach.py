@@ -33,6 +33,7 @@ from app.models.financial_statement import (
     FsStatement,
 )
 from app.services import financial_statement as svc
+from app.services import fs_suspense
 from app.services.fs_upload.cells import norm, split_prefix
 from app.services.fs_upload.parsed import KIND_HORIZONTAL, ROW_LEAF, ParsedRow, ParsedSheet
 
@@ -305,7 +306,8 @@ def _raw_meta(ar: AttachRow, column: str, year: int) -> dict:
     return meta
 
 
-def apply(db: Session, sheet: ParsedSheet, p: AttachPlan, actor_id: UUID, *, finalize: bool) -> dict:
+def apply(db: Session, sheet: ParsedSheet, p: AttachPlan, actor_id: UUID, *, finalize: bool,
+          suspense: bool = True) -> dict:
     """공시 계정을 소계로 바꾸고 COA 계정·금액을 넣는다. 충돌(final)은 호출 전에 409 로 막는다."""
     stype = sheet.statement_type
     for t in p.targets():
@@ -331,10 +333,14 @@ def apply(db: Session, sheet: ParsedSheet, p: AttachPlan, actor_id: UUID, *, fin
                            raw_indent=ar.row.indent, raw_value=ar.row.raw_values.get(y),
                            raw_meta=_raw_meta(ar, p.bridge_column, y))
         result = svc.validate(db, st)
+        # 소계 불일치 → 임시계정(원본 차이)으로 받는다. 미해결 임시계정은 확정을 막는다(관리자 검토 후 해소)
+        absorbed = fs_suspense.absorb(db, st, result, source=f"attach:{sheet.sheet_name}") if suspense else []
+        if absorbed:
+            result = svc.validate(db, st)
         finalized = False
         if finalize and y == latest and result["ok"]:
             svc.finalize(db, st, actor_id, FINALIZE_REASON)
             finalized = True
         results.append({"fiscal_year": y, "statement": st, "validation": result, "finalized": finalized,
-                        "finalize_candidate": y == latest})
+                        "finalize_candidate": y == latest, "suspense": absorbed})
     return {"accounts": acc, "statements": results, "structure_warnings": []}

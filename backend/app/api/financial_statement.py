@@ -43,6 +43,8 @@ from app.schemas.financial_statement import (
     StatementDetail,
     StatementListItem,
     StatusEventRead,
+    SuspenseItem,
+    SuspenseResolveRequest,
     TemplateLinkOut,
     TemplateLinkRequest,
     TemplateLinkResponse,
@@ -51,8 +53,8 @@ from app.schemas.financial_statement import (
     ValidationResult,
 )
 from app.services import financial_statement as svc
+from app.services import fs_suspense, fs_upload
 from app.services import fs_template_match as match_svc
-from app.services import fs_upload
 from app.services.fs_upload import attach, importer
 from app.services.fs_upload.parsed import KIND_DISCLOSURE, KIND_HORIZONTAL, ParsedRow, ParsedSheet
 
@@ -244,7 +246,8 @@ def _statement_results(applied: dict, *, committed: bool, finalize: bool) -> lis
                     "status": st.status if committed else "draft",
                     "finalize_candidate": res["finalize_candidate"] and finalize,
                     "finalized": res["finalized"], "ok": v["ok"], "errors": items(v["errors"]),
-                    "skipped": items(v["skipped"]), "checks_count": len(v["checks"])})
+                    "skipped": items(v["skipped"]), "checks_count": len(v["checks"]),
+                    "suspense": res.get("suspense", [])})
     return out
 
 
@@ -276,6 +279,7 @@ def upload(file: UploadFile = File(...), mode: str = Form(default="preview"),
            unit: int | None = Form(default=None), fiscal_years: str | None = Form(default=None),
            include_prior: bool = Form(default=False), tolerance: str = Form(default="0"),
            finalize: bool = Form(default=True), mapping: str | None = Form(default=None),
+           suspense: bool = Form(default=True),
            user: User = Depends(require_icfr_manager), db: Session = Depends(get_db)) -> UploadResponse:
     """재무제표 엑셀 업로드 (ADR-0037 §3). 권한 `icfr_manager`.
 
@@ -308,7 +312,7 @@ def upload(file: UploadFile = File(...), mode: str = Form(default="preview"),
     candidates = fs_upload.scan(wb)
     opts = importer.UploadOptions(basis=basis, unit=unit, fiscal_years=years, include_prior=include_prior,
                                   tolerance=tol, finalize=finalize, mapping=parsed_mapping,
-                                  filename=file.filename)
+                                  filename=file.filename, suspense=suspense)
     resp: dict = {"mode": mode, "committed": False, "can_commit": False, "filename": file.filename,
                   "sheet": None, "kind": None, "statement_type": statement_type, "basis": None, "unit": None,
                   "unit_label": None, "periods": [], "fiscal_years": [], "sheets": candidates,
@@ -385,6 +389,7 @@ def upload_attach(file: UploadFile = File(...), mode: str = Form(default="previe
                   basis: str | None = Form(default=None), unit: int | None = Form(default=None),
                   bridge_column: str | None = Form(default=None), category_map: str | None = Form(default=None),
                   fiscal_years: str | None = Form(default=None), finalize: bool = Form(default=True),
+                  suspense: bool = Form(default=True),
                   user: User = Depends(require_icfr_manager), db: Session = Depends(get_db)) -> AttachResponse:
     """정산표(가로 연도형)를 이미 올린 공시 재무제표에 붙인다 (8-B2, ADR-0037 §3.2). 권한 `icfr_manager`.
 
@@ -461,7 +466,7 @@ def upload_attach(file: UploadFile = File(...), mode: str = Form(default="previe
                 for st in p.statements.values():
                     st.status = "draft"
                 db.flush()
-                applied = attach.apply(db, parsed, p, user.id, finalize=False)
+                applied = attach.apply(db, parsed, p, user.id, finalize=False, suspense=suspense)
                 resp["statements"] = _statement_results(applied, committed=False, finalize=opts.finalize)
             except (svc.FsError, svc.FsConflictError) as e:
                 resp["errors"] = p.errors + [str(e)]
@@ -475,7 +480,7 @@ def upload_attach(file: UploadFile = File(...), mode: str = Form(default="previe
     if p.conflicts:
         return done(409)
     try:
-        applied = attach.apply(db, parsed, p, user.id, finalize=opts.finalize)
+        applied = attach.apply(db, parsed, p, user.id, finalize=opts.finalize, suspense=suspense)
     except (svc.FsError, svc.FsConflictError) as e:
         db.rollback()
         resp["errors"] = p.errors + [str(e)]
@@ -530,3 +535,33 @@ def delete_template_link(link_id: UUID, user: User = Depends(require_icfr_manage
     except svc.FsNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from None
     db.commit()
+
+
+
+# ── 임시계정(원본 차이) 검토 ─────────────────────────────────
+
+@router.get("/statements/{statement_id}/suspense", response_model=list[SuspenseItem])
+def list_suspense(statement_id: UUID, user: CurrentUser, db: Session = Depends(get_db)) -> list[SuspenseItem]:
+    """임시계정 행 — 미해결·해소(이력) 모두. 조회 전원."""
+    return [SuspenseItem.model_validate(x) for x in fs_suspense.items(db, _get(db, statement_id))]
+
+
+@router.post("/statements/{statement_id}/suspense/{amount_id}/resolve", response_model=StatementDetail)
+def resolve_suspense(statement_id: UUID, amount_id: UUID, body: SuspenseResolveRequest,
+                     user: User = Depends(require_icfr_manager), db: Session = Depends(get_db)) -> StatementDetail:
+    """임시계정 해소(ADR-0037 §2.13) — `fix_subtotal`(소계를 하위 합으로 정정) / `reclass`(같은 소계 아래 형제
+    계정으로 차액 이동) / `accept`(사유와 함께 유지). 사유 필수, draft 에서만(확정이면 409). 권한 `icfr_manager`."""
+    s = _get(db, statement_id)
+    try:
+        fs_suspense.resolve(db, s, amount_id, body.action, body.reason, user.id, body.target_account_id)
+    except svc.FsNotFoundError as e:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    except svc.FsConflictError as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    except svc.FsError as e:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    db.commit()
+    return _detail(db, s)

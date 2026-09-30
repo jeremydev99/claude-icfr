@@ -28,6 +28,7 @@ from app.models.financial_statement import (
     FsStatement,
 )
 from app.services import financial_statement as svc
+from app.services import fs_suspense
 from app.services.fs_upload.cells import norm
 from app.services.fs_upload.parsed import KIND_DISCLOSURE, ParsedRow, ParsedSheet
 from app.services.fs_upload.structure import subtotal_diffs
@@ -46,6 +47,7 @@ class UploadOptions:
     finalize: bool = True
     mapping: dict[str, str] | None = None
     filename: str | None = None
+    suspense: bool = True       # 소계 불일치를 임시계정으로 받는다(마스터 지시 2026-09-30)
 
 
 @dataclass
@@ -256,12 +258,16 @@ def apply(db: Session, sheet: ParsedSheet, p: Plan, opts: UploadOptions, actor_i
             svc.set_amount(db, st, acc[_key(r)], amt, raw_row_no=r.row_no, raw_label=r.raw_label[:300],
                            raw_indent=r.indent, raw_value=r.raw_values.get(y), raw_meta=_raw_meta(r, y))
         result = svc.validate(db, st)
+        # 소계 불일치 → 임시계정(원본 차이)으로 받는다. 미해결 임시계정은 확정을 막는다(관리자 검토 후 해소)
+        absorbed = fs_suspense.absorb(db, st, result, source=f"upload:{sheet.sheet_name}") if opts.suspense else []
+        if absorbed:
+            result = svc.validate(db, st)
         finalized = False
         if finalize and y == latest and result["ok"]:
             svc.finalize(db, st, actor_id, FINALIZE_REASON)
             finalized = True
         results.append({"fiscal_year": y, "statement": st, "validation": result, "finalized": finalized,
-                        "finalize_candidate": y == latest})
+                        "finalize_candidate": y == latest, "suspense": absorbed})
     return {"accounts": acc, "statements": results, "structure_warnings": warns}
 
 

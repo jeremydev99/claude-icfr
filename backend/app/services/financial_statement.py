@@ -51,6 +51,16 @@ RULE_ACCOUNT_STATEMENT_MISMATCH = "account_statement_mismatch"
 RULE_ACCOUNT_NOT_VALID_FOR_YEAR = "account_not_valid_for_year"
 RULE_INVALID_SECTION = "invalid_section"
 RULE_EMPTY_STATEMENT = "empty_statement"
+RULE_SUSPENSE_UNRESOLVED = "suspense_unresolved"  # 원본 차이를 담은 임시계정이 아직 검토되지 않음 → 확정 거부
+
+
+def is_suspense(row: FsAmount) -> bool:
+    """임시계정(원본 차이) 금액 행 — `raw_meta.suspense` 표식으로만 판정한다(계정명 비교 없음)."""
+    return isinstance(row.raw_meta, dict) and bool(row.raw_meta.get("suspense"))
+
+
+def is_unresolved_suspense(row: FsAmount) -> bool:
+    return is_suspense(row) and not row.raw_meta.get("resolved") and bool(row.amount)
 
 
 class FsError(ValueError):
@@ -348,6 +358,9 @@ def validate(db: Session, statement: FsStatement) -> dict:
             errors.append(_item(RULE_ACCOUNT_NOT_VALID_FOR_YEAR, a))
         if a.section not in FS_SECTIONS_BY_STATEMENT.get(statement.statement_type, ()):
             errors.append(_item(RULE_INVALID_SECTION, a))
+        if is_unresolved_suspense(r):
+            # 합계는 맞지만 원본 차이를 임시계정에 넣어 둔 상태 — ICFR 관리자 검토 전에는 확정하지 않는다
+            errors.append(_item(RULE_SUSPENSE_UNRESOLVED, a, actual=r.amount))
 
     # 금액 행 계정 + 조상 (같은 종류 계정 전체를 한 번에 읽어 위로 걷는다)
     all_accounts = {a.id: a for a in db.scalars(select(FsAccount).where(
