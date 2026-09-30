@@ -22,6 +22,7 @@ import StatementTree from '../components/StatementTree'
 import ValidationPanel from '../components/ValidationPanel'
 import SuspensePanel from '../components/SuspensePanel'
 import UploadDialog from '../components/UploadDialog'
+import TemplateMatchPanel from '../components/TemplateMatchPanel'
 import type { StatementDetail, ValidationResult } from '../types'
 
 /**
@@ -39,6 +40,7 @@ export default function FinancialStatementsPage() {
   const [basis, setBasis] = useState('separate')
   const [stype, setStype] = useState('BS')
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [view, setView] = useState<'amounts' | 'template'>('amounts')
   const uploadDialog = (
     <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} onDone={(t, y) => {
       if (t) setStype(t)
@@ -108,9 +110,19 @@ export default function FinancialStatementsPage() {
       </div>
       {uploadDialog}
 
-      {!current && <p className="text-sm text-muted-foreground">이 연도·구분에 {typeLabel(stype)}가 없습니다.</p>}
-      {current && loadingDetail && <Loader2 className="h-5 w-5 animate-spin" />}
-      {detail && <StatementView detail={detail} isManager={isManager} />}
+      <div className="flex gap-1 border-b">
+        {([['amounts', '금액·검증'], ['template', '스코핑 템플릿 연결']] as const).map(([v, l]) => (
+          <button key={v} type="button" onClick={() => setView(v)}
+            className={view === v ? 'border-b-2 border-primary px-3 py-1.5 text-sm font-medium' : 'px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground'}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {view === 'template' && <TemplateMatchPanel statementType={stype} canEdit={isManager} />}
+
+      {view === 'amounts' && !current && <p className="text-sm text-muted-foreground">이 연도·구분에 {typeLabel(stype)}가 없습니다.</p>}
+      {view === 'amounts' && current && loadingDetail && <Loader2 className="h-5 w-5 animate-spin" />}
+      {view === 'amounts' && detail && <StatementView detail={detail} isManager={isManager} />}
     </div>
   )
 }

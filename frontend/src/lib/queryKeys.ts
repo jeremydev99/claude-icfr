@@ -78,6 +78,8 @@ export const queryKeys = {
       ['tenant', tenantSegment(tenantId), 'fs', 'detail', id] as const,
     suspense: (tenantId: TenantId, id?: string | null) =>
       ['tenant', tenantSegment(tenantId), 'fs', 'suspense', id] as const,
+    matches: (tenantId: TenantId, statementType: string) =>
+      ['tenant', tenantSegment(tenantId), 'fs', 'matches', statementType] as const,
   },
   euc: {
     all: (tenantId: TenantId) => ['tenant', tenantSegment(tenantId), 'euc'] as const,
