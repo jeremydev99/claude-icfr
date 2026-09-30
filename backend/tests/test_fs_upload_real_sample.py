@@ -9,6 +9,7 @@ STEP 0 실측(prompts/ICFR_backend_fs-8b_20260929.md 0.3)을 고정한다.
 """
 import json
 import os
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from app.services import fs_upload
 from app.services.fs_upload import structure
 from tests.test_fs_upload import XLSX, _tenant
 
+D = Decimal
 SAMPLE = os.environ.get("FS_SAMPLE_FILE")
 pytestmark = pytest.mark.skipif(not SAMPLE or not Path(SAMPLE).is_file(),
                                 reason="FS_SAMPLE_FILE 미지정 — 실 샘플 회귀는 로컬 전용")
@@ -163,3 +165,26 @@ def test_template_suggestions_on_real_master(client: TestClient, real_master, st
     없는 계정(선수수익·대여금 등)으로 수동 대상이다."""
     s = _suggest_summary(client, real_master, stype)
     assert s["templates_covered"] == {"BS": 48, "PL": 45, "CF": 35}[stype], s
+
+
+# ── 임시계정(원본 차이) — 실측 지배주주지분 수식 누락 ────────────────
+
+def test_real_equity_difference_goes_to_suspense_and_fix_resolves(client: TestClient, content) -> None:
+    """BS정산표 지배주주지분(자본조정·기타포괄 누락) 차이가 연도마다 임시계정으로 가고, 소계 정정으로 풀린다."""
+    h, _ = _tenant(client)
+    r = _up(client, h, content, mode="commit", sheet="BS정산표", unit=1)
+    assert r.status_code == 200, r.text
+    expected = {2025: D(244742730), 2024: D(235170378), 2023: D(226013853), 2022: D(253852819),
+                2021: D(253316099), 2020: D(241331027)}
+    for s in r.json()["statements"]:
+        got = {x["parent_name"]: D(x["amount"]) for x in s["suspense"]}
+        assert got == {"지배주주의소유주에게귀속되는지분": expected[s["fiscal_year"]],
+                       "자본총계": -expected[s["fiscal_year"]]}, (s["fiscal_year"], got)
+        assert s["status"] == "draft"
+    sid = next(s["statement_id"] for s in r.json()["statements"] if s["fiscal_year"] == 2025)
+    items = client.get(f"/api/fs/statements/{sid}/suspense", headers=h).json()
+    aid = next(x["amount_id"] for x in items if x["parent_name"] == "지배주주의소유주에게귀속되는지분")
+    fixed = client.post(f"/api/fs/statements/{sid}/suspense/{aid}/resolve", headers=h,
+                        json={"action": "fix_subtotal", "reason": "정산표 수식 누락(자본조정·기타포괄)"})
+    assert fixed.status_code == 200, fixed.text
+    assert fixed.json()["validation"]["ok"], fixed.json()["validation"]["errors"]

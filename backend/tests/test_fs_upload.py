@@ -438,7 +438,15 @@ def test_horizontal_latest_year_final_only_when_valid(client: TestClient) -> Non
     assert {s["fiscal_year"]: s["status"] for s in sts} == {2025: "draft", 2024: "draft", 2023: "draft"}
     latest = next(s for s in sts if s["fiscal_year"] == 2025)
     assert not latest["ok"] and latest["finalize_candidate"] and not latest["finalized"]
-    assert {e["rule"] for e in latest["errors"]} == {"subtotal"}
+    # 원본 소계 불일치는 임시계정(원본 차이)으로 받고, 미해결 임시계정이 확정을 막는다(마스터 지시 2026-09-30)
+    assert {e["rule"] for e in latest["errors"]} == {"suspense_unresolved"}
+    assert {(x["parent_name"], D(x["amount"])) for x in latest["suspense"]} == \
+        {("지배주주의소유주에게귀속되는지분", D(100)), ("자본총계", D(-100))}
+
+    h4, _ = _tenant(client)
+    off = _post(client, h4, horizontal_bs(stale_parent=True), mode="commit", unit=1, suspense="false").json()
+    latest = next(s for s in off["statements"] if s["fiscal_year"] == 2025)
+    assert {e["rule"] for e in latest["errors"]} == {"subtotal"} and latest["suspense"] == []
     assert all(e["raw_row_no"] for e in latest["errors"])
 
     h3, _ = _tenant(client)
@@ -658,7 +666,8 @@ def test_attach_mismatch_keeps_draft(client: TestClient) -> None:
     assert r.status_code == 200, r.text
     st = {s["fiscal_year"]: s for s in r.json()["statements"]}
     assert not st[2025]["ok"] and st[2025]["status"] == "draft"
-    assert {(e["rule"], e["account_name"]) for e in st[2025]["errors"]} >= {("subtotal", "매출채권")}
+    assert {(e["rule"], e["account_name"]) for e in st[2025]["errors"]} == {("suspense_unresolved", "임시계정(원본 차이)")}
+    assert [(x["parent_name"], D(x["amount"])) for x in st[2025]["suspense"]] == [("매출채권", D(-1))]
     assert st[2024]["ok"]
 
 
