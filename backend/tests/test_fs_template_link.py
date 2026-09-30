@@ -115,6 +115,8 @@ def test_suggestions_are_not_saved(client: TestClient) -> None:
     assert s["현금@잎"]["basis"] == "exact" and s["현금@공시"] == {}                  # 공시 행 ⊃ 같은 이름 잎
     assert _row(m, acc["매출채권및기타채권"])["depth"] == 0 and _row(m, acc["매출채권"])["depth"] == 1
     assert _row(m, acc["매출채권"])["parent_name"] == "매출채권및기타채권"
+    order = [r["account_id"] for r in m["accounts"]]
+    assert order.index(acc["매출채권및기타채권"]) < order.index(acc["매출채권"]) < order.index(acc["대손충당금"])
     assert all(r["link"] is None for r in m["accounts"])
     assert "linked" not in m["counts"] and m["counts"]["accounts"] == len(m["accounts"])
     assert _active_links(tid, acc["매출채권"]) == 0

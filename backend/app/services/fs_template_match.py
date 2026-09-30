@@ -136,7 +136,7 @@ def matches(db: Session, statement_type: str, code: str | None, version: int | N
         return d
 
     rows = []
-    for a in accounts:
+    for a in _tree_order(accounts):
         lk = links.get(a.id)
         s = sugg[a.id]
         rows.append({
@@ -162,6 +162,23 @@ def matches(db: Session, statement_type: str, code: str | None, version: int | N
                                "linked_count": linked_count.get(t.id, 0)} for t in tmpl],
         "counts": dict(counts),
     }
+
+
+def _tree_order(accounts: list[FsAccount]) -> list[FsAccount]:
+    """트리 순서(부모 → 자식, 형제는 sort_order). `sort_order` 는 원본 행 번호라 공시·정산표 행이 섞이면
+    평면 정렬로는 뒤섞인다 — 화면이 트리처럼 읽히게 깊이 우선으로 편다."""
+    ids = {a.id for a in accounts}
+    kids: dict[UUID | None, list[FsAccount]] = {}
+    for a in accounts:
+        kids.setdefault(a.parent_id if a.parent_id in ids else None, []).append(a)
+    out: list[FsAccount] = []
+
+    def walk(pid: UUID | None) -> None:
+        for a in sorted(kids.get(pid, []), key=lambda x: (x.sort_order, x.created_at)):
+            out.append(a)
+            walk(a.id)
+    walk(None)
+    return out
 
 
 def _link_payload(lk: FsTemplateLink, t: ScopingTemplateAccount | None) -> dict:
