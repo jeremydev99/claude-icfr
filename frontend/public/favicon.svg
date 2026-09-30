@@ -1,5 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="104" fill="#0f172a"/>
-  <text x="256" y="300" text-anchor="middle" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="150" font-weight="800" fill="#ffffff" letter-spacing="4">ICFR</text>
-  <rect x="150" y="345" width="212" height="18" rx="9" fill="#38bdf8"/>
+  <!-- 탭 크기(16~32px)에서 읽히도록 ICFR 을 2×2 로 크게 — I C / F R. 앱 설치 아이콘(public/icons)은 가로 배치 그대로 -->
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <g font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="232" font-weight="800" fill="#ffffff"
+     text-anchor="middle" dominant-baseline="central">
+    <text x="136" y="140">I</text>
+    <text x="376" y="140">C</text>
+    <text x="136" y="378">F</text>
+    <text x="376" y="378">R</text>
+  </g>
 </svg>
