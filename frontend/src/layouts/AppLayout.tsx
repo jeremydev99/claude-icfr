@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { ChevronDown, ChevronRight, KeyRound, Lock, LogOut, Menu } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, KeyRound, Lock, LogOut, Menu } from 'lucide-react'
 import { useAuthStore } from '@/features/auth/store'
 import { isIcfrManagerForUser } from '@/features/auth/permissions.pure'
 import { useLogout, useMe } from '@/features/auth/hooks/useAuth'
@@ -10,6 +10,8 @@ import ChangePasswordDialog from '@/features/auth/components/ChangePasswordDialo
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { navigation, type NavItem } from '@/config/navigation'
+
+const NAV_GROUPS_KEY = 'icfr.nav.expandedGroups'
 
 /** 메뉴 한 줄. 권한이 없으면 **숨기지 않고 잠근다** — 숨기면 "그런 기능이 있는지"조차 모른다. */
 function NavRow({ item, locked, onNavigate }: { item: NavItem; locked: boolean; onNavigate?: () => void }) {
@@ -68,12 +70,29 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const groupLabels = navigation
     .map((g) => g.groupLabel)
     .filter((label): label is string => label !== null)
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
-    Object.fromEntries(groupLabels.map((label) => [label, true]))
-  )
+  // 접힘 상태는 이 브라우저에 저장한다(새로고침해도 유지). 저장소를 못 쓰면 전부 펼친 상태로 시작한다
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
+    const all = Object.fromEntries(groupLabels.map((label) => [label, true]))
+    try {
+      const saved = JSON.parse(localStorage.getItem(NAV_GROUPS_KEY) ?? '{}') as Record<string, boolean>
+      return { ...all, ...saved }
+    } catch {
+      return all
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem(NAV_GROUPS_KEY, JSON.stringify(expandedGroups))
+    } catch {
+      /* 저장소를 못 쓰면(사생활 보호 모드 등) 이번 창에서만 유지 */
+    }
+  }, [expandedGroups])
   const toggleGroup = (label: string) => {
     setExpandedGroups((prev) => ({ ...prev, [label]: !prev[label] }))
   }
+  const setAllGroups = (open: boolean) =>
+    setExpandedGroups(Object.fromEntries(groupLabels.map((label) => [label, open])))
+  const allOpen = groupLabels.every((label) => expandedGroups[label])
 
   return (
     <>
@@ -85,6 +104,16 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* 네비게이션 */}
       <nav className="flex-1 px-3 py-3 space-y-1">
+        <div className="flex justify-end px-1 pb-1">
+          <button
+            onClick={() => setAllGroups(!allOpen)}
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors"
+            title={allOpen ? '모든 메뉴 그룹 접기' : '모든 메뉴 그룹 펼치기'}
+          >
+            {allOpen ? <ChevronsDownUp className="h-3 w-3" /> : <ChevronsUpDown className="h-3 w-3" />}
+            {allOpen ? '전체 접기' : '전체 펼치기'}
+          </button>
+        </div>
         {navigation.map((group, idx) =>
           group.groupLabel === null ? (
             <div key={idx} className="mb-3">
