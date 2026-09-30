@@ -40,6 +40,11 @@ export default function LoginForm() {
             <Input
               id="email"
               type="email"
+              inputMode="email"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               placeholder="이메일을 입력하세요"
               {...register('email')}
             />
@@ -53,6 +58,7 @@ export default function LoginForm() {
             <Input
               id="password"
               type="password"
+              autoComplete="current-password"
               placeholder="비밀번호를 입력하세요"
               {...register('password')}
             />
