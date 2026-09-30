@@ -202,6 +202,24 @@ def set_parent(db: Session, account: FsAccount, parent_id: UUID | None) -> None:
     db.flush()
 
 
+def set_subtotal(db: Session, account: FsAccount, is_subtotal: bool) -> None:
+    """소계 여부 변경 — 8-B2 가 공시 행 아래에 정산표 계정을 붙일 때 그 공시 행을 소계로 바꾼다.
+
+    **이 계정에 금액 행이 있는 확정 재무제표가 있으면 거부**(`FsConflictError`) — 확정 후 검증 결과가
+    바뀌면 안 된다(§2.10). 호출자는 draft 재무제표에 하위 금액도 함께 넣어야 한다(Q6a).
+    """
+    if account.is_subtotal == is_subtotal:
+        return
+    final = db.scalars(select(FsStatement.fiscal_year).join(FsAmount, FsAmount.statement_id == FsStatement.id)
+                       .where(FsAmount.account_id == account.id, _alive(FsAmount), _alive(FsStatement),
+                              FsStatement.status == FS_STATUS_FINAL)).all()
+    if final:
+        raise FsConflictError(f"확정된 재무제표({', '.join(str(y) for y in sorted(set(final)))})가 쓰는 계정입니다 "
+                              "— 재오픈 후 변경하세요")
+    account.is_subtotal = is_subtotal
+    db.flush()
+
+
 def retire_account(db: Session, account: FsAccount, last_year: int) -> None:
     """폐지 — 행을 지우지 않고 유효 종료 연도를 둔다(§2.10). 과거 연도 금액은 그대로 조회된다."""
     if account.valid_from_year is not None and last_year < account.valid_from_year:

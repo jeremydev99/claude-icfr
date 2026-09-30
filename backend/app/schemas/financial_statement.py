@@ -203,3 +203,45 @@ class UploadResponse(BaseModel):
     rows: list[UploadRow]
     subtotal_diffs: list[UploadSubtotalDiff]
     statements: list[UploadStatementResult]
+
+
+# ── 8-B2 정산표 결합 ─────────────────────────────────────────
+
+class AttachBridgeCandidate(BaseModel):
+    column: str      # 매핑 열 글자
+    values: int      # 열의 값 종류 수
+    matched: int     # 공시 계정과 맞은 값 종류 수(category_map 적용 후)
+
+
+class AttachRowOut(BaseModel):
+    row_no: int
+    raw_label: str
+    name: str                     # 계정명(반복 이름은 "감가상각누계액_건물" 처럼 구분)
+    bridge: str | None            # 매핑 열 원문
+    source_path: list[str]        # 정산표 안의 상위 그룹(계정으로 만들지 않는다)
+    target_account_id: UUID | None
+    target_name: str | None       # 부모가 될 공시 계정
+    existing_account_id: UUID | None   # 이미 붙어 있는 COA 계정(재결합)
+    amounts: dict[str, Decimal | None]
+    skip_reason: str | None
+
+
+class AttachResponse(BaseModel):
+    mode: str
+    committed: bool
+    can_commit: bool
+    filename: str | None
+    sheet: str | None
+    statement_type: str | None
+    basis: str | None
+    unit: int | None
+    bridge_column: str | None
+    bridge_candidates: list[AttachBridgeCandidate]
+    periods: list[int]
+    fiscal_years: list[int]
+    errors: list[str]
+    warnings: list[str]
+    conflicts: list[UploadConflict]    # final 재무제표 — commit 409(재오픈 후)
+    unmatched: list[str]               # 공시 계정을 못 찾은 매핑 값 — category_map 필요
+    rows: list[AttachRowOut]
+    statements: list[UploadStatementResult]

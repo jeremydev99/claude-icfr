@@ -35,6 +35,7 @@ from app.models.user import User
 from app.schemas.financial_statement import (
     AccountNode,
     AmountNode,
+    AttachResponse,
     FinalizeRequest,
     FsMeta,
     Option,
@@ -47,7 +48,7 @@ from app.schemas.financial_statement import (
 )
 from app.services import financial_statement as svc
 from app.services import fs_upload
-from app.services.fs_upload import importer
+from app.services.fs_upload import attach, importer
 from app.services.fs_upload.parsed import KIND_DISCLOSURE, KIND_HORIZONTAL, ParsedRow, ParsedSheet
 
 router = APIRouter(prefix="/api/fs", tags=["financial-statements"])
@@ -369,5 +370,113 @@ def upload(file: UploadFile = File(...), mode: str = Form(default="preview"),
         return done(422)
     db.commit()
     resp.update(committed=True, can_commit=False, warnings=p.warnings + applied["structure_warnings"],
+                statements=_statement_results(applied, committed=True, finalize=opts.finalize))
+    return done()
+
+
+@router.post("/upload/attach", response_model=AttachResponse)
+def upload_attach(file: UploadFile = File(...), mode: str = Form(default="preview"),
+                  sheet: str | None = Form(default=None), statement_type: str | None = Form(default=None),
+                  basis: str | None = Form(default=None), unit: int | None = Form(default=None),
+                  bridge_column: str | None = Form(default=None), category_map: str | None = Form(default=None),
+                  fiscal_years: str | None = Form(default=None), finalize: bool = Form(default=True),
+                  user: User = Depends(require_icfr_manager), db: Session = Depends(get_db)) -> AttachResponse:
+    """정산표(가로 연도형)를 이미 올린 공시 재무제표에 붙인다 (8-B2, ADR-0037 §3.2). 권한 `icfr_manager`.
+
+    정산표 COA 잎을 매핑 열 값으로 공시 행 아래에 달고, 그 공시 행을 소계로 바꾼다. 공시 행 금액 = COA 합을
+    8-A 검증이 확인한다. 대상 재무제표가 final 이면 409(재오픈 후). `category_map` — JSON
+    `{"매핑 값": "공시 계정명"}`(PL 분류명 → 공시 행). `unit` — 정산표엔 단위 표기가 없어 필수.
+    """
+    if mode not in ("preview", "commit"):
+        raise HTTPException(status_code=422, detail="mode 는 'preview' 또는 'commit' 이어야 합니다")
+    if statement_type is not None:
+        _check_statement_type(statement_type)
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail=".xlsx 파일만 허용됩니다")
+    years, _tol, cmap = _parse_form(fiscal_years, "0", category_map)
+    content = file.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="파일이 20MB 를 넘습니다")
+    try:
+        wb = fs_upload.open_workbook(content)
+    except Exception as e:  # noqa: BLE001 — 손상 파일 등 openpyxl 예외 종류가 다양하다
+        raise HTTPException(status_code=400, detail=f"엑셀 파일을 열 수 없습니다: {e}") from None
+
+    resp: dict = {"mode": mode, "committed": False, "can_commit": False, "filename": file.filename, "sheet": None,
+                  "statement_type": statement_type, "basis": None, "unit": None, "bridge_column": None,
+                  "bridge_candidates": [], "periods": [], "fiscal_years": [], "errors": [], "warnings": [],
+                  "conflicts": [], "unmatched": [], "rows": [], "statements": []}
+    fail = 422 if mode == "commit" else None
+
+    def done(code: int | None = None) -> AttachResponse:
+        out = AttachResponse.model_validate(resp)
+        if code is not None:
+            raise HTTPException(status_code=code, detail=out.model_dump(mode="json"))
+        return out
+
+    candidates = [c for c in fs_upload.scan(wb) if c["kind"] == KIND_HORIZONTAL
+                  and (statement_type is None or c["statement_type"] == statement_type)]
+    if sheet is not None:
+        if sheet not in wb.sheetnames:
+            raise HTTPException(status_code=422, detail=f"시트를 찾을 수 없습니다: {sheet}")
+        ws = wb[sheet]
+    elif len(candidates) == 1:
+        ws = wb[candidates[0]["sheet"]]
+    else:
+        resp["errors"].append("정산표 시트를 찾지 못했습니다" if not candidates else
+                              f"정산표로 보이는 시트가 {len(candidates)}개입니다 — sheet 를 지정하세요 "
+                              f"({', '.join(c['sheet'] for c in candidates)})")
+        return done(fail)
+    resp["sheet"] = ws.title
+    try:
+        parsed = fs_upload.parse_sheet(ws, None, statement_type)
+    except ValueError as e:
+        resp["errors"].append(str(e))
+        return done(fail)
+
+    opts = attach.AttachOptions(basis=basis, unit=unit, bridge_column=bridge_column, category_map=cmap,
+                                fiscal_years=years, finalize=finalize, filename=file.filename)
+    p = attach.plan(db, parsed, opts)
+    resp.update(statement_type=parsed.statement_type, basis=p.basis, unit=p.unit, bridge_column=p.bridge_column,
+                bridge_candidates=p.bridge_candidates, periods=parsed.periods, fiscal_years=p.years,
+                errors=p.errors, warnings=p.warnings, conflicts=p.conflicts, unmatched=p.unmatched,
+                rows=[{"row_no": ar.row.row_no, "raw_label": ar.row.raw_label, "name": ar.name, "bridge": ar.bridge,
+                       "source_path": ar.source_path,
+                       "target_account_id": ar.target.id if ar.target else None,
+                       "target_name": ar.target.name if ar.target else None,
+                       "existing_account_id": ar.existing.id if ar.existing else None,
+                       "amounts": {str(y): ar.row.amounts.get(y) for y in parsed.periods},
+                       "skip_reason": ar.skip_reason} for ar in p.rows])
+    resp["can_commit"] = not (p.blocked or p.conflicts)
+
+    if mode == "preview":
+        if not p.blocked:
+            try:
+                # 확정 재무제표가 있어도 preview 는 결과를 보여 준다 — draft 로 가정해 넣어 본 뒤 롤백
+                for st in p.statements.values():
+                    st.status = "draft"
+                db.flush()
+                applied = attach.apply(db, parsed, p, user.id, finalize=False)
+                resp["statements"] = _statement_results(applied, committed=False, finalize=opts.finalize)
+            except (svc.FsError, svc.FsConflictError) as e:
+                resp["errors"] = p.errors + [str(e)]
+                resp["can_commit"] = False
+            finally:
+                db.rollback()   # preview 는 저장하지 않는다
+        return done()
+
+    if p.blocked:
+        return done(422)
+    if p.conflicts:
+        return done(409)
+    try:
+        applied = attach.apply(db, parsed, p, user.id, finalize=opts.finalize)
+    except (svc.FsError, svc.FsConflictError) as e:
+        db.rollback()
+        resp["errors"] = p.errors + [str(e)]
+        resp["can_commit"] = False
+        return done(422)
+    db.commit()
+    resp.update(committed=True, can_commit=False,
                 statements=_statement_results(applied, committed=True, finalize=opts.finalize))
     return done()
