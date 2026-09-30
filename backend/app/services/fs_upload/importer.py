@@ -163,7 +163,9 @@ def plan(db: Session, sheet: ParsedSheet, opts: UploadOptions) -> Plan:
     else:
         paths = _account_paths(existing)
         for r in rows:
-            cands = paths.get(_path(r), [])
+            # 소계 여부가 같은 계정만 제안한다 — 정산표 결합(8-B2)으로 소계가 된 공시 행에 정산표 잎을 대응시키면
+            # 이 재무제표에서 하위 0개 소계가 된다(검증 subtotal_no_children, 2026-09-30 로컬 화면 검증 중 발견)
+            cands = [a for a in paths.get(_path(r), []) if a.is_subtotal == r.is_subtotal]
             p.suggested[_key(r)] = str(cands[0].id) if len(cands) == 1 else NEW
     if opts.mapping is None:
         p.mapping = dict(p.suggested)

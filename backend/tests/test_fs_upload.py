@@ -25,6 +25,7 @@ from app.models.financial_statement import FsAccount, FsAmount, FsStatement
 from app.models.tenant import Tenant, UserTenantAccess
 from app.models.user import User
 from app.models.user_mgmt import UserRole
+from app.services import financial_statement as svc_fs
 from app.services import fs_upload
 from app.services.fs_upload import structure
 from app.services.fs_upload.cells import AmountError, display_label, parse_amount, split_prefix
@@ -702,3 +703,25 @@ def test_attach_guards(client: TestClient) -> None:
 
     viewer, _ = _tenant(client, roles=("external_auditor",))
     assert _attach(client, viewer, worksheet_bs(), mode="preview", unit=1).status_code == 403
+
+
+def test_suggestion_skips_account_whose_subtotal_flag_differs(client: TestClient) -> None:
+    """같은 경로라도 소계 여부가 다르면 제안하지 않는다 — 결합으로 소계가 된 공시 행에 잎을 대응시키면 하위 0개 소계가 된다."""
+    h, tid = _tenant(client)
+    assert _post(client, h, horizontal_bs(stale_parent=False), mode="commit", unit=1).status_code == 200
+    db = TestingSessionLocal()
+    tok = set_active_tenant(tid)
+    try:
+        cash = db.scalars(select(FsAccount).where(FsAccount.name == "현금")).one()
+        svc_fs.create_account(db, statement_type="BS", name="보통예금", section="asset", parent_id=cash.id)
+        cash.is_subtotal = True            # 정산표 결합 뒤의 공시 행처럼 — 하위가 있는 소계
+        db.commit()
+        cash_id = str(cash.id)
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+    pre = _post(client, h, horizontal_bs(stale_parent=False), mode="preview", unit=1, basis="consolidated").json()
+    row = next(r for r in pre["rows"] if r["label"] == "현금")
+    assert pre["suggested_mapping"][str(row["row_no"])] == "new"
+    assert cash_id not in pre["suggested_mapping"].values()
+    assert pre["suggested_mapping"][str(next(r for r in pre["rows"] if r["label"] == "토지")["row_no"])] != "new"
