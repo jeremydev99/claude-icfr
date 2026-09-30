@@ -252,3 +252,45 @@ class FsStatementStatusEvent(AuditedBase):
     tolerance: Mapped[Decimal | None] = _amount()
     skipped_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tolerance_diffs: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+
+# ── 템플릿 링크 (8-C) ───────────────────────────────────────────────
+
+# 매칭 근거 (ADR-0037 §4) — **서버가 이름 규칙으로 판정한다**(클라이언트가 보내지 않는다)
+FS_LINK_EXACT = "exact"             # 공백 제거 후 동일
+FS_LINK_NORMALIZED = "normalized"   # 접두 번호·괄호/밑줄 접미를 뗀 뒤 동일
+FS_LINK_MANUAL = "manual"           # 이름 규칙으로 설명되지 않는 사람의 대응
+FS_LINK_BASIS_LABELS = {FS_LINK_EXACT: "정확일치", FS_LINK_NORMALIZED: "정규화일치", FS_LINK_MANUAL: "수동"}
+FS_LINK_BASES = tuple(FS_LINK_BASIS_LABELS)
+
+
+class FsTemplateLink(AuditedBase):
+    """회사 계정 ↔ 스코핑 템플릿 계정 링크 1건 (8-C, ADR-0037 §4).
+
+    **사람이 확인한 링크만 저장한다.** 자동 제안은 저장하지 않는다. 확정된 링크만 8-E 에서 스코핑 기본값
+    (질적 평가값·판단 근거 등) 공급에 쓴다.
+
+    템플릿 계정은 전역(`scoping_template_accounts`)이고 버전마다 행이 따로 있다 — 링크는 그 행 id 를
+    참조하고, 조회 편의로 `template_code`·`template_version` 을 함께 둔다. 템플릿이 개정되면 옛 버전 링크는
+    그대로 두고 새 버전 링크를 따로 만든다. **회사 계정 1개 × 템플릿 버전 1개당 활성 링크는 1개**(부분 유니크).
+    템플릿 계정 하나에 회사 계정 여럿이 걸리는 것은 허용한다(리스부채 유동·비유동 등, 경고만).
+    """
+    __tablename__ = "fs_template_links"
+    __table_args__ = (
+        ForeignKeyConstraint(["account_id", "tenant_id"], ["fs_accounts.id", "fs_accounts.tenant_id"],
+                             name="fk_fs_template_links_account_tenant"),
+        CheckConstraint("basis IN ('exact', 'normalized', 'manual')", name="ck_fs_template_links_basis"),
+        Index("uq_fs_template_links_account_version", "tenant_id", "account_id", "template_code",
+              "template_version", unique=True,
+              sqlite_where=text("is_deleted = 0"), postgresql_where=text("NOT is_deleted")),
+    )
+    account_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    template_account_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("scoping_template_accounts.id"), nullable=False, index=True)
+    template_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    template_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    # 서버가 항상 판정해 넣는다. 기본값은 가장 보수적인 "수동"(이름 규칙으로 설명되지 않음)
+    basis: Mapped[str] = mapped_column(String(20), nullable=False, default=FS_LINK_MANUAL)
+    confirmed_by_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)

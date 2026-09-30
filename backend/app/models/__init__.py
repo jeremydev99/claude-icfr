@@ -12,6 +12,7 @@ from app.models.financial_statement import (  # noqa: F401
     FsAmount,
     FsStatement,
     FsStatementStatusEvent,
+    FsTemplateLink,
 )
 from app.models.help_text import HelpText  # noqa: F401
 from app.models.iuc import InformationItem  # noqa: F401
