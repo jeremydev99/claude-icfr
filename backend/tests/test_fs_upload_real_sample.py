@@ -188,3 +188,45 @@ def test_real_equity_difference_goes_to_suspense_and_fix_resolves(client: TestCl
                         json={"action": "fix_subtotal", "reason": "정산표 수식 누락(자본조정·기타포괄)"})
     assert fixed.status_code == 200, fixed.text
     assert fixed.json()["validation"]["ok"], fixed.json()["validation"]["errors"]
+
+
+# ── 8-E 재무제표 기반 스코핑 (실 데이터) ──────────────────────────
+
+def test_real_scoping_from_financial_statements(client: TestClient, content) -> None:
+    """공시 BS·PL·CF + 정산표 결합 + 정확일치 링크 확정 → 2026 스코핑을 재무제표에서 만든다."""
+    from seeds.seed_scoping_template import load_template
+    from tests.conftest import TestingSessionLocal
+    db = TestingSessionLocal()
+    try:
+        _, _, created = load_template(db)
+        if created:
+            db.commit()
+    finally:
+        db.close()
+    h, _ = _tenant(client)
+    for disc, hz, extra in (("BS공시", "BS정산표", {}), ("PL공시", "PL정산표", {"category_map": json.dumps(PL_CATEGORY_MAP)}),
+                            ("CF공시", None, {})):
+        up = _up(client, h, content, mode="commit", sheet=disc, include_prior="true", finalize="false")
+        assert up.status_code == 200, up.text
+        if hz:
+            r = _up(client, h, content, "/api/fs/upload/attach", mode="commit", sheet=hz, unit=1, finalize="false", **extra)
+            assert r.status_code == 200, r.text
+        for s in up.json()["statements"]:
+            f = client.post(f"/api/fs/statements/{s['statement_id']}/finalize", headers=h, json={})
+            assert f.status_code == 200, (disc, s["fiscal_year"], f.text[:300])
+    for stype in ("BS", "PL", "CF"):
+        m = client.get("/api/fs/template-matches", headers=h, params={"statement_type": stype}).json()
+        links = [{"account_id": r["account_id"], "template_account_id": r["suggestion"]["template_account_id"]}
+                 for r in m["accounts"] if r["suggestion"] and r["suggestion"]["basis"] == "exact" and not r["link"]]
+        assert client.post("/api/fs/template-links", headers=h, json={"links": links}).status_code == 200
+    r = client.post("/api/scoping", headers=h, json={"fiscal_year": 2026, "source": "financial_statements"})
+    assert r.status_code == 201, r.text
+    d = r.json()
+    by = {t: [a for a in d["accounts"] if a["statement_type"] == t] for t in ("BS", "PL", "CF", "NOTE")}
+    filled = {t: sum(1 for a in rows if a["ratings"]) for t, rows in by.items()}
+    # 2026-09-30 실측 고정 — 행 수(금액 트리 잎)와 템플릿 기본값이 채워진 행 수. 정확일치로 연결돼도
+    # 템플릿 계정 자체에 질적 평가값이 없는 경우가 있어 채워진 수가 연결 수보다 적다
+    assert {t: (len(rows), filled[t]) for t, rows in by.items()} ==         {"BS": (71, 35), "PL": (56, 41), "CF": (47, 31), "NOTE": (38, 38)}
+    assert all(a["fs_account_id"] for t in ("BS", "PL", "CF") for a in by[t])
+    cash = next(a for a in by["BS"] if a["name"] == "현금및현금성자산" and a["group_label"] == "현금및현금성자산")
+    assert cash["current_amount"] == 44249836141 and cash["prior_amount"] == 43868110698
