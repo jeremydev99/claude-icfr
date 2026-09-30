@@ -245,3 +245,68 @@ class AttachResponse(BaseModel):
     unmatched: list[str]               # 공시 계정을 못 찾은 매핑 값 — category_map 필요
     rows: list[AttachRowOut]
     statements: list[UploadStatementResult]
+
+
+# ── 8-C 템플릿 링크 ──────────────────────────────────────────
+
+class TemplateLinkOut(BaseModel):
+    id: UUID
+    account_id: UUID
+    template_account_id: UUID
+    template_name: str | None
+    template_code: str
+    template_version: int
+    basis: str               # exact / normalized / manual — 서버 판정
+    confirmed_by_id: UUID
+    confirmed_at: datetime
+    note: str | None
+
+
+class TemplateSuggestion(BaseModel):
+    template_account_id: UUID
+    template_name: str
+    basis: str               # 제안 근거. 저장되지 않는다
+
+
+class TemplateMatchRow(BaseModel):
+    account_id: UUID
+    name: str
+    parent_name: str | None
+    depth: int
+    is_subtotal: bool
+    link: TemplateLinkOut | None
+    suggestion: TemplateSuggestion | None
+
+
+class TemplateAccountOut(BaseModel):
+    id: UUID
+    name: str
+    group_label: str | None
+    sort_order: int
+    linked_count: int
+
+
+class TemplateMatchesResponse(BaseModel):
+    template_code: str
+    template_version: int
+    statement_type: str
+    accounts: list[TemplateMatchRow]
+    template_accounts: list[TemplateAccountOut]
+    counts: dict[str, int]
+
+
+class TemplateLinkItem(BaseModel):
+    account_id: UUID
+    template_account_id: UUID
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class TemplateLinkRequest(BaseModel):
+    template_code: str | None = None      # 생략 시 기본 템플릿
+    template_version: int | None = None   # 생략 시 최신 버전
+    links: list[TemplateLinkItem] = Field(min_length=1, max_length=500)
+
+
+class TemplateLinkResponse(BaseModel):
+    links: list[TemplateLinkOut]
+    warnings: list[str]

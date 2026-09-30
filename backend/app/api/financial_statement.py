@@ -43,10 +43,15 @@ from app.schemas.financial_statement import (
     StatementDetail,
     StatementListItem,
     StatusEventRead,
+    TemplateLinkOut,
+    TemplateLinkRequest,
+    TemplateLinkResponse,
+    TemplateMatchesResponse,
     UploadResponse,
     ValidationResult,
 )
 from app.services import financial_statement as svc
+from app.services import fs_template_match as match_svc
 from app.services import fs_upload
 from app.services.fs_upload import attach, importer
 from app.services.fs_upload.parsed import KIND_DISCLOSURE, KIND_HORIZONTAL, ParsedRow, ParsedSheet
@@ -480,3 +485,48 @@ def upload_attach(file: UploadFile = File(...), mode: str = Form(default="previe
     resp.update(committed=True, can_commit=False,
                 statements=_statement_results(applied, committed=True, finalize=opts.finalize))
     return done()
+
+
+# ── 8-C 템플릿 링크 ─────────────────────────────────────────
+
+@router.get("/template-matches", response_model=TemplateMatchesResponse)
+def get_template_matches(user: CurrentUser, statement_type: str = Query(...),
+                         template_code: str | None = Query(default=None),
+                         template_version: int | None = Query(default=None),
+                         db: Session = Depends(get_db)) -> TemplateMatchesResponse:
+    """회사 계정별 현재 링크 + 자동 제안(저장 안 됨) + 템플릿 계정별 연결 수 (ADR-0037 §4). 조회 전원."""
+    _check_statement_type(statement_type)
+    try:
+        return TemplateMatchesResponse.model_validate(
+            match_svc.matches(db, statement_type, template_code, template_version))
+    except svc.FsNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+
+
+@router.post("/template-links", response_model=TemplateLinkResponse)
+def create_template_links(body: TemplateLinkRequest, user: User = Depends(require_icfr_manager),
+                          db: Session = Depends(get_db)) -> TemplateLinkResponse:
+    """사람이 확인한 링크 저장. 근거(exact/normalized/manual)는 서버가 이름 규칙으로 판정한다.
+    같은 회사 계정의 기존 링크는 대체된다(이력은 소프트 삭제로 남는다). 권한 `icfr_manager`."""
+    try:
+        links, warnings = match_svc.confirm(db, body.template_code, body.template_version,
+                                            [i.model_dump() for i in body.links], user.id)
+    except svc.FsNotFoundError as e:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    except svc.FsError as e:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    db.commit()
+    return TemplateLinkResponse(links=[TemplateLinkOut.model_validate(x) for x in links], warnings=warnings)
+
+
+@router.delete("/template-links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_template_link(link_id: UUID, user: User = Depends(require_icfr_manager),
+                         db: Session = Depends(get_db)) -> None:
+    """링크 해제(소프트 삭제 — 누가·언제가 감사 컬럼에 남는다). 권한 `icfr_manager`."""
+    try:
+        match_svc.unlink(db, link_id)
+    except svc.FsNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    db.commit()
