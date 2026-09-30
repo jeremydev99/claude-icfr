@@ -69,6 +69,7 @@ export type Judgement = 'Y' | 'N' | 'na' | null
 
 export interface ScopingAccount {
   id: string
+  fs_account_id?: string | null  // 재무제표 기반 생성(8-E)의 원천 계정. 템플릿 복사 행은 null
   statement_type: string
   sort_order: number
   group_label: string | null

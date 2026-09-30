@@ -15,6 +15,7 @@ import {
 } from '../api/useScoping'
 import MaterialityCard from '../components/MaterialityCard'
 import AccountsTable from '../components/AccountsTable'
+import CreateScopingDialog, { type ScopingSource } from '../components/CreateScopingDialog'
 import { ConfirmToggle, TemplateBadge } from '../components/bits'
 import type { ScopingDetail, ScopingMeta } from '../types'
 import apiClient from '@/lib/axios'
@@ -46,16 +47,22 @@ export default function ScopingPage() {
   const write = (method: 'post' | 'patch' | 'delete', path: string, body?: unknown) =>
     mutation.mutate({ method, path, body }, { onError: (e) => toast.error(errorDetail(e, '저장하지 못했습니다')) })
 
-  const create = async () => {
-    const y = window.prompt('새 스코핑의 회계연도', String(new Date().getFullYear()))
-    if (!y) return
+  const [createOpen, setCreateOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const create = async (y: number, source: ScopingSource) => {
+    setCreating(true)
     try {
-      const res = await apiClient.post<ScopingDetail>('/api/scoping', { fiscal_year: Number(y) })
+      const res = await apiClient.post<ScopingDetail>('/api/scoping', { fiscal_year: y, source })
       queryClient.invalidateQueries({ queryKey: queryKeys.scoping.all(tenantId) })
       setSelectedId(res.data.id)
-      toast.success(`${y} 회계연도 스코핑을 만들었습니다 — 템플릿 값에는 배지가 붙어 있습니다`)
+      setCreateOpen(false)
+      toast.success(source === 'financial_statements'
+        ? `${y} 회계연도 스코핑을 재무제표(${y - 1})에서 만들었습니다 — 템플릿 연결에서 온 값에는 배지가 붙어 있습니다`
+        : `${y} 회계연도 스코핑을 만들었습니다 — 템플릿 값에는 배지가 붙어 있습니다`)
     } catch (e) {
       toast.error(errorDetail(e, '만들지 못했습니다'))
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -83,17 +90,19 @@ export default function ScopingPage() {
             </select>
           )}
           {isManager ? (
-            <Button onClick={create}>새 회계연도</Button>
+            <Button onClick={() => setCreateOpen(true)}>새 회계연도</Button>
           ) : (
             <Badge variant="secondary" className="gap-1"><Lock className="h-3 w-3" /> 읽기 전용 · 내부회계관리자만 편집</Badge>
           )}
         </div>
       </div>
 
+      <CreateScopingDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={create} pending={creating} />
+
       {(list ?? []).length === 0 && (
         <Card><CardContent className="py-6 text-sm text-muted-foreground">
-          아직 스코핑이 없습니다. 새 회계연도를 만들면 표준 템플릿(계정 192건·질적 평가값·판단 근거)이 복사되고,
-          템플릿에서 온 값에는 배지가 붙습니다.
+          아직 스코핑이 없습니다. 새 회계연도를 만들 때 직전 연도 확정 재무제표에서 계정·금액을 가져오거나(권장),
+          표준 템플릿(계정 192건·질적 평가값·판단 근거)을 복사할 수 있습니다. 템플릿에서 온 값에는 배지가 붙습니다.
         </CardContent></Card>
       )}
 
