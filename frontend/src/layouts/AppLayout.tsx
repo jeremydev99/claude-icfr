@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { ChevronDown, ChevronRight, Lock, LogOut, Menu } from 'lucide-react'
+import { ChevronDown, ChevronRight, KeyRound, Lock, LogOut, Menu } from 'lucide-react'
 import { useAuthStore } from '@/features/auth/store'
 import { isIcfrManagerForUser } from '@/features/auth/permissions.pure'
 import { useLogout, useMe } from '@/features/auth/hooks/useAuth'
 import { SIDEBAR_THEMES, applySidebarTheme, useSidebarTheme } from '@/features/admin/sidebarTheme'
 import InstallButton from '@/features/pwa/InstallButton'
+import ChangePasswordDialog from '@/features/auth/components/ChangePasswordDialog'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { navigation, type NavItem } from '@/config/navigation'
@@ -57,6 +58,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAuthStore()
   const logoutMutation = useLogout()
   const { theme, setTheme } = useSidebarTheme()
+  const [passwordOpen, setPasswordOpen] = useState(false)
 
   // **`can_write` 가 아니라 `tenant_roles` 로 본다** — can_write 는 external_auditor 판정이고
   // icfr_manager 판정이 아니다. 섞으면 메뉴는 열리는데 서버가 403 을 낸다.
@@ -148,13 +150,23 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             <p className="text-xs text-sidebar-muted mt-0.5">{user.role}</p>
           </div>
         )}
-        <button
-          onClick={() => logoutMutation.mutate()}
-          className="flex items-center gap-2 text-xs text-sidebar-muted hover:text-sidebar-foreground transition-colors"
-        >
-          <LogOut className="h-3.5 w-3.5" />
-          로그아웃
-        </button>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <button
+            onClick={() => setPasswordOpen(true)}
+            className="flex items-center gap-2 text-xs text-sidebar-muted hover:text-sidebar-foreground transition-colors"
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            비밀번호 변경
+          </button>
+          <button
+            onClick={() => logoutMutation.mutate()}
+            className="flex items-center gap-2 text-xs text-sidebar-muted hover:text-sidebar-foreground transition-colors"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            로그아웃
+          </button>
+        </div>
+        <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
       </div>
     </>
   )
