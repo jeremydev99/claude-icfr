@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useLogin } from '../hooks/useAuth'
+import { loginErrorMessage } from '../loginError.pure'
 
 const loginSchema = z.object({
   email: z.string().min(1, '이메일을 입력하세요').email('올바른 이메일 형식이 아닙니다'),
@@ -68,8 +69,8 @@ export default function LoginForm() {
           </div>
 
           {loginMutation.error && (
-            <p className="text-sm text-destructive text-center">
-              이메일 또는 비밀번호가 올바르지 않습니다
+            <p className="text-sm text-destructive text-center" role="alert">
+              {loginErrorMessage(loginMutation.error)}
             </p>
           )}
 
