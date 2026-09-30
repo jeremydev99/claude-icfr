@@ -78,6 +78,7 @@ from app.schemas.scoping import (
     TransitionRequest,
 )
 from app.services import scoping as svc
+from app.services import scoping_fs
 
 router = APIRouter(prefix="/api/scoping", tags=["scoping"])
 
@@ -140,7 +141,8 @@ def _detail(db: Session, s: Scoping, user_id: UUID) -> ScopingDetail:
     for r in ev["accounts"]:
         a = r["account"]
         accounts.append(AccountRead(
-            id=a.id, statement_type=a.statement_type, sort_order=a.sort_order, group_label=a.group_label,
+            id=a.id, fs_account_id=a.fs_account_id, statement_type=a.statement_type, sort_order=a.sort_order,
+            group_label=a.group_label,
             name=a.name, current_amount=a.current_amount, prior_amount=a.prior_amount,
             ratings={k: v for k, v in (a.ratings or {}).items() if v}, qual_basis=a.qual_basis,
             manual_conclusion=a.manual_conclusion, manual_reason=a.manual_reason,
@@ -238,7 +240,14 @@ def create_scoping(body: ScopingCreate, user: User = Depends(require_icfr_manage
     if tpl is None:
         raise HTTPException(status_code=404,
                             detail="템플릿을 찾을 수 없습니다 — 운영에서는 seeds.seed_scoping_template 적재가 먼저다")
-    s = svc.create_from_template(db, body.fiscal_year, tpl)
+    if body.source == "financial_statements":
+        try:
+            s, _summary = scoping_fs.create(db, body.fiscal_year, tpl)
+        except scoping_fs.ScopingSourceError as e:
+            db.rollback()
+            raise HTTPException(status_code=422, detail=str(e)) from None
+    else:
+        s = svc.create_from_template(db, body.fiscal_year, tpl)
     db.commit()
     return _detail(db, s, user.id)
 
