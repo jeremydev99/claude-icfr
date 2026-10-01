@@ -1,7 +1,7 @@
 """Test 계열 5테이블 control_id 를 baseline/instance 두 컬럼으로 분리 (선택지 2)
 
 Revision ID: 6b6d7fd94f0d
-Revises: f5a6b7c8d9e0
+Revises: 1c3e5a7b9d20
 Create Date: 2026-09-21 00:00:00.000000+00:00
 
 **Test 계열 FK 가 옛 `controls.id` 를 가리키고 있었다.** RCM 통제 저장 경로가
@@ -52,6 +52,12 @@ down_revision 만 `b1c2d3e4f5a6` → `f5a6b7c8d9e0` 로 재배치해 단일 head
 로컬 DB 에 이미 적용돼 있던 터라 `alembic downgrade b1c2d3e4f5a6` 로 되돌린 뒤 재적용했다
 (`ICFR-PROMPT-MERGE-02-alembic-relinear.md`).
 
+**부모 재배치(2026-10-01, 4차, MERGE-03)**: `f5a6b7c8d9e0` 아래 origin 에 `1c3e5a7b9d20`(보안
+1단계, `users` 컬럼 3개 + `login_events` 테이블 — 이 리비전의 5테이블과 무관)이 형제로 병합되어
+다시 head 2개가 됐다. revision ID 유지, down_revision 만 `f5a6b7c8d9e0` → `1c3e5a7b9d20` 로
+재배치해 단일 head 로 정리. 로직 무변경. 로컬 DB 에 이미 적용돼 있던 터라
+`alembic downgrade f5a6b7c8d9e0` 로 되돌린 뒤 재적용했다(`ICFR-PROMPT-MERGE-03-auth-sync.md`).
+
 downgrade 주의: 백필된 baseline/instance 값은 **소실**된다. 또한 upgrade 이후 새 컬럼만 채워
 `control_id` 가 NULL 인 행이 생기면 NOT NULL 복원이 실패한다(적용 시점 기준으로는 없다).
 """
@@ -62,7 +68,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 revision: str = '6b6d7fd94f0d'
-down_revision: Union[str, None] = 'f5a6b7c8d9e0'
+down_revision: Union[str, None] = '1c3e5a7b9d20'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

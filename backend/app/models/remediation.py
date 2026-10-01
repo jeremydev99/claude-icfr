@@ -26,7 +26,7 @@ class Deficiency(AuditedBase):
     # Phase 1 확장 — 연도 + 통제 연결
     fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False, default=2025, index=True)
     # deprecated — 옛 controls.id 참조. baseline_control_id/instance_control_id 로 대체 중
-    # (13.9-72, testfk-app-transition). control_id 는 원래 nullable — 없으면 두 컬럼 다 NULL 허용.
+    # (13.9-73, testfk-app-transition). control_id 는 원래 nullable — 없으면 두 컬럼 다 NULL 허용.
     control_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("controls.id"), nullable=True, index=True
     )
@@ -84,7 +84,7 @@ class DesignAssessment(AuditedBase):
     __tablename__ = "design_assessments"
 
     # deprecated — 옛 controls.id 참조. baseline_control_id/instance_control_id 로 대체 중
-    # (13.9-72, testfk-app-transition). 제거는 API 전환 완료 후 별도 마이그레이션.
+    # (13.9-73, testfk-app-transition). 제거는 API 전환 완료 후 별도 마이그레이션.
     control_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("controls.id"), nullable=False, index=True
     )

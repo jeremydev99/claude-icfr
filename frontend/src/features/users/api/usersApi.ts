@@ -1,5 +1,5 @@
 import apiClient from '@/lib/axios'
-import type { User, UserListResponse, UserCreatePayload, UserUpdatePayload, ResetPasswordPayload } from '../types'
+import type { LoginEvent, User, UserListResponse, UserCreatePayload, UserUpdatePayload, ResetPasswordPayload } from '../types'
 
 export async function fetchUsers(
   params: { skip?: number; limit?: number } = {}
@@ -25,6 +25,17 @@ export async function updateUser(id: string, body: UserUpdatePayload): Promise<U
 
 export async function deleteUser(id: string): Promise<void> {
   await apiClient.delete(`/api/users/${id}`)
+}
+
+export async function unlockUser(id: string): Promise<void> {
+  await apiClient.post(`/api/users/${id}/unlock`)
+}
+
+export async function fetchLoginEvents(
+  params: { user_id?: string; failed_only?: boolean; limit?: number } = {}
+): Promise<LoginEvent[]> {
+  const res = await apiClient.get<LoginEvent[]>('/api/users/login-events', { params })
+  return res.data
 }
 
 export async function resetUserPassword(id: string, body: ResetPasswordPayload): Promise<void> {

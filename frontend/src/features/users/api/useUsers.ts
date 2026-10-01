@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchUsers, fetchUserDetail, createUser, updateUser, deleteUser, resetUserPassword } from './usersApi'
+import { fetchUsers, fetchUserDetail, createUser, updateUser, deleteUser, resetUserPassword, unlockUser } from './usersApi'
 import type { UserCreatePayload, UserUpdatePayload, ResetPasswordPayload } from '../types'
 import { queryKeys } from '@/lib/queryKeys'
 import { useActiveTenantId } from '@/features/auth/store'
@@ -51,8 +51,21 @@ export function useDeleteUser() {
 }
 
 export function useResetPassword() {
+  const qc = useQueryClient()
+  const tenantId = useActiveTenantId()
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: ResetPasswordPayload }) =>
       resetUserPassword(id, body),
+    // 재설정은 잠금도 푼다 — 목록의 잠금 표시를 갱신
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users.all(tenantId) }),
+  })
+}
+
+export function useUnlockUser() {
+  const qc = useQueryClient()
+  const tenantId = useActiveTenantId()
+  return useMutation({
+    mutationFn: (id: string) => unlockUser(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users.all(tenantId) }),
   })
 }

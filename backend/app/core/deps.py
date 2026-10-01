@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.audit_context import set_user_actor
 from app.core.database import get_db
-from app.core.security import decode_token
+from app.core.security import decode_token, issued_before_password_change
 from app.core.tenant_context import get_active_tenant, set_active_tenant
 from app.models.tenant import UserTenantAccess
 from app.models.user import User
@@ -88,6 +88,8 @@ async def get_current_user(
         User.is_deleted == False,  # noqa: E712
     ).first()
     if not user or not user.is_active:
+        raise credentials_exception
+    if issued_before_password_change(payload, user.password_changed_at):
         raise credentials_exception
 
     # 활성 tenant 검증·설정 (전 비즈니스 쿼리의 자동 격리 기준)

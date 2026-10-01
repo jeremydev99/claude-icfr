@@ -12,7 +12,8 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import apiClient from '@/lib/axios'
-import { MIN_PASSWORD_LENGTH, passwordError } from '../password.pure'
+import { PASSWORD_RULE_TEXT, passwordError } from '../password.pure'
+import { useAuthStore } from '../store'
 
 /** 본인 비밀번호 변경 — `POST /api/auth/change-password`(서버가 현재 비밀번호를 확인한다). */
 export default function ChangePasswordDialog({ open, onOpenChange }: {
@@ -38,8 +39,11 @@ export default function ChangePasswordDialog({ open, onOpenChange }: {
     if (problem) return setError(problem)
     setPending(true)
     try {
-      await apiClient.post('/api/auth/change-password', { old_password: current, new_password: next })
-      toast.success('비밀번호를 바꿨습니다 — 다음 로그인부터 새 비밀번호를 쓰세요')
+      const { data } = await apiClient.post<{ access_token: string; refresh_token: string }>(
+        '/api/auth/change-password', { old_password: current, new_password: next })
+      // 변경 전 토큰은 서버가 무효로 본다(다른 기기 세션 종료) — 이 기기는 새 토큰으로 이어간다
+      useAuthStore.getState().setTokens(data.access_token, data.refresh_token)
+      toast.success('비밀번호를 바꿨습니다 — 다른 기기의 로그인은 끊깁니다')
       close(false)
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
@@ -54,7 +58,7 @@ export default function ChangePasswordDialog({ open, onOpenChange }: {
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>비밀번호 변경</DialogTitle>
-          <DialogDescription>새 비밀번호는 {MIN_PASSWORD_LENGTH}자 이상입니다.</DialogDescription>
+          <DialogDescription>새 비밀번호: {PASSWORD_RULE_TEXT}. 바꾸면 다른 기기의 로그인은 끊깁니다.</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-3 text-sm">
           <label className="block space-y-1">

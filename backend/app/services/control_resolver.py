@@ -360,7 +360,7 @@ def resolve_assertion_target(db: Session, control_id: UUID) -> tuple[UUID | None
     편집한 내용은 복원 시 살아나야 한다(ADR-0029 §2.2 복원 원칙). 조회에서 안 보이는 것과
     편집 불가는 다른 문제다.
 
-    **2026-09-22 (13.9-72 후속, testfk-app-transition)**: 원래 `api/rcm.py`(어서션 junction
+    **2026-09-22 (13.9-73 후속, testfk-app-transition)**: 원래 `api/rcm.py`(어서션 junction
     전용)에 있었으나, Test 계열(RAWC/test_runs/deficiencies/design_assessments)이 통제 id 를
     baseline_control_id/instance_control_id 두 컬럼으로 분해할 때도 같은 판정이 필요해
     공용 모듈로 옮겼다. 이름에서 `_`(private)와 `assertion` 을 뺀 것 외 시그니처·반환·로직 불변.

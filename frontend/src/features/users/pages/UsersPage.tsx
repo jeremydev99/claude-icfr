@@ -12,9 +12,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { useUsers, useDeleteUser } from '../api/useUsers'
+import { useUsers, useDeleteUser, useUnlockUser } from '../api/useUsers'
 import { useUserRoles, useDeleteUserRole } from '../api/useUserRoles'
 import UserTable from '../components/UserTable'
+import LoginEventsTable from '../components/LoginEventsTable'
 import UserDetailSheet from '../components/UserDetailSheet'
 import UserFormDialog from '../components/UserFormDialog'
 import ResetPasswordDialog from '../components/ResetPasswordDialog'
@@ -22,7 +23,7 @@ import UserRoleTable from '../components/UserRoleTable'
 import UserRoleFormDialog from '../components/UserRoleFormDialog'
 import type { User, UserRole } from '../types'
 
-type ActiveTab = 'users' | 'roles'
+type ActiveTab = 'users' | 'roles' | 'logins'
 
 const getErrorDetail = (e: unknown) =>
   (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -35,6 +36,15 @@ export default function UsersPage() {
     useUsers({ skip: 0, limit: 200 })
 
   const deleteUser = useDeleteUser()
+  const unlockUser = useUnlockUser()
+  const handleUnlock = async (user: User) => {
+    try {
+      await unlockUser.mutateAsync(user.id)
+      toast.success(`${user.display_name} 계정 잠금을 해제했습니다`)
+    } catch (e) {
+      toast.error(getErrorDetail(e) ?? '잠금 해제에 실패했습니다')
+    }
+  }
 
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [userDetailOpen, setUserDetailOpen] = useState(false)
@@ -122,7 +132,16 @@ export default function UsersPage() {
         >
           역할 관리
         </Button>
+        <Button
+          variant={activeTab === 'logins' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setActiveTab('logins')}
+        >
+          로그인 기록
+        </Button>
       </div>
+
+      {activeTab === 'logins' && <LoginEventsTable />}
 
       {/* 사용자 뷰 */}
       {activeTab === 'users' && (
@@ -144,6 +163,7 @@ export default function UsersPage() {
             onEditClick={handleUserEditClick}
             onDeleteClick={(u) => setDeleteUserTarget(u)}
             onResetPasswordClick={(u) => { setResetPwdTarget(u); setResetPwdOpen(true) }}
+            onUnlockClick={handleUnlock}
           />
         </div>
       )}

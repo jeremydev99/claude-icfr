@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,11 +8,18 @@ from app.core.deps import CurrentUser, get_db, require_admin
 from app.core.permissions import require_role_assigner
 from app.core.security import hash_password
 from app.core.tenant_context import get_active_tenant
+from app.models.login_event import LoginEvent
 from app.models.tenant import UserTenantAccess
 from app.models.user import User
 from app.models.user_mgmt import UserRole
 from app.schemas.user import PasswordResetRequest, UserCreate, UserUpdate
-from app.schemas.user_mgmt import UserRead, UserRoleCreate, UserRoleRead, UserRoleUpdate
+from app.schemas.user_mgmt import (
+    LoginEventRead,
+    UserRead,
+    UserRoleCreate,
+    UserRoleRead,
+    UserRoleUpdate,
+)
 
 router = APIRouter(prefix="/api/users", tags=["user_mgmt"])
 
@@ -36,6 +44,20 @@ def list_users(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Se
     total = q.count()
     items = q.offset(skip).limit(limit).all()
     return {"items": [UserRead.model_validate(i) for i in items], "total": total, "skip": skip, "limit": limit}
+
+
+@router.get("/login-events", response_model=list[LoginEventRead])
+def list_login_events(
+    user_id: UUID | None = None, failed_only: bool = False, limit: int = 200,
+    admin: User = Depends(require_admin), db: Session = Depends(get_db),
+) -> list[LoginEvent]:
+    """로그인 시도 기록 — 최신순, 관리자 전용 (보안 1단계). `/{user_id}` 보다 먼저 선언해야 경로가 겹치지 않는다."""
+    q = db.query(LoginEvent)
+    if user_id:
+        q = q.filter(LoginEvent.user_id == user_id)
+    if failed_only:
+        q = q.filter(LoginEvent.success == False)  # noqa: E712
+    return q.order_by(LoginEvent.created_at.desc()).limit(min(max(limit, 1), 1000)).all()
 
 
 @router.get("/{user_id}", response_model=UserRead)
@@ -106,8 +128,24 @@ def reset_password(user_id: UUID, body: PasswordResetRequest, admin: User = Depe
     if not obj:
         raise HTTPException(status_code=404, detail="User not found")
     obj.hashed_password = hash_password(body.new_password)
+    # 재설정은 잠금도 푼다. 이전에 발급된 그 사용자의 토큰은 무효(보안 1단계)
+    obj.password_changed_at = datetime.now(UTC)
+    obj.failed_login_count = 0
+    obj.locked_until = None
     db.commit()
     return {"detail": "비밀번호가 재설정되었습니다"}
+
+
+@router.post("/{user_id}/unlock", status_code=status.HTTP_200_OK)
+def unlock_user(user_id: UUID, admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
+    """계정 잠금 해제 — 관리자 전용 (보안 1단계)."""
+    obj = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()  # noqa: E712
+    if not obj:
+        raise HTTPException(status_code=404, detail="User not found")
+    obj.failed_login_count = 0
+    obj.locked_until = None
+    db.commit()
+    return {"detail": "잠금이 해제되었습니다"}
 
 
 # ── User Roles (CRUD) ──────────────────────────────────────

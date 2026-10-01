@@ -13,7 +13,7 @@ class ControlRiskAssessment(AuditedBase):
     __tablename__ = "control_risk_assessments"
 
     # deprecated — 옛 controls.id 참조. baseline_control_id/instance_control_id 로 대체 중
-    # (13.9-72, testfk-app-transition). 제거는 API 전환 완료 후 별도 마이그레이션.
+    # (13.9-73, testfk-app-transition). 제거는 API 전환 완료 후 별도 마이그레이션.
     control_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("controls.id"), nullable=False, index=True
     )
@@ -57,7 +57,7 @@ class TestRun(AuditedBase):
 
     # 기존 (작업6 → nullable로 완화)
     # deprecated — 옛 controls.id 참조. baseline_control_id/instance_control_id 로 대체 중
-    # (13.9-72, testfk-app-transition). 제거는 API 전환 완료 후 별도 마이그레이션.
+    # (13.9-73, testfk-app-transition). 제거는 API 전환 완료 후 별도 마이그레이션.
     control_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("controls.id"), nullable=False, index=True
     )
