@@ -8,6 +8,6 @@ describe('loginErrorMessage', () => {
     expect(loginErrorMessage({ response: { status: 502 } })).toContain('서버 오류')
     expect(loginErrorMessage({ code: 'ECONNABORTED' })).toContain('응답이 없습니다')
     expect(loginErrorMessage({ code: 'ERR_NETWORK' })).toContain('연결할 수 없습니다')
-    expect(loginErrorMessage(new Error('x'))).toContain('사내망')
+    expect(loginErrorMessage(new Error('x'))).toContain('다시 시도')
   })
 })
