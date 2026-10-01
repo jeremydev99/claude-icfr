@@ -32,6 +32,8 @@ tenant 는 인자로 받지 않는다 — ADR-0025 자동 격리(활성 tenant C
 6. 관계 필드: resolved risk/sub_process/process 를 정체성 id lookup 체인으로 채움
    (조인 아닌 메모리 lookup) — api/rcm.py 의 selectinload 조인과 동일 결과.
 """
+from uuid import UUID
+
 from sqlalchemy.orm import Session
 
 from app.models.rcm_baseline import (
@@ -346,3 +348,30 @@ def resolve_control_assertion_links(db: Session) -> list[dict]:
 
     rows.sort(key=lambda r: (str(r["control_id"]), str(r["risk_category_id"])))
     return rows
+
+
+def resolve_assertion_target(db: Session, control_id: UUID) -> tuple[UUID | None, UUID | None] | None:
+    """요청 control_id → (control_baseline_id, control_instance_id). 대상이 없으면 None.
+
+    baseline 유래 통제(adopt/override/exclude)의 정체성은 baseline 쪽 → control_baseline_id.
+    control_instance_id 는 회사 add 통제에만. (_resolve_assertions 의 읽기 규약과 대칭)
+
+    **제외(exclude)된 통제도 대상으로 인정한다** — 제외는 되돌릴 수 있는 상태이고, 제외 중
+    편집한 내용은 복원 시 살아나야 한다(ADR-0029 §2.2 복원 원칙). 조회에서 안 보이는 것과
+    편집 불가는 다른 문제다.
+
+    **2026-09-22 (13.9-72 후속, testfk-app-transition)**: 원래 `api/rcm.py`(어서션 junction
+    전용)에 있었으나, Test 계열(RAWC/test_runs/deficiencies/design_assessments)이 통제 id 를
+    baseline_control_id/instance_control_id 두 컬럼으로 분해할 때도 같은 판정이 필요해
+    공용 모듈로 옮겼다. 이름에서 `_`(private)와 `assertion` 을 뺀 것 외 시그니처·반환·로직 불변.
+    """
+    if db.query(BaselineControl).filter(BaselineControl.id == control_id).first() is not None:
+        return control_id, None
+    inst = db.query(ControlInstance).filter(
+        ControlInstance.id == control_id,
+        ControlInstance.action == ACTION_ADD,
+        ControlInstance.is_deleted == False,  # noqa: E712
+    ).first()
+    if inst is None:
+        return None
+    return None, inst.id

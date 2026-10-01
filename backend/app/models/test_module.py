@@ -12,9 +12,15 @@ class ControlRiskAssessment(AuditedBase):
     """RAWC 평가 — 한 통제 × 한 연도 = 1건. 사이냅소프트 양식 그룹 6 (AN~AV)."""
     __tablename__ = "control_risk_assessments"
 
+    # deprecated — 옛 controls.id 참조. baseline_control_id/instance_control_id 로 대체 중
+    # (13.9-72, testfk-app-transition). 제거는 API 전환 완료 후 별도 마이그레이션.
     control_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("controls.id"), nullable=False, index=True
     )
+    # 통제 정체성 id — 어느 쪽이 채워지는지는 origin(baseline vs 회사 add)에 따라 배타적
+    # (마이그레이션 6b6d7fd94f0d CHECK 규약, FK 없음 — resolver 가 존재를 검증한다, 13.9-27).
+    baseline_control_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    instance_control_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
 
     # 7가지 평가 요소 (AN~AT, 각 1~3점)
@@ -50,9 +56,13 @@ class TestRun(AuditedBase):
     __tablename__ = "test_runs"
 
     # 기존 (작업6 → nullable로 완화)
+    # deprecated — 옛 controls.id 참조. baseline_control_id/instance_control_id 로 대체 중
+    # (13.9-72, testfk-app-transition). 제거는 API 전환 완료 후 별도 마이그레이션.
     control_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("controls.id"), nullable=False, index=True
     )
+    baseline_control_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    instance_control_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     tester_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
     )

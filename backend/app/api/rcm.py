@@ -74,6 +74,7 @@ from app.schemas.rcm import (
     SummaryGroup,
 )
 from app.services.control_resolver import (
+    resolve_assertion_target,
     resolve_control_assertion_links,
     resolve_controls,
     resolve_hierarchy,
@@ -977,28 +978,6 @@ def delete_control(control_id: UUID, user: CurrentUser = None, db: Session = Dep
 # ── 어서션 junction overlay 헬퍼 (2-A-4-4, ADR-0029 §2.3) ──
 # 읽기(_resolve_assertions)와 **같은 이중 FK 규약**을 쓴다. 규약이 갈라지면 쓴 것이 읽히지 않는다.
 
-def _resolve_assertion_target(db: Session, control_id: UUID) -> tuple[UUID | None, UUID | None] | None:
-    """요청 control_id → (control_baseline_id, control_instance_id). 대상이 없으면 None.
-
-    baseline 유래 통제(adopt/override/exclude)의 정체성은 baseline 쪽 → control_baseline_id.
-    control_instance_id 는 회사 add 통제에만. (_resolve_assertions 의 읽기 규약과 대칭)
-
-    **제외(exclude)된 통제도 대상으로 인정한다** — 제외는 되돌릴 수 있는 상태이고, 제외 중
-    편집한 내용은 복원 시 살아나야 한다(ADR-0029 §2.2 복원 원칙). 조회에서 안 보이는 것과
-    편집 불가는 다른 문제다.
-    """
-    if db.query(BaselineControl).filter(BaselineControl.id == control_id).first() is not None:
-        return control_id, None
-    inst = db.query(ControlInstance).filter(
-        ControlInstance.id == control_id,
-        ControlInstance.action == ACTION_ADD,
-        ControlInstance.is_deleted == False,  # noqa: E712
-    ).first()
-    if inst is None:
-        return None
-    return None, inst.id
-
-
 def _find_assertion_instance(db: Session, cb_id: UUID | None, ci_id: UUID | None,
                              rc_id: UUID) -> ControlAssertionInstance | None:
     """한 쌍(통제, 어서션)의 overlay 행. **is_deleted 로 거르지 않는다.**
@@ -1035,7 +1014,7 @@ def create_control_assertion(body: ControlAssertionCreate, user: CurrentUser = N
       add 로 전환하지 않는다 — baseline 에 이미 있는 연결이 overlay 에도 표현되면 같은 상태를
       두 가지로 적을 수 있게 된다. baseline 이 진실이고 overlay 는 차이만 담는다.
     """
-    target = _resolve_assertion_target(db, body.control_id)
+    target = resolve_assertion_target(db, body.control_id)
     if target is None:
         raise HTTPException(status_code=404, detail="Control not found")
     cb_id, ci_id = target

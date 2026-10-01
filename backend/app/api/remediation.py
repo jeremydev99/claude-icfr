@@ -11,6 +11,7 @@ from app.models.remediation import (
     RemediationPlan,
     RemediationStatusHistory,
 )
+from app.services.control_resolver import resolve_assertion_target
 from app.schemas.remediation import (
     DeficiencyCreate,
     DeficiencyRead,
@@ -59,7 +60,17 @@ def list_deficiencies(skip: int = 0, limit: int = 100, user: CurrentUser = None,
 
 @router.post("/deficiencies", status_code=status.HTTP_201_CREATED, response_model=DeficiencyRead)
 def create_deficiency(body: DeficiencyCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> Deficiency:
-    obj = Deficiency(**body.model_dump())
+    baseline_control_id = instance_control_id = None
+    if body.control_id is not None:
+        target = resolve_assertion_target(db, body.control_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="Control not found")
+        baseline_control_id, instance_control_id = target
+    obj = Deficiency(
+        **body.model_dump(),
+        baseline_control_id=baseline_control_id,
+        instance_control_id=instance_control_id,
+    )
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -221,7 +232,15 @@ def create_design_assessment(body: DesignAssessmentCreate, user: CurrentUser = N
     ).first()
     if existing:
         raise HTTPException(status_code=409, detail="해당 통제·연도의 설계평가가 이미 존재합니다")
-    obj = DesignAssessment(**body.model_dump())
+    target = resolve_assertion_target(db, body.control_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Control not found")
+    baseline_control_id, instance_control_id = target
+    obj = DesignAssessment(
+        **body.model_dump(),
+        baseline_control_id=baseline_control_id,
+        instance_control_id=instance_control_id,
+    )
     db.add(obj)
     db.commit()
     db.refresh(obj)

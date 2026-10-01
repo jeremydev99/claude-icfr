@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.models.test_module import ControlRiskAssessment, TestRun, TestStatusHistory, TestStep
+from app.services.control_resolver import resolve_assertion_target
 from app.schemas.test_module import (
     ControlRiskAssessmentCreate,
     ControlRiskAssessmentRead,
@@ -89,7 +90,15 @@ def list_rawc(
 
 @router.post("/rawc", status_code=status.HTTP_201_CREATED, response_model=ControlRiskAssessmentRead)
 def create_rawc(body: ControlRiskAssessmentCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> ControlRiskAssessment:
-    obj = ControlRiskAssessment(**body.model_dump())
+    target = resolve_assertion_target(db, body.control_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Control not found")
+    baseline_control_id, instance_control_id = target
+    obj = ControlRiskAssessment(
+        **body.model_dump(),
+        baseline_control_id=baseline_control_id,
+        instance_control_id=instance_control_id,
+    )
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -154,7 +163,16 @@ def list_runs(
 
 @router.post("/runs", status_code=status.HTTP_201_CREATED, response_model=TestRunRead)
 def create_run(body: TestRunCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> TestRun:
-    obj = TestRun(**body.model_dump(), status="planned")
+    target = resolve_assertion_target(db, body.control_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Control not found")
+    baseline_control_id, instance_control_id = target
+    obj = TestRun(
+        **body.model_dump(),
+        status="planned",
+        baseline_control_id=baseline_control_id,
+        instance_control_id=instance_control_id,
+    )
     db.add(obj)
     db.flush()
     # 생성 시 자동 이력 1건 (from_status=None → "planned")
