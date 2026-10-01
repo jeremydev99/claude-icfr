@@ -11,7 +11,6 @@ from app.models.remediation import (
     RemediationPlan,
     RemediationStatusHistory,
 )
-from app.services.control_resolver import resolve_assertion_target
 from app.schemas.remediation import (
     DeficiencyCreate,
     DeficiencyRead,
@@ -25,6 +24,7 @@ from app.schemas.remediation import (
     RemediationStatusHistoryRead,
     RemediationTransitionRequest,
 )
+from app.services.control_resolver import resolve_assertion_target
 
 router = APIRouter(prefix="/api/remediation", tags=["remediation"])
 

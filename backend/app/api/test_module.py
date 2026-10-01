@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.models.test_module import ControlRiskAssessment, TestRun, TestStatusHistory, TestStep
-from app.services.control_resolver import resolve_assertion_target
 from app.schemas.test_module import (
     ControlRiskAssessmentCreate,
     ControlRiskAssessmentRead,
@@ -21,6 +20,7 @@ from app.schemas.test_module import (
     TestStepUpdate,
     TransitionRequest,
 )
+from app.services.control_resolver import resolve_assertion_target
 
 router = APIRouter(prefix="/api/test", tags=["test_module"])
 
