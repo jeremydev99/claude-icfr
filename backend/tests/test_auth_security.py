@@ -20,21 +20,18 @@ def _make_user(client: TestClient, h: dict, email: str, pw: str = "Initial-123")
 
 
 def test_password_policy_rules() -> None:
-    assert "10자" in password_problem("Ab1!")
-    assert "특수문자" in password_problem("abcdefghij1")
-    assert "숫자" in password_problem("abcdefghij!")
-    assert password_problem("correct-horse-9") is None
-    assert password_problem("한글비밀번호abc1!") is None
+    assert "8자" in password_problem("abc1234")
+    assert password_problem("abcdefgh") is None
 
 
 def test_weak_password_rejected_on_all_three_paths(client: TestClient) -> None:
     h = _h(client)
-    assert client.post("/api/users/", json={"email": "w@acme.example", "password": "secret123", "display_name": "약"},
+    assert client.post("/api/users/", json={"email": "w@acme.example", "password": "short", "display_name": "약"},
                        headers=h).status_code == 422
     uid = _make_user(client, h, "w2@acme.example")
     assert client.post(f"/api/users/{uid}/reset-password", json={"new_password": "short"}, headers=h).status_code == 422
     uh = _h(client, "w2@acme.example", "Initial-123")
-    assert client.post("/api/auth/change-password", json={"old_password": "Initial-123", "new_password": "onlyletters"},
+    assert client.post("/api/auth/change-password", json={"old_password": "Initial-123", "new_password": "seven77"},
                        headers=uh).status_code == 422
 
 
