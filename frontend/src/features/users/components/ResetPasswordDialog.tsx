@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { PASSWORD_RULE_TEXT, passwordPolicyError } from '@/features/auth/password.pure'
 import {
   Dialog,
   DialogContent,
@@ -39,8 +40,9 @@ export default function ResetPasswordDialog({ open, onOpenChange, targetUser, on
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    if (newPassword.length < 8) {
-      setError('비밀번호는 8자 이상이어야 합니다')
+    const policy = passwordPolicyError(newPassword)
+    if (policy) {
+      setError(policy)
       return
     }
     if (!targetUser) return
@@ -58,7 +60,7 @@ export default function ResetPasswordDialog({ open, onOpenChange, targetUser, on
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>비밀번호 재설정</DialogTitle>
-          <DialogDescription>대상 사용자의 비밀번호를 새로 설정합니다.</DialogDescription>
+          <DialogDescription>대상 사용자의 비밀번호를 새로 설정합니다. 계정 잠금도 함께 풀리고, 그 사용자의 기존 로그인은 끊깁니다.</DialogDescription>
         </DialogHeader>
         {targetUser && (
           <p className="text-sm text-muted-foreground -mt-1">
@@ -67,7 +69,7 @@ export default function ResetPasswordDialog({ open, onOpenChange, targetUser, on
         )}
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label htmlFor="new_password">새 비밀번호 (8자 이상)</Label>
+            <Label htmlFor="new_password">새 비밀번호 ({PASSWORD_RULE_TEXT})</Label>
             <Input
               id="new_password"
               type="password"

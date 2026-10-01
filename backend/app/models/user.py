@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import IdentityBase
@@ -16,3 +18,8 @@ class User(IdentityBase):
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
     role: Mapped[str] = mapped_column(String(50), default="user", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # 보안 1단계(2026-10-01): 연속 실패 횟수·잠금 해제 시각·비밀번호 변경 시각.
+    # password_changed_at 보다 먼저 발급된 토큰은 무효다 — 비밀번호를 바꾸면 다른 기기의 세션이 끊긴다.
+    failed_login_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

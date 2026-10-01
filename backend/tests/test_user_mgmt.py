@@ -20,7 +20,7 @@ def test_user_create_update_delete(client: TestClient) -> None:
     # create
     resp = client.post("/api/users/", json={
         "email": "alice@acme.example",
-        "password": "secret123",
+        "password": "Secret-123x",
         "display_name": "김앨리스",
         "role": "user",
     }, headers=h)
@@ -32,7 +32,7 @@ def test_user_create_update_delete(client: TestClient) -> None:
 
     # email 중복 → 409
     resp = client.post("/api/users/", json={
-        "email": "alice@acme.example", "password": "secret123", "display_name": "중복",
+        "email": "alice@acme.example", "password": "Secret-123x", "display_name": "중복",
     }, headers=h)
     assert resp.status_code == 409
 
@@ -59,11 +59,11 @@ def test_user_crud_requires_admin(client: TestClient) -> None:
     h = _headers(client)
     # 일반 사용자 생성 후 그 토큰으로 시도
     client.post("/api/users/", json={
-        "email": "bob@acme.example", "password": "secret123", "display_name": "박밥",
+        "email": "bob@acme.example", "password": "Secret-123x", "display_name": "박밥",
     }, headers=h)
-    bob_h = _headers(client, "bob@acme.example", "secret123")
+    bob_h = _headers(client, "bob@acme.example", "Secret-123x")
     resp = client.post("/api/users/", json={
-        "email": "carol@acme.example", "password": "secret123", "display_name": "최캐롤",
+        "email": "carol@acme.example", "password": "Secret-123x", "display_name": "최캐롤",
     }, headers=bob_h)
     assert resp.status_code == 403
 
@@ -73,36 +73,36 @@ def test_user_crud_requires_admin(client: TestClient) -> None:
 def test_change_password_self(client: TestClient) -> None:
     h = _headers(client)
     client.post("/api/users/", json={
-        "email": "dave@acme.example", "password": "oldpass123", "display_name": "정데이브",
+        "email": "dave@acme.example", "password": "Oldpass-123", "display_name": "정데이브",
     }, headers=h)
 
-    dave_h = _headers(client, "dave@acme.example", "oldpass123")
+    dave_h = _headers(client, "dave@acme.example", "Oldpass-123")
     # 잘못된 old → 400
     resp = client.post("/api/auth/change-password",
-                       json={"old_password": "wrong", "new_password": "newpass123"}, headers=dave_h)
+                       json={"old_password": "wrong", "new_password": "Newpass-123"}, headers=dave_h)
     assert resp.status_code == 400
 
     # 정상 변경
     resp = client.post("/api/auth/change-password",
-                       json={"old_password": "oldpass123", "new_password": "newpass123"}, headers=dave_h)
+                       json={"old_password": "Oldpass-123", "new_password": "Newpass-123"}, headers=dave_h)
     assert resp.status_code == 200
 
     # 새 비번으로 로그인 성공
     assert client.post("/api/auth/login",
-                       data={"username": "dave@acme.example", "password": "newpass123"}).status_code == 200
+                       data={"username": "dave@acme.example", "password": "Newpass-123"}).status_code == 200
 
 
 def test_admin_reset_password(client: TestClient) -> None:
     h = _headers(client)
     resp = client.post("/api/users/", json={
-        "email": "erin@acme.example", "password": "initpass123", "display_name": "한에린",
+        "email": "erin@acme.example", "password": "Initpass-123", "display_name": "한에린",
     }, headers=h)
     uid = resp.json()["id"]
 
     # 관리자 리셋 (old 검증 없음)
     resp = client.post(f"/api/users/{uid}/reset-password",
-                       json={"new_password": "resetpass123"}, headers=h)
+                       json={"new_password": "Resetpass-123"}, headers=h)
     assert resp.status_code == 200
 
     assert client.post("/api/auth/login",
-                       data={"username": "erin@acme.example", "password": "resetpass123"}).status_code == 200
+                       data={"username": "erin@acme.example", "password": "Resetpass-123"}).status_code == 200

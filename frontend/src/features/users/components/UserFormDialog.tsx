@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { PASSWORD_RULE_TEXT, passwordPolicyError } from '@/features/auth/password.pure'
 import {
   Dialog,
   DialogContent,
@@ -65,8 +66,9 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
     e.preventDefault()
     setError(null)
 
-    if (!isEdit && password.length < 8) {
-      setError('비밀번호는 8자 이상이어야 합니다')
+    const policy = isEdit ? null : passwordPolicyError(password)
+    if (policy) {
+      setError(policy)
       return
     }
 
@@ -110,7 +112,7 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="password">비밀번호 * (8자 이상)</Label>
+                <Label htmlFor="password">비밀번호 * ({PASSWORD_RULE_TEXT})</Label>
                 <Input
                   id="password"
                   type="password"

@@ -1,4 +1,4 @@
-import { Loader2, KeyRound, Pencil, Trash2 } from 'lucide-react'
+import { Loader2, KeyRound, LockOpen, Pencil, Trash2 } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import {
   Table,
@@ -11,6 +11,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { User, UserListResponse } from '../types'
+import { isLocked } from '../loginEvents.pure'
 
 interface Props {
   data: UserListResponse | undefined
@@ -21,6 +22,8 @@ interface Props {
   onEditClick: (user: User) => void
   onDeleteClick: (user: User) => void
   onResetPasswordClick: (user: User) => void
+  /** 잠긴 계정 해제 (보안 1단계) */
+  onUnlockClick?: (user: User) => void
 }
 
 export default function UserTable({
@@ -32,6 +35,7 @@ export default function UserTable({
   onEditClick,
   onDeleteClick,
   onResetPasswordClick,
+  onUnlockClick,
 }: Props) {
   const { items = [], total = 0 } = data ?? {}
 
@@ -99,6 +103,11 @@ export default function UserTable({
                   >
                     {user.is_active ? '활성' : '비활성'}
                   </Badge>
+                  {isLocked(user.locked_until) && (
+                    <Badge variant="outline" className="ml-1 bg-red-50 text-red-700 border-red-200" title={`해제 예정 ${new Date(user.locked_until!).toLocaleString('ko-KR')}`}>
+                      잠김
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {formatDate(user.created_at)}
@@ -114,6 +123,17 @@ export default function UserTable({
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
+                    {isLocked(user.locked_until) && onUnlockClick && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-red-600"
+                        title="잠금 해제"
+                        onClick={() => onUnlockClick(user)}
+                      >
+                        <LockOpen className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"

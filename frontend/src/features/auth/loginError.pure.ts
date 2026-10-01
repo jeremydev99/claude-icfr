@@ -20,6 +20,11 @@ export function loginErrorMessage(err: unknown): string {
     const d = e.response?.data?.detail
     return typeof d === 'string' ? d : '접근 권한이 없습니다'
   }
+  // 423: 연속 실패로 계정 잠김(보안 1단계) — 서버 문구에 남은 시간이 있다
+  if (status === 423) {
+    const d = e.response?.data?.detail
+    return typeof d === 'string' ? d : '계정이 잠겼습니다 — 잠시 후 다시 시도하거나 관리자에게 문의하세요'
+  }
   if (status === 429) return '로그인 시도가 너무 많습니다 — 잠시 후 다시 시도하세요'
   if (status && status >= 500) return '서버 오류로 로그인하지 못했습니다 — 잠시 후 다시 시도하세요'
   // 응답 자체가 없음: 시간 초과·연결 거부·사외망 차단

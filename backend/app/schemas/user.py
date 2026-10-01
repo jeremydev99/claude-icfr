@@ -1,7 +1,9 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, field_validator
+
+from app.core.password_policy import validate_password
 
 
 class UserBrief(BaseModel):
@@ -68,6 +70,11 @@ class UserCreate(BaseModel):
     display_name: str
     role: str = "user"
 
+    @field_validator("password")
+    @classmethod
+    def _strong(cls, v: str) -> str:
+        return validate_password(v)
+
 
 class UserUpdate(BaseModel):
     display_name: str | None = None
@@ -77,4 +84,9 @@ class UserUpdate(BaseModel):
 
 class PasswordResetRequest(BaseModel):
     """관리자 비밀번호 리셋 — old 검증 없이 재설정 (관리자 전용)."""
-    new_password: str = Field(min_length=8)
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def _strong(cls, v: str) -> str:
+        return validate_password(v)

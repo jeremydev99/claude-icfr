@@ -5,6 +5,20 @@ export interface User {
   role: string
   is_active: boolean
   created_at: string
+  /** 보안 1단계 — 연속 실패 횟수·잠금 해제 시각 */
+  failed_login_count?: number
+  locked_until?: string | null
+}
+
+export interface LoginEvent {
+  id: string
+  user_id: string | null
+  email: string
+  success: boolean
+  reason: string
+  ip: string | null
+  user_agent: string | null
+  created_at: string
 }
 
 export interface UserListResponse {

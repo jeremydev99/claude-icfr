@@ -13,6 +13,22 @@ class UserRead(BaseModel):
     role: str
     is_active: bool
     created_at: datetime
+    # 보안 1단계 — 관리자 화면의 잠금 표시·해제용
+    failed_login_count: int = 0
+    locked_until: datetime | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LoginEventRead(BaseModel):
+    """로그인 시도 기록 (보안 1단계)."""
+    id: UUID
+    user_id: UUID | None
+    email: str
+    success: bool
+    reason: str
+    ip: str | None
+    user_agent: str | None
+    created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
 

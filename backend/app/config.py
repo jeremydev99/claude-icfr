@@ -21,7 +21,11 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "please_change_this"
     jwt_algorithm: str = "HS256"
     jwt_access_token_expires_minutes: int = 30
-    jwt_refresh_token_expires_days: int = 7
+    # 7 → 1 (보안 1단계, 2026-10-01 사외 접속 허용) — 분실·공용 PC 에 남은 세션이 하루를 넘기지 않게
+    jwt_refresh_token_expires_days: int = 1
+    # 계정 잠금 — 연속 실패 N 회면 M 분 잠금(관리자 해제·비밀번호 재설정으로도 풀린다)
+    login_lock_threshold: int = 5
+    login_lock_minutes: int = 15
 
     # Application
     environment: str = "development"
