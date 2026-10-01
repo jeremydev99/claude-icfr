@@ -20,6 +20,7 @@
 자동 격리 대상). baseline 은 IdentityBase(전역)이라 tenant 무관 — before_flush stamp·
 읽기 필터 모두 baseline 에 영향 없음.
 """
+from app.core.audit_context import SYSTEM_MIGRATION_RCM_BASELINE, system_actor
 from app.core.database import SessionLocal
 from app.core.tenant_context import DEFAULT_TENANT_ID, reset_active_tenant, set_active_tenant
 from app.models.rcm import (
@@ -74,6 +75,7 @@ def _assert_baseline_empty(db) -> None:
         )
 
 
+@system_actor(SYSTEM_MIGRATION_RCM_BASELINE)
 def migrate() -> None:
     db = SessionLocal()
     tok = set_active_tenant(DEFAULT_TENANT_ID)  # 원본(AuditedBase) 읽기 위한 tenant 컨텍스트

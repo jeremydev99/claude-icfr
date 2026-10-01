@@ -42,6 +42,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
+from app.core.audit_context import SYSTEM_SEED_EUC_IUC, system_actor
 from app.core.database import SessionLocal
 from app.core.tenant_context import DEFAULT_TENANT_CODE, reset_active_tenant, set_active_tenant
 from app.models.euc import CHANGE_FREQUENCY_ALIASES, CHANGE_FREQUENCY_VALUES, RISK_GRADES, EucFile
@@ -168,6 +169,7 @@ def _load() -> tuple[list[dict], list[dict]]:
     return files, items
 
 
+@system_actor(SYSTEM_SEED_EUC_IUC)
 def seed(tenant_code: str = DEFAULT_TENANT_CODE) -> None:
     files, items = _load()
     print(f"  파싱: EUC 파일 {len(files)} / 정보 항목 {len(items)}")

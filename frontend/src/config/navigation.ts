@@ -15,6 +15,7 @@ import {
   Paperclip,
   Users,
   Mail,
+  Table2,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -33,7 +34,7 @@ import {
  *
  * 값이 바뀌는 시점은 "데이터가 들어왔을 때"와 "화면이 붙었을 때"뿐이라 손으로 관리한다.
  */
-export type ModuleStatus = 'live' | 'ready' | 'api' | 'todo'
+export type ModuleStatus = 'live' | 'ready' | 'draft' | 'api' | 'todo'
 
 export interface NavItem {
   label: string
@@ -74,9 +75,16 @@ export const navigation: NavGroup[] = [
       {
         label: '일정관리',
         path: '/schedule',
-        status: 'todo',
+        status: 'draft',
         icon: Calendar,
         description: '연간 ICFR 평가 일정 수립·진행률 추적',
+      },
+      {
+        label: '재무제표',
+        path: '/financial-statements',
+        status: 'ready', // 8-D1 — 업로드(API)한 재무제표의 트리·검증·확정·임시계정 해소. 업로드 화면은 8-D2
+        icon: Table2,
+        description: '재무제표 계정 트리·금액 검증·확정 (스코핑의 계정 원천)',
       },
       {
         label: 'Scoping',
@@ -145,7 +153,7 @@ export const navigation: NavGroup[] = [
       {
         label: 'Report',
         path: '/report',
-        status: 'todo',
+        status: 'draft',
         icon: FileText,
         description: '이사회 보고서·외부감사 PBC 패키지 작성·결재·배포',
       },
@@ -170,7 +178,7 @@ export const navigation: NavGroup[] = [
         path: '/admin/role-assignments',
         icon: UserCog,
         description: '통제·프로세스 단위 역할 배정 (GET/POST /api/org/assignments)',
-        status: 'api',
+        status: 'ready',
         requiresIcfrManager: true,
       },
       {
@@ -178,7 +186,7 @@ export const navigation: NavGroup[] = [
         path: '/admin/policies',
         icon: SlidersHorizontal,
         description: '부서승인 토글·증빙 편집 토글·보존기간 (GET/PUT /api/org/policies)',
-        status: 'api',
+        status: 'ready',
         requiresIcfrManager: true,
       },
       {
@@ -186,7 +194,7 @@ export const navigation: NavGroup[] = [
         path: '/admin/fiscal-year',
         icon: CalendarRange,
         description: '회계연도가 시작하는 달 (tenant_policies)',
-        status: 'api',
+        status: 'ready',
       },
     ],
   },
@@ -203,7 +211,7 @@ export const navigation: NavGroup[] = [
       {
         label: '메일발송',
         path: '/notification',
-        status: 'todo',
+        status: 'draft',
         icon: Mail,
         description: '알림 템플릿·규칙·발송 이력 관리',
       },

@@ -1,7 +1,7 @@
 """Test 계열 5테이블 control_id 를 baseline/instance 두 컬럼으로 분리 (선택지 2)
 
 Revision ID: 6b6d7fd94f0d
-Revises: b1c2d3e4f5a6
+Revises: f5a6b7c8d9e0
 Create Date: 2026-09-21 00:00:00.000000+00:00
 
 **Test 계열 FK 가 옛 `controls.id` 를 가리키고 있었다.** RCM 통제 저장 경로가
@@ -12,13 +12,18 @@ Create Date: 2026-09-21 00:00:00.000000+00:00
 회사가 추가한 통제면 `control_instances.id` 라 두 테이블에 걸쳐 있다(13.9-27 과 같은 이유).
 그래서 참조 컬럼을 둘로 나눈다.
 
-- `baseline_control_id` → `baseline_controls(id, tenant_id)` **복합 FK**
-  (기존 `fk_control_instances_baseline_tenant` 등과 같은 규약, 컬럼 순서 `(…_id, tenant_id)`)
-- `instance_control_id` → `control_instances(id)` **단일 FK**
-  (`control_assertion_instances.control_instance_id` 와 같은 규약. `control_instances` 에는
-  `(id, tenant_id)` 유니크가 없어 복합으로 걸 수 없다 — 테넌트 일치는 DB 가 아니라 앱이 지킨다)
+- `baseline_control_id` → 논리적으로 `baseline_controls(id, tenant_id)`
+- `instance_control_id` → 논리적으로 `control_instances(id)`
 - CHECK: 둘 다 non-null 금지. **"정확히 하나"가 아니라 "둘 다 아님"** 이다 —
   `deficiencies.control_id` 는 원래 NULL 허용이고 실제로 NULL 2건이 있다.
+
+**FK 없음(2026-09-22, FK-less 재작업) — 의도적.** 처음엔 위 두 참조에 DB FK(복합+단일)를
+걸었으나, 코드베이스 지배 관례(evidence·assessment·euc/iuc 등, 13.9-27)는 "통제 정체성 id 는
+baseline/instance 두 테이블에 걸쳐 있어 FK 하나로 못 거니 FK 를 안 걸고 핸들러가
+`resolve_controls()` 로 존재를 검증한다"이다. 이 리비전만 FK 를 걸어 예외가 되고 있었다 —
+FK 2개(복합 baseline, 단일 instance)와 그 downgrade 대응 drop 을 제거해 관례에 맞췄다.
+**⚠️ 무결성 공백**: FK 제거 후 앱 코드가 resolver 검증을 붙이기 전까지는 두 컬럼에 임의 uuid 가
+들어가도 DB 가 막지 못한다. 뒤따르는 모델/서비스 전환 프롬프트에서 즉시 닫아야 한다.
 
 **기존 `control_id` 는 지우지 않는다.** additive 이고 되돌리기 쉽다. NOT NULL 이던 4테이블은
 nullable 로만 완화한다(신규 행이 새 컬럼만 채울 수 있도록). 컬럼 제거는 앱 코드 전환 후 별도 마이그레이션.
@@ -41,6 +46,12 @@ nullable 로만 완화한다(신규 행이 새 컬럼만 채울 수 있도록). 
 이 형제로 병합되어 alembic branch(head 2개) 상황이 됐다. revision ID(`6b6d7fd94f0d`)는 유지,
 down_revision 만 `a9b0c1d2e3f4` → `b1c2d3e4f5a6` 로 재배치해 단일 head 로 정리. 로직 무변경.
 
+**부모 재배치(2026-10-01, 3차, MERGE-02)**: `b1c2d3e4f5a6` 아래 origin 에 `c2d3e4f5a6b7`(7-A)부터
+`f5a6b7c8d9e0`(8-E)까지 4건이 같은 부모로 병합되어 다시 head 2개가 됐다. revision ID 유지,
+down_revision 만 `b1c2d3e4f5a6` → `f5a6b7c8d9e0` 로 재배치해 단일 head 로 정리. 로직 무변경.
+로컬 DB 에 이미 적용돼 있던 터라 `alembic downgrade b1c2d3e4f5a6` 로 되돌린 뒤 재적용했다
+(`ICFR-PROMPT-MERGE-02-alembic-relinear.md`).
+
 downgrade 주의: 백필된 baseline/instance 값은 **소실**된다. 또한 upgrade 이후 새 컬럼만 채워
 `control_id` 가 NULL 인 행이 생기면 NOT NULL 복원이 실패한다(적용 시점 기준으로는 없다).
 """
@@ -51,7 +62,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 revision: str = '6b6d7fd94f0d'
-down_revision: Union[str, None] = 'b1c2d3e4f5a6'
+down_revision: Union[str, None] = 'f5a6b7c8d9e0'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -81,14 +92,6 @@ def upgrade() -> None:
     for t in _TABLES:
         op.add_column(t, sa.Column('baseline_control_id', PG_UUID(as_uuid=True), nullable=True))
         op.add_column(t, sa.Column('instance_control_id', PG_UUID(as_uuid=True), nullable=True))
-        op.create_foreign_key(
-            f'fk_{t}_baseline_control_tenant', t, 'baseline_controls',
-            ['baseline_control_id', 'tenant_id'], ['id', 'tenant_id'],
-        )
-        op.create_foreign_key(
-            f'fk_{t}_instance_control', t, 'control_instances',
-            ['instance_control_id'], ['id'],
-        )
         op.create_check_constraint(f'ck_{t}_ctrl_one', t, _CHECK_SQL)
         op.execute(_backfill_sql(t))
 
@@ -99,8 +102,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     for t in reversed(_TABLES):
         op.drop_constraint(f'ck_{t}_ctrl_one', t, type_='check')
-        op.drop_constraint(f'fk_{t}_instance_control', t, type_='foreignkey')
-        op.drop_constraint(f'fk_{t}_baseline_control_tenant', t, type_='foreignkey')
         op.drop_column(t, 'instance_control_id')
         op.drop_column(t, 'baseline_control_id')
 

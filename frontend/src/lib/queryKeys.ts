@@ -70,6 +70,17 @@ export const queryKeys = {
       ['tenant', tenantSegment(tenantId), 'scoping', 'detail', id] as const,
     summary: (tenantId: TenantId) => ['tenant', tenantSegment(tenantId), 'scoping', 'summary'] as const,
   },
+  fs: {
+    all: (tenantId: TenantId) => ['tenant', tenantSegment(tenantId), 'fs'] as const,
+    meta: (tenantId: TenantId) => ['tenant', tenantSegment(tenantId), 'fs', 'meta'] as const,
+    list: (tenantId: TenantId) => ['tenant', tenantSegment(tenantId), 'fs', 'list'] as const,
+    detail: (tenantId: TenantId, id?: string | null) =>
+      ['tenant', tenantSegment(tenantId), 'fs', 'detail', id] as const,
+    suspense: (tenantId: TenantId, id?: string | null) =>
+      ['tenant', tenantSegment(tenantId), 'fs', 'suspense', id] as const,
+    matches: (tenantId: TenantId, statementType: string) =>
+      ['tenant', tenantSegment(tenantId), 'fs', 'matches', statementType] as const,
+  },
   euc: {
     all: (tenantId: TenantId) => ['tenant', tenantSegment(tenantId), 'euc'] as const,
     meta: (tenantId: TenantId) => ['tenant', tenantSegment(tenantId), 'euc', 'meta'] as const,

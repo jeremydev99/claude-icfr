@@ -1,12 +1,105 @@
-import ApiOnlyPlaceholder from '../components/ApiOnlyPlaceholder'
+import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
+import { Loader2, Lock } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useAuthStore } from '@/features/auth/store'
+import { isIcfrManagerForUser } from '@/features/auth/permissions.pure'
+import { usePolicies } from '../api/PolicyAssignmentApi'
+import {
+  POLICY_FISCAL_YEAR_START_MONTH,
+  POLICY_GROUPS,
+  parseStartMonth,
+  policyMap,
+  unknownPolicies,
+} from '../PolicyDefs.pure'
+import PolicyField from '../components/PolicyField'
 
 export default function PoliciesPage() {
+  const { user } = useAuthStore()
+  const canManage = isIcfrManagerForUser(user)
+  const { data, isLoading, isError } = usePolicies()
+  const values = useMemo(() => policyMap(data?.items), [data])
+  const unknown = useMemo(() => unknownPolicies(data?.items), [data])
+
   return (
-    <ApiOnlyPlaceholder
-      title="정책 설정"
-      description="부서승인 단계 사용 여부, 이해상충 조합 금지 토글, 증빙 편집 허용, 증빙 보존기간·크기 상한."
-      endpoints={['GET /api/org/policies', 'PUT /api/org/policies (upsert)']}
-      note="내부회계관리자 전용 화면입니다(서버가 require_icfr_manager 로 최종 판정)."
-    />
+    <div className="space-y-4 p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">정책 설정</h1>
+          <p className="text-sm text-muted-foreground">
+            테넌트 단위 운영 정책입니다. 설정하지 않은 항목은 서버 기본값을 따릅니다.
+          </p>
+        </div>
+        {!canManage && (
+          <Badge variant="outline">
+            <Lock className="mr-1 h-3 w-3" /> 읽기 전용 · 내부회계관리자만 편집
+          </Badge>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> 불러오는 중…
+        </div>
+      ) : isError ? (
+        <p className="py-8 text-sm text-destructive">정책을 불러오지 못했습니다.</p>
+      ) : (
+        <>
+          <Card>
+            <CardContent className="flex flex-wrap items-center justify-between gap-2 pt-6 text-sm">
+              <span>
+                회계연도 시작월: <strong>{parseStartMonth(values[POLICY_FISCAL_YEAR_START_MONTH])}월</strong>
+              </span>
+              <Link to="/admin/fiscal-year" className="text-primary underline-offset-4 hover:underline">
+                회계연도 화면에서 변경 →
+              </Link>
+            </CardContent>
+          </Card>
+
+          {POLICY_GROUPS.map((g) => (
+            <Card key={g.title}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">{g.title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {g.defs.map((d) => (
+                  <PolicyField key={d.key} def={d} raw={values[d.key]} canEdit={canManage} />
+                ))}
+              </CardContent>
+            </Card>
+          ))}
+
+          {unknown.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">기타 저장된 정책 (화면 미지원 · 읽기 전용)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>키</TableHead>
+                        <TableHead>값</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {unknown.map((p) => (
+                        <TableRow key={p.policy_key}>
+                          <TableCell className="font-mono text-xs">{p.policy_key}</TableCell>
+                          <TableCell className="font-mono text-xs">{p.policy_value}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
   )
 }

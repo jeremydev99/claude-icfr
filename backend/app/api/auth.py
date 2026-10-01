@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -26,8 +27,10 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ) -> TokenResponse:
+    # 이메일은 대소문자·앞뒤 공백과 무관하게 찾는다 — 휴대폰 키보드가 첫 글자를 대문자로 바꾸거나
+    # 자동 완성이 공백을 붙이면 로그인이 막혔다(2026-09-30 모바일 로그인 실패 보고)
     user = db.query(User).filter(
-        User.email == form_data.username,
+        func.lower(User.email) == form_data.username.strip().lower(),
         User.is_deleted == False,  # noqa: E712
     ).first()
     if not user or not verify_password(form_data.password, user.hashed_password):

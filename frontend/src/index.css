@@ -115,3 +115,27 @@
     background: hsl(var(--sidebar-border));
   }
 }
+
+/* ── 모바일(768px 미만) — 넓은 표는 짓눌리지 않고 **표 자신이 가로 스크롤**한다 ──
+   표마다 감싸는 대신 전역으로 처리한다. 표를 담은 요소가 가로 스크롤 상자가 되고(:has),
+   표는 최소 폭을 가져 칸이 한 글자씩 꺾이지 않는다. PC 화면에는 적용되지 않는다. */
+@media (max-width: 767px) {
+  main :has(> table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  main table {
+    min-width: 640px;
+  }
+  /* 열이 많은 표(RCM 등)는 칸이 좁아져 글자가 세로로 꺾인다 — 칸마다 최소 폭을 줘 표가 열 수만큼 넓어지게 한다 */
+  main th,
+  main td {
+    min-width: 5.5rem;
+  }
+  /* 페이지 좌우 여백을 줄여 표시 폭을 넓힌다(p-6 → 1rem) */
+  main > div.p-6,
+  main > div > div.p-6 {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}

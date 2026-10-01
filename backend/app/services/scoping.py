@@ -149,10 +149,13 @@ def _origin(db: Session, scoping: Scoping, target_type: str, target_id: UUID, fi
                               field=field, status=ORIGIN_TEMPLATE, template_version=version))
 
 
-def create_from_template(db: Session, fiscal_year: int, template: ScopingTemplate) -> Scoping:
+def create_from_template(db: Session, fiscal_year: int, template: ScopingTemplate,
+                         fill_accounts=None) -> Scoping:
     """회계연도 스코핑을 만들고 템플릿 내용을 **복사**한다. 복사된 필드마다 배지를 단다.
 
     **금액은 복사하지 않는다** — 템플릿에 금액이 없다(2022 금액은 적재 단계에서 제외).
+    `fill_accounts(db, scoping)` 를 주면 계정 행은 그 함수가 만든다 — 재무제표 기반 생성(8-E,
+    `services/scoping_fs.py`). 중요성 기준·문구·배지는 어느 경우든 템플릿에서 온다.
     """
     v = template.version
     crit = template_criteria(template)
@@ -203,9 +206,25 @@ def create_from_template(db: Session, fiscal_year: int, template: ScopingTemplat
         db.flush()
         _origin(db, s, ORIGIN_TARGET_TEXT, row.id, "body", v)
 
+    if fill_accounts is not None:
+        fill_accounts(db, s)
+    else:
+        copy_template_accounts(db, s, template)
+    db.flush()
+    return s
+
+
+def copy_template_accounts(db: Session, s: Scoping, template: ScopingTemplate,
+                           statement_types: set[str] | None = None) -> int:
+    """템플릿 계정 행 복사 + 배지. `statement_types` 를 주면 그 종류만(재무제표 기반 생성의 주석·CF 대체)."""
+    v = template.version
+    n = 0
     for a in _active(db.query(ScopingTemplateAccount), ScopingTemplateAccount).filter(
             ScopingTemplateAccount.template_id == template.id).order_by(
             ScopingTemplateAccount.statement_type, ScopingTemplateAccount.sort_order):
+        if statement_types is not None and a.statement_type not in statement_types:
+            continue
+        n += 1
         row = ScopingAccount(scoping_id=s.id, statement_type=a.statement_type, sort_order=a.sort_order,
                              group_label=a.group_label, name=a.name, ratings=dict(a.ratings or {}),
                              qual_basis=a.qual_basis, manual_conclusion=a.manual_conclusion,
@@ -220,7 +239,7 @@ def create_from_template(db: Session, fiscal_year: int, template: ScopingTemplat
         if a.manual_conclusion:
             _origin(db, s, ORIGIN_TARGET_ACCOUNT, row.id, "manual", v)
     db.flush()
-    return s
+    return n
 
 
 # ── 배지 ───────────────────────────────────────────────────
@@ -389,6 +408,11 @@ def evaluate(db: Session, s: Scoping) -> dict:
                         f"({_pct(lo)}~{_pct(hi)})를 벗어났습니다")
     if not (s.rationale or "").strip():
         warnings.append("중요성 설정근거가 비어 있습니다 — 검토 요청·확정 전에 입력해야 합니다")
+    # 재무제표 기반 생성(8-E) — 템플릿 링크가 없는 계정은 질적 평가가 비어 있다
+    unlinked = [a.name for a in accounts if a.fs_account_id is not None and not a.ratings]
+    if unlinked:
+        warnings.append(f"재무제표 계정 {len(unlinked)}개는 스코핑 템플릿 연결이 없어 질적 평가가 비어 있습니다 "
+                        f"(재무제표 > 스코핑 템플릿 연결에서 연결하거나 직접 평가) — 예: {', '.join(unlinked[:5])}")
 
     return {
         "policy": {"threshold": _rate_str(threshold), "comparison": comparison},

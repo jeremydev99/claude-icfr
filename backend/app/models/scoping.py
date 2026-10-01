@@ -325,8 +325,15 @@ class ScopingText(AuditedBase):
 class ScopingAccount(AuditedBase):
     """계정 평가 1줄 (ADR-0034 §2.4). 금액은 원 단위 — 원천 주석 시트는 백만원이라 입력 시 환산한다."""
     __tablename__ = "scoping_accounts"
-    __table_args__ = (_scoping_fk("fk_scoping_accounts_scoping_tenant"),)
+    __table_args__ = (
+        _scoping_fk("fk_scoping_accounts_scoping_tenant"),
+        # 재무제표 기반 생성(8-E)의 원천 계정 — 같은 테넌트만. NULL 이면 템플릿 복사 행(MATCH SIMPLE)
+        ForeignKeyConstraint(["fs_account_id", "tenant_id"], ["fs_accounts.id", "fs_accounts.tenant_id"],
+                             name="fk_scoping_accounts_fs_account_tenant"),
+    )
     scoping_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    # 재무제표 기반 생성(8-E, ADR-0037 §6)이면 원천 재무제표 계정. 템플릿 복사 행·기존 행은 NULL
+    fs_account_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True, index=True)
     statement_type: Mapped[str] = mapped_column(String(10), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
     group_label: Mapped[str | None] = mapped_column(String(200), nullable=True)

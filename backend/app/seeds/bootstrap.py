@@ -3,6 +3,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.core.audit_context import SYSTEM_BOOTSTRAP, system_actor
 from app.core.security import hash_password
 from app.core.tenant_context import (
     DEFAULT_TENANT_CODE,
@@ -31,6 +32,7 @@ def ensure_default_tenant(db: Session) -> Tenant:
     return tenant
 
 
+@system_actor(SYSTEM_BOOTSTRAP)  # 사용자 없는 기동 경로 — 감사 컬럼 행위자 명시(ADR-0036)
 def bootstrap_admin(db: Session) -> None:
     """Phase 0 임시 admin 계정 + 기본 tenant 접근 권한 자동 생성. 멱등."""
     settings = get_settings()

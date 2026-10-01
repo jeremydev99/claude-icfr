@@ -41,6 +41,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
+from app.core.audit_context import SYSTEM_SEED_SCOPING_TEMPLATE, system_actor
 from app.core.database import SessionLocal
 from app.models.scoping import (
     BENCHMARK_ADJUSTED_PBT,
@@ -284,6 +285,7 @@ def load_template(db: Session, source: Path = SOURCE, code: str = DEFAULT_TEMPLA
     return tpl, ld.changes, True
 
 
+@system_actor(SYSTEM_SEED_SCOPING_TEMPLATE)
 def main() -> None:
     db = SessionLocal()
     try:

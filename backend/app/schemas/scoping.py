@@ -49,6 +49,9 @@ class ScopingCreate(BaseModel):
     fiscal_year: int = Field(ge=2000, le=2100)
     template_code: str | None = None
     template_version: int | None = None
+    # 계정 행 원천 (8-E, 마스터 확정 A안) — template: 템플릿 192계정 복사(기존) /
+    # financial_statements: 기준 연도 확정 재무제표 계정 + 확정 템플릿 링크로 기본값
+    source: str = Field(default="template", pattern="^(template|financial_statements)$")
 
 
 class ScopingUpdate(BaseModel):
@@ -146,6 +149,7 @@ class TextRead(BaseModel):
 
 class AccountRead(BaseModel):
     id: UUID
+    fs_account_id: UUID | None = None   # 재무제표 기반 생성(8-E)의 원천 계정. 템플릿 복사 행은 None
     statement_type: str
     sort_order: int
     group_label: str | None
