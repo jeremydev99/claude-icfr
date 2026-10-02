@@ -5,6 +5,9 @@ export interface EvidenceFile {
   size_bytes: number
   minio_key: string | null
   sha256: string | null
+  // 부착 대상 — 통제 × 회차 (ADR-0032 §2.7). 기존 증빙(회차 도입 전)은 null.
+  cycle_id: string | null
+  control_id: string | null
   uploaded_by_id: string
   created_at: string
   updated_at: string
@@ -34,6 +37,17 @@ export interface EvidenceLinkSearchParams {
   file_id?: string
   skip?: number
   limit?: number
+}
+
+export interface EvidenceUploadPayload {
+  file: File
+  cycleId: string
+  controlId: string
+}
+
+export interface CycleTarget {
+  control_id: string
+  control_code: string | null
 }
 
 export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024 // 50MB

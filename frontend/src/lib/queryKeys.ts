@@ -47,6 +47,8 @@ export const queryKeys = {
       ['tenant', tenantSegment(tenantId), 'evidence', 'evidence-files', params] as const,
     filesAll: (tenantId: TenantId) =>
       ['tenant', tenantSegment(tenantId), 'evidence', 'evidence-files'] as const,
+    cycleTargets: (tenantId: TenantId, cycleId?: string | null) =>
+      ['tenant', tenantSegment(tenantId), 'evidence', 'cycle-targets', cycleId] as const,
   },
   remediation: {
     plans: (tenantId: TenantId, params?: unknown) =>

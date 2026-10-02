@@ -1,18 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import axios from 'axios'
-import { fetchEvidenceFiles, uploadEvidenceFile, deleteEvidenceFile } from './evidenceApi'
+import { fetchEvidenceFiles, uploadEvidenceFile, deleteEvidenceFile, fetchCycleTargets } from './evidenceApi'
 import type { EvidenceFileSearchParams } from '../types'
 import { queryKeys } from '@/lib/queryKeys'
 import { useActiveTenantId } from '@/features/auth/store'
-
-function resolveUploadError(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const status = error.response?.status
-    if (status === 413) return '파일 크기가 서버 허용 한도를 초과했습니다.'
-    if (status === 415) return '허용되지 않는 파일 형식입니다.'
-  }
-  return '업로드 중 오류가 발생했습니다.'
-}
+import { resolveEvidenceError as resolveUploadError } from '../evidence.pure'
 
 export function useEvidenceFiles(params: EvidenceFileSearchParams = {}) {
   const tenantId = useActiveTenantId()
@@ -44,5 +35,16 @@ export function useDeleteEvidenceFile() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.evidence.filesAll(tenantId) })
     },
+  })
+}
+
+/** 회차 대상 통제 스냅샷 — 업로드 시 통제 선택지. 회차 미선택이면 조회하지 않는다. */
+export function useCycleTargets(cycleId: string | null) {
+  const tenantId = useActiveTenantId()
+  return useQuery({
+    queryKey: queryKeys.evidence.cycleTargets(tenantId, cycleId),
+    queryFn: () => fetchCycleTargets(cycleId as string),
+    enabled: !!cycleId,
+    staleTime: 5 * 60_000,
   })
 }
