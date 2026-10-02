@@ -4,6 +4,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useCycles, useFiscalStartMonth, useIncompleteCounts, type CycleItem } from '../api/useSchedule'
+import { useAuthStore } from '@/features/auth/store'
+import CycleCreateDialog from '@/features/assessment/components/CycleCreateDialog'
 import {
   CATEGORY_STYLE,
   FREQ_LABEL,
@@ -30,7 +32,11 @@ export default function SchedulePage() {
   const { data: startMonth = 1, isLoading: loadingPolicy } = useFiscalStartMonth()
   const { data: cycles = [], isLoading: loadingCycles } = useCycles()
   const [fyOverride, setFy] = useState<number | null>(null)
-  const fy = fyOverride ?? currentFiscalYear(today, startMonth)
+  const thisFy = currentFiscalYear(today, startMonth)
+  const fy = fyOverride ?? thisFy
+  // 버튼은 외부감사인(조회 전용)만 숨긴다. 평가자 여부는 /me 에 없어 서버 403 사유로 안내한다
+  const canWrite = useAuthStore((s) => s.user?.can_write ?? false)
+  const [createOpen, setCreateOpen] = useState(false)
 
   const columns = useMemo(() => buildColumns(fy, startMonth), [fy, startMonth])
   const nowOffset = todayOffset(fy, startMonth, today)
@@ -156,15 +162,16 @@ export default function SchedulePage() {
       </Card>
 
       <Card>
-        <CardHeader className="pb-2">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-base">평가 회차</CardTitle>
+          {canWrite && <Button size="sm" onClick={() => setCreateOpen(true)}>회차 생성</Button>}
         </CardHeader>
         <CardContent className="text-sm">
           {loadingCycles ? (
             <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> 불러오는 중…</div>
           ) : fyCycles.length === 0 ? (
             <p className="text-muted-foreground">
-              {fy} 회계연도에 해당하는 평가 회차가 없습니다. 평가 화면에서 회차를 만들면 여기에 기간이 표시됩니다.
+              {fy} 회계연도에 해당하는 평가 회차가 없습니다. 평가자가 [회차 생성]으로 만들면 여기에 기간이 표시됩니다.
             </p>
           ) : (
             <ul className="divide-y">
@@ -190,6 +197,8 @@ export default function SchedulePage() {
           )}
         </CardContent>
       </Card>
+
+      <CycleCreateDialog open={createOpen} onOpenChange={setCreateOpen} fiscalYear={fy} currentFiscalYear={thisFy} />
     </div>
   )
 }
