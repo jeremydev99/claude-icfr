@@ -14,6 +14,7 @@ import DeleteConfirmDialog from '../components/DeleteConfirmDialog'
 import ExcelUploadDialog from '../components/ExcelUploadDialog'
 import HierarchyManagementView from '../components/hierarchy/HierarchyManagementView'
 import { Button } from '@/components/ui/button'
+import { useCanWrite } from '@/features/auth/useCanWrite'
 
 function extractErrorMessage(err: unknown): string {
   if (isAxiosError(err)) {
@@ -55,6 +56,7 @@ export default function RcmPage() {
 
   const { data, isLoading, isError, error, refetch } = useControls(params)
   const deleteMutation = useDeleteControl()
+  const canWrite = useCanWrite()
 
   const handleChange = (updated: Partial<ControlSearchParams>) => {
     setParams((prev) => ({ ...prev, ...updated }))
@@ -126,10 +128,11 @@ export default function RcmPage() {
             params={params}
             onParamsChange={handleChange}
             onSelect={handleSelect}
-            onAddClick={handleAddClick}
-            onEdit={handleEditClick}
-            onDelete={handleDeleteClick}
-            onUploadClick={() => setUploadOpen(true)}
+            // 조회 전용(external_auditor)이면 쓰기 핸들러를 넘기지 않는다 — 버튼이 렌더되지 않는다
+            onAddClick={canWrite ? handleAddClick : undefined}
+            onEdit={canWrite ? handleEditClick : undefined}
+            onDelete={canWrite ? handleDeleteClick : undefined}
+            onUploadClick={canWrite ? () => setUploadOpen(true) : undefined}
             isLoading={isLoading}
             isError={isError}
             error={error}
@@ -139,7 +142,7 @@ export default function RcmPage() {
             control={selectedControl}
             open={sheetOpen}
             onOpenChange={setSheetOpen}
-            onEditClick={handleEditClick}
+            onEditClick={canWrite ? handleEditClick : undefined}
             fiscalYear={fiscalYear}
           />
 

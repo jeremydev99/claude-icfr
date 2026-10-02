@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser
+from app.core.permissions import require_write
 from app.models.assessment import AssessmentActivity, AssessmentCycle, CycleTarget
 from app.models.org import Department, UserDepartment
 from app.models.rcm import (
@@ -45,6 +46,7 @@ from app.models.rcm_baseline import (
     SubProcessInstance,
 )
 from app.models.role_assignment import ROLE_CONTROL_OWNER
+from app.models.user import User
 from app.schemas.rcm import (
     BulkDeleteRequest,
     BulkUpdateRequest,
@@ -295,7 +297,7 @@ def list_processes(skip: int = 0, limit: int = 100, user: CurrentUser = None, db
 
 
 @router.post("/processes", status_code=status.HTTP_201_CREATED, response_model=ProcessRead)
-def create_process(body: ProcessCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+def create_process(body: ProcessCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """add instance 생성 (2-A-4-3, ADR-0029). tenant_id 는 before_flush 자동 stamp."""
     _assert_code_available(db, BaselineProcess, ProcessInstance, body.code, "프로세스")
     inst = ProcessInstance(action=ACTION_ADD, baseline_process_id=None, **body.model_dump())
@@ -311,7 +313,7 @@ def get_process(process_id: UUID, user: CurrentUser = None, db: Session = Depend
 
 
 @router.patch("/processes/{process_id}", response_model=ProcessRead)
-def update_process(process_id: UUID, body: ProcessUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+def update_process(process_id: UUID, body: ProcessUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """수정 — baseline 유래면 override instance, add 면 instance 직접 (2-A-4-3, ADR-0029).
 
     `exclude_unset` — False/""/None 도 유효한 값이라 미전송 여부로만 판별한다(2-A-4-2 선례).
@@ -324,7 +326,7 @@ def update_process(process_id: UUID, body: ProcessUpdate, user: CurrentUser = No
 
 
 @router.delete("/processes/{process_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_process(process_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_process(process_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     """삭제 — baseline 유래는 exclude instance, add 는 soft delete (2-A-4-3, ADR-0029).
 
     하위(sub_process/risk/control)는 건드리지 않는다 — cascade 는 조회 시점 계산(§2.2).
@@ -350,7 +352,7 @@ def list_sub_processes(process_id: UUID | None = None, skip: int = 0, limit: int
 
 
 @router.post("/sub-processes", status_code=status.HTTP_201_CREATED, response_model=SubProcessRead)
-def create_sub_process(body: SubProcessCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+def create_sub_process(body: SubProcessCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """add instance 생성 (2-A-4-3, ADR-0029). 상위는 이중 FK 규칙으로 baseline/instance 매핑."""
     _assert_code_available(db, BaselineSubProcess, SubProcessInstance, body.code, "하위프로세스")
     data = body.model_dump()
@@ -369,7 +371,7 @@ def get_sub_process(sp_id: UUID, user: CurrentUser = None, db: Session = Depends
 
 
 @router.patch("/sub-processes/{sp_id}", response_model=SubProcessRead)
-def update_sub_process(sp_id: UUID, body: SubProcessUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+def update_sub_process(sp_id: UUID, body: SubProcessUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """수정 — baseline 유래면 override instance, add 면 instance 직접 (2-A-4-3, ADR-0029)."""
     if not _apply_layer_update(db, BaselineSubProcess, SubProcessInstance, "baseline_sub_process_id",
                                _SUB_PROCESS_OVERRIDE_FIELDS, sp_id, body.model_dump(exclude_unset=True)):
@@ -379,7 +381,7 @@ def update_sub_process(sp_id: UUID, body: SubProcessUpdate, user: CurrentUser = 
 
 
 @router.delete("/sub-processes/{sp_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_sub_process(sp_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_sub_process(sp_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     """삭제 — baseline 유래는 exclude instance, add 는 soft delete (2-A-4-3, ADR-0029)."""
     if not _apply_layer_delete(db, BaselineSubProcess, SubProcessInstance, "baseline_sub_process_id",
                                _SUB_PROCESS_OVERRIDE_FIELDS, sp_id,
@@ -403,7 +405,7 @@ def list_risks(sub_process_id: UUID | None = None, skip: int = 0, limit: int = 1
 
 
 @router.post("/risks", status_code=status.HTTP_201_CREATED, response_model=RiskRead)
-def create_risk(body: RiskCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+def create_risk(body: RiskCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """add instance 생성 (2-A-4-3, ADR-0029). 상위는 이중 FK 규칙으로 baseline/instance 매핑."""
     _assert_code_available(db, BaselineRisk, RiskInstance, body.code, "위험")
     data = body.model_dump()
@@ -422,7 +424,7 @@ def get_risk(risk_id: UUID, user: CurrentUser = None, db: Session = Depends(get_
 
 
 @router.patch("/risks/{risk_id}", response_model=RiskRead)
-def update_risk(risk_id: UUID, body: RiskUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+def update_risk(risk_id: UUID, body: RiskUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """수정 — baseline 유래면 override instance, add 면 instance 직접 (2-A-4-3, ADR-0029)."""
     if not _apply_layer_update(db, BaselineRisk, RiskInstance, "baseline_risk_id",
                                _RISK_OVERRIDE_FIELDS, risk_id, body.model_dump(exclude_unset=True)):
@@ -432,7 +434,7 @@ def update_risk(risk_id: UUID, body: RiskUpdate, user: CurrentUser = None, db: S
 
 
 @router.delete("/risks/{risk_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_risk(risk_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_risk(risk_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     """삭제 — baseline 유래는 exclude instance, add 는 soft delete (2-A-4-3, ADR-0029)."""
     if not _apply_layer_delete(db, BaselineRisk, RiskInstance, "baseline_risk_id",
                                _RISK_OVERRIDE_FIELDS, risk_id,
@@ -460,7 +462,7 @@ def list_risk_categories(skip: int = 0, limit: int = 100, user: CurrentUser = No
 
 
 @router.post("/risk-categories", status_code=status.HTTP_201_CREATED, response_model=RiskCategoryRead)
-def create_risk_category(body: RiskCategoryCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> RiskCategory:
+def create_risk_category(body: RiskCategoryCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> RiskCategory:
     obj = RiskCategory(**body.model_dump())
     db.add(obj)
     db.commit()
@@ -481,7 +483,7 @@ def get_risk_category(rc_id: UUID, user: CurrentUser = None, db: Session = Depen
 
 
 @router.patch("/risk-categories/{rc_id}", response_model=RiskCategoryRead)
-def update_risk_category(rc_id: UUID, body: RiskCategoryUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> RiskCategory:
+def update_risk_category(rc_id: UUID, body: RiskCategoryUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> RiskCategory:
     obj = db.query(RiskCategory).filter(RiskCategory.id == rc_id, RiskCategory.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="RiskCategory not found")
@@ -493,7 +495,7 @@ def update_risk_category(rc_id: UUID, body: RiskCategoryUpdate, user: CurrentUse
 
 
 @router.delete("/risk-categories/{rc_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_risk_category(rc_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_risk_category(rc_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     obj = db.query(RiskCategory).filter(RiskCategory.id == rc_id, RiskCategory.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="RiskCategory not found")
@@ -760,7 +762,7 @@ def search_controls(
 
 
 @router.post("/controls/bulk-delete")
-def bulk_delete_controls(body: BulkDeleteRequest, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+def bulk_delete_controls(body: BulkDeleteRequest, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """다건 삭제 — 단건 DELETE 와 동일 분기를 id 마다 적용 (ADR-0027, 2-A-4-2).
 
     미해당 id 는 건너뛰고 `skipped_ids` 로 드러낸다 — 하나 때문에 전체를 404 로 실패시키지 않는다.
@@ -777,7 +779,7 @@ def bulk_delete_controls(body: BulkDeleteRequest, user: CurrentUser = None, db: 
 
 
 @router.post("/controls/bulk-update")
-def bulk_update_controls(body: BulkUpdateRequest, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+def bulk_update_controls(body: BulkUpdateRequest, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """다건 수정 — 단건 PATCH 와 동일 분기를 id 마다 적용 (ADR-0027, 2-A-4-2).
 
     `exclude_unset` — 단건 PATCH 와 동일 기준으로 통일(2-A-4-2). 이전 `exclude_none` 은
@@ -915,7 +917,7 @@ def _apply_control_delete(db: Session, control_id: UUID) -> bool:
 
 
 @router.post("/controls", status_code=status.HTTP_201_CREATED, response_model=ControlRead)
-def create_control(body: ControlCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+def create_control(body: ControlCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """add instance 생성 (ADR-0027, 2-A-4-1). 회사 고유 통제 = ControlInstance(action=ACTION_ADD).
 
     tenant_id 는 before_flush 자동 stamp(ADR-0026, 수동 지정 금지).
@@ -954,7 +956,7 @@ def get_control(control_id: UUID, user: CurrentUser = None, db: Session = Depend
 
 
 @router.patch("/controls/{control_id}", response_model=ControlRead)
-def update_control(control_id: UUID, body: ControlUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+def update_control(control_id: UUID, body: ControlUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """단건 수정 — 분기는 `_apply_control_update` 공통 (ADR-0027, 2-A-4-1).
 
     `exclude_unset` 으로 미전송을 판별한다 — False/0/"" 는 유효 값(falsy 판정 금지).
@@ -966,7 +968,7 @@ def update_control(control_id: UUID, body: ControlUpdate, user: CurrentUser = No
 
 
 @router.delete("/controls/{control_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_control(control_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_control(control_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     """단건 삭제 — 분기는 `_apply_control_delete` 공통 (ADR-0027, 2-A-4-1, 2-B-3.5 삭제 규약)."""
     if not _apply_control_delete(db, control_id):
         raise HTTPException(status_code=404, detail="Control not found")
@@ -1006,7 +1008,7 @@ def list_control_assertions(skip: int = 0, limit: int = 100, user: CurrentUser =
 
 
 @router.post("/control-assertions", status_code=status.HTTP_201_CREATED, response_model=ControlAssertionRead)
-def create_control_assertion(body: ControlAssertionCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> ControlAssertionRead:
+def create_control_assertion(body: ControlAssertionCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> ControlAssertionRead:
     """연결 추가 (2-A-4-4, ADR-0029 §2.3). risk_category_id 는 baseline_risk_categories.id.
 
     - baseline 에 없는 연결 → add instance 생성
@@ -1061,7 +1063,7 @@ def create_control_assertion(body: ControlAssertionCreate, user: CurrentUser = N
 
 
 @router.delete("/control-assertions/{ca_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_control_assertion(ca_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_control_assertion(ca_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     """연결 삭제 (2-A-4-4, ADR-0029 §2.3). ca_id 는 목록이 준 연결 정체성 id.
 
     - baseline 연결 → remove instance 생성/재활성화. **baseline_control_assertions 원본 불변.**
@@ -1310,7 +1312,7 @@ async def upload_excel(
     file: UploadFile = File(...),
     mode: str = Form(default="preview"),
     expand_to: int = 15,
-    user: CurrentUser = None,
+    user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ) -> dict:
     """RCM Excel 업로드. 시트명 무관, 헤더 자동 인식.

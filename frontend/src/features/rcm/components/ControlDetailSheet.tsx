@@ -79,17 +79,19 @@ export default function ControlDetailSheet({ control, open, onOpenChange, onEdit
                   </div>
                   <p className="text-sm text-muted-foreground">{control.name}</p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 mr-8"
-                  onClick={() => {
-                    onOpenChange(false)
-                    onEditClick?.(control)
-                  }}
-                >
-                  편집
-                </Button>
+                {onEditClick && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 mr-8"
+                    onClick={() => {
+                      onOpenChange(false)
+                      onEditClick(control)
+                    }}
+                  >
+                    편집
+                  </Button>
+                )}
               </div>
             </SheetHeader>
 

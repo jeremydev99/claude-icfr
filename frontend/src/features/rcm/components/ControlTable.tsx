@@ -96,22 +96,26 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
   return (
     <div className="space-y-2">
       <div className="flex justify-end gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onUploadClick}
-          disabled={EXCEL_UPLOAD_LOCKED}
-          title={EXCEL_UPLOAD_LOCKED ? EXCEL_UPLOAD_LOCKED_MESSAGE : undefined}
-        >
-          <Upload className="h-4 w-4 mr-1.5" />
-          Excel 업로드
-        </Button>
-        <Button
-          size="sm"
-          onClick={onAddClick}
-        >
-          + 통제 추가
-        </Button>
+        {onUploadClick && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onUploadClick}
+            disabled={EXCEL_UPLOAD_LOCKED}
+            title={EXCEL_UPLOAD_LOCKED ? EXCEL_UPLOAD_LOCKED_MESSAGE : undefined}
+          >
+            <Upload className="h-4 w-4 mr-1.5" />
+            Excel 업로드
+          </Button>
+        )}
+        {onAddClick && (
+          <Button
+            size="sm"
+            onClick={onAddClick}
+          >
+            + 통제 추가
+          </Button>
+        )}
       </div>
       <div className="rounded-md border overflow-x-auto">
         <Table>
@@ -224,24 +228,28 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()} className="text-right pr-2">
                     <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => onEdit?.(ctrl)}
-                        title="편집"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 hover:bg-red-50 hover:text-red-600"
-                        onClick={() => onDelete?.(ctrl)}
-                        title="삭제"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {onEdit && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => onEdit(ctrl)}
+                          title="편집"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {onDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 hover:bg-red-50 hover:text-red-600"
+                          onClick={() => onDelete(ctrl)}
+                          title="삭제"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
