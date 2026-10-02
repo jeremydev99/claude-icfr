@@ -30,6 +30,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // 링크 공유 미리보기 이미지는 메신저 크롤러용 — 설치된 앱이 미리 받을 필요 없다
+        globIgnores: ['og-image.png'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
