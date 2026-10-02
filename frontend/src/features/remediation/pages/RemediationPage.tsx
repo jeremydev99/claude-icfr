@@ -19,8 +19,10 @@ import DeficiencyFormDialog from '../components/DeficiencyFormDialog'
 import RemediationPlanCreateDialog from '../components/RemediationPlanCreateDialog'
 import RemediationPlanDetailSheet from '../components/RemediationPlanDetailSheet'
 import type { Deficiency } from '../types'
+import { useCanWrite } from '@/features/auth/useCanWrite'
 
 export default function RemediationPage() {
+  const canWrite = useCanWrite()
   const { data: deficiencyData, isLoading: defLoading, isError: defError, error: defErr } =
     useDeficiencies({ skip: 0, limit: 100 })
   const { data: planData } = usePlans({ skip: 0, limit: 1000 })
@@ -75,14 +77,16 @@ export default function RemediationPage() {
         </p>
       </div>
 
-      <div className="flex justify-end">
-        <Button
-          size="sm"
-          onClick={() => { setEditTarget(null); setDefFormOpen(true) }}
-        >
-          + 미비점 등록
-        </Button>
-      </div>
+      {canWrite && (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            onClick={() => { setEditTarget(null); setDefFormOpen(true) }}
+          >
+            + 미비점 등록
+          </Button>
+        </div>
+      )}
 
       <DeficiencyTable
         data={deficiencyData}

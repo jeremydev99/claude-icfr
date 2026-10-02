@@ -18,6 +18,7 @@ import {
   REMEDIATION_STATUS_LABELS,
   REMEDIATION_STATUS_BADGE_CLASS,
 } from '../types'
+import { useCanWrite } from '@/features/auth/useCanWrite'
 
 interface Props {
   data: DeficiencyListResponse | undefined
@@ -44,6 +45,7 @@ export default function DeficiencyTable({
   isError,
   error,
 }: Props) {
+  const canWrite = useCanWrite()
   const planMap = Object.fromEntries(plans.map((p) => [p.deficiency_id, p]))
   const { items = [], total = 0 } = data ?? {}
 
@@ -69,13 +71,17 @@ export default function DeficiencyTable({
     return (
       <div className="rounded-md border p-12 text-center text-sm text-muted-foreground">
         등록된 미비점이 없습니다.{' '}
-        <button
-          className="underline underline-offset-2 hover:text-foreground"
-          onClick={onAddClick}
-        >
-          미비점 등록
-        </button>{' '}
-        버튼으로 첫 미비점을 추가하세요.
+        {canWrite && (
+          <>
+            <button
+              className="underline underline-offset-2 hover:text-foreground"
+              onClick={onAddClick}
+            >
+              미비점 등록
+            </button>{' '}
+            버튼으로 첫 미비점을 추가하세요.
+          </>
+        )}
       </div>
     )
   }
@@ -121,7 +127,7 @@ export default function DeficiencyTable({
                     >
                       {REMEDIATION_STATUS_LABELS[planMap[item.id].status]}
                     </Badge>
-                  ) : (
+                  ) : canWrite && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -133,24 +139,26 @@ export default function DeficiencyTable({
                   )}
                 </TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => onEditClick(item)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 hover:bg-red-50 hover:text-red-600"
-                      onClick={() => onDeleteClick(item)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                  {canWrite && (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => onEditClick(item)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 hover:bg-red-50 hover:text-red-600"
+                        onClick={() => onDeleteClick(item)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

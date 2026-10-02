@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import type { TestRunSearchParams, TestRunStatus } from '../types'
 import { STATUS_LABELS } from '../types'
+import { useCanWrite } from '@/features/auth/useCanWrite'
 
 interface Props {
   value: TestRunSearchParams
@@ -33,6 +34,7 @@ const STATUS_OPTIONS: Array<{ value: TestRunStatus | 'all'; label: string }> = [
 ]
 
 export default function TestRunSearchBar({ value, onChange, onAddClick }: Props) {
+  const canWrite = useCanWrite()
   return (
     <div className="flex items-center gap-3">
       <Select
@@ -72,12 +74,14 @@ export default function TestRunSearchBar({ value, onChange, onAddClick }: Props)
         </SelectContent>
       </Select>
 
-      <div className="ml-auto">
-        <Button onClick={onAddClick}>
-          <Plus className="mr-1 h-4 w-4" />
-          평가 추가
-        </Button>
-      </div>
+      {canWrite && (
+        <div className="ml-auto">
+          <Button onClick={onAddClick}>
+            <Plus className="mr-1 h-4 w-4" />
+            평가 추가
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

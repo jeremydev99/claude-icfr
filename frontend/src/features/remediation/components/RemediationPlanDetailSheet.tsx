@@ -20,6 +20,7 @@ import {
   PRIORITY_BADGE_CLASS,
   type RemediationStatus,
 } from '../types'
+import { useCanWrite } from '@/features/auth/useCanWrite'
 
 interface Props {
   planId: string | null
@@ -51,6 +52,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 export default function RemediationPlanDetailSheet({ planId, open, onOpenChange }: Props) {
+  const canWrite = useCanWrite()
   const { data: plan, isLoading } = usePlanDetail(planId)
   const { data: historyData } = usePlanHistory(planId)
   const transition = useTransitionPlan()
@@ -147,7 +149,7 @@ export default function RemediationPlanDetailSheet({ planId, open, onOpenChange 
               <Separator />
               <div className="py-2">
                 {nextTrans ? (
-                  <Button size="sm" onClick={handleTransition} disabled={transition.isPending}>
+                  <Button size="sm" onClick={handleTransition} disabled={transition.isPending || !canWrite}>
                     {transition.isPending && (
                       <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                     )}

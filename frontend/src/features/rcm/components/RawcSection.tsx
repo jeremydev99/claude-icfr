@@ -20,6 +20,7 @@ import type {
   PriorYearEffectiveness,
   OverallAssessment,
 } from '../types'
+import { useCanWrite } from '@/features/auth/useCanWrite'
 
 interface Props {
   controlId: string
@@ -138,12 +139,14 @@ export default function RawcSection({ controlId, fiscalYear }: Props) {
   }
 
   const isPending = createMutation.isPending || updateMutation.isPending
+  const canWrite = useCanWrite()
 
   if (isLoading) {
     return <p className="text-sm text-muted-foreground py-2">불러오는 중...</p>
   }
 
   if (!editing && !existing) {
+    if (!canWrite) return <p className="text-sm text-muted-foreground py-2">위험평가가 입력되지 않았습니다.</p>
     return (
       <Button variant="outline" size="sm" className="mt-1" onClick={handleEditStart}>
         위험평가 입력
@@ -174,9 +177,11 @@ export default function RawcSection({ controlId, fiscalYear }: Props) {
           <span className="text-muted-foreground">평가일</span>
           <span>{existing.assessment_date ?? '—'}</span>
         </div>
-        <Button variant="outline" size="sm" className="mt-2" onClick={handleEditStart}>
-          편집
-        </Button>
+        {canWrite && (
+          <Button variant="outline" size="sm" className="mt-2" onClick={handleEditStart}>
+            편집
+          </Button>
+        )}
       </div>
     )
   }

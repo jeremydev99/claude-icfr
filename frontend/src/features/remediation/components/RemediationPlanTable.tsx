@@ -17,6 +17,7 @@ import {
   PRIORITY_LABELS,
   PRIORITY_BADGE_CLASS,
 } from '../types'
+import { useCanWrite } from '@/features/auth/useCanWrite'
 
 interface Props {
   data: RemediationPlanListResponse | undefined
@@ -36,6 +37,7 @@ export default function RemediationPlanTable({
   isError,
   error,
 }: Props) {
+  const canWrite = useCanWrite()
   const { items = [], total = 0 } = data ?? {}
 
   if (isLoading) {
@@ -60,13 +62,17 @@ export default function RemediationPlanTable({
     return (
       <div className="rounded-md border p-12 text-center text-sm text-muted-foreground">
         등록된 개선계획이 없습니다.{' '}
-        <button
-          className="underline underline-offset-2 hover:text-foreground"
-          onClick={onAddClick}
-        >
-          개선계획 등록
-        </button>{' '}
-        버튼으로 첫 계획을 추가하세요.
+        {canWrite && (
+          <>
+            <button
+              className="underline underline-offset-2 hover:text-foreground"
+              onClick={onAddClick}
+            >
+              개선계획 등록
+            </button>{' '}
+            버튼으로 첫 계획을 추가하세요.
+          </>
+        )}
       </div>
     )
   }

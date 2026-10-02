@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser
+from app.core.permissions import require_write
 from app.models.test_module import ControlRiskAssessment, TestRun, TestStatusHistory, TestStep
+from app.models.user import User
 from app.schemas.test_module import (
     ControlRiskAssessmentCreate,
     ControlRiskAssessmentRead,
@@ -89,7 +91,7 @@ def list_rawc(
 
 
 @router.post("/rawc", status_code=status.HTTP_201_CREATED, response_model=ControlRiskAssessmentRead)
-def create_rawc(body: ControlRiskAssessmentCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> ControlRiskAssessment:
+def create_rawc(body: ControlRiskAssessmentCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> ControlRiskAssessment:
     target = resolve_assertion_target(db, body.control_id)
     if target is None:
         raise HTTPException(status_code=404, detail="Control not found")
@@ -116,7 +118,7 @@ def get_rawc(rawc_id: UUID, user: CurrentUser = None, db: Session = Depends(get_
 
 
 @router.patch("/rawc/{rawc_id}", response_model=ControlRiskAssessmentRead)
-def update_rawc(rawc_id: UUID, body: ControlRiskAssessmentUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> ControlRiskAssessment:
+def update_rawc(rawc_id: UUID, body: ControlRiskAssessmentUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> ControlRiskAssessment:
     obj = db.query(ControlRiskAssessment).filter(
         ControlRiskAssessment.id == rawc_id, ControlRiskAssessment.is_deleted == False  # noqa: E712
     ).first()
@@ -130,7 +132,7 @@ def update_rawc(rawc_id: UUID, body: ControlRiskAssessmentUpdate, user: CurrentU
 
 
 @router.delete("/rawc/{rawc_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_rawc(rawc_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_rawc(rawc_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     obj = db.query(ControlRiskAssessment).filter(
         ControlRiskAssessment.id == rawc_id, ControlRiskAssessment.is_deleted == False  # noqa: E712
     ).first()
@@ -162,7 +164,7 @@ def list_runs(
 
 
 @router.post("/runs", status_code=status.HTTP_201_CREATED, response_model=TestRunRead)
-def create_run(body: TestRunCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> TestRun:
+def create_run(body: TestRunCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> TestRun:
     target = resolve_assertion_target(db, body.control_id)
     if target is None:
         raise HTTPException(status_code=404, detail="Control not found")
@@ -208,7 +210,7 @@ def get_run_history(run_id: UUID, user: CurrentUser = None, db: Session = Depend
 def transition_test_run(
     run_id: UUID,
     body: TransitionRequest,
-    user: CurrentUser = None,
+    user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ) -> dict:
     """워크플로 전이 — 단일 함수, 하드코딩 dict. WorkflowEngine 금지 (ADR-0020)."""
@@ -257,7 +259,7 @@ def get_run(run_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db
 
 
 @router.patch("/runs/{run_id}", response_model=TestRunRead)
-def update_run(run_id: UUID, body: TestRunUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> TestRun:
+def update_run(run_id: UUID, body: TestRunUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> TestRun:
     obj = db.query(TestRun).filter(TestRun.id == run_id, TestRun.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="TestRun not found")
@@ -269,7 +271,7 @@ def update_run(run_id: UUID, body: TestRunUpdate, user: CurrentUser = None, db: 
 
 
 @router.delete("/runs/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_run(run_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_run(run_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     obj = db.query(TestRun).filter(TestRun.id == run_id, TestRun.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="TestRun not found")
@@ -290,7 +292,7 @@ def list_steps(run_id: UUID | None = None, skip: int = 0, limit: int = 100, user
 
 
 @router.post("/steps", status_code=status.HTTP_201_CREATED, response_model=TestStepRead)
-def create_step(body: TestStepCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> TestStep:
+def create_step(body: TestStepCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> TestStep:
     obj = TestStep(**body.model_dump())
     db.add(obj)
     db.commit()
@@ -307,7 +309,7 @@ def get_step(step_id: UUID, user: CurrentUser = None, db: Session = Depends(get_
 
 
 @router.patch("/steps/{step_id}", response_model=TestStepRead)
-def update_step(step_id: UUID, body: TestStepUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> TestStep:
+def update_step(step_id: UUID, body: TestStepUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> TestStep:
     obj = db.query(TestStep).filter(TestStep.id == step_id, TestStep.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="TestStep not found")
@@ -319,7 +321,7 @@ def update_step(step_id: UUID, body: TestStepUpdate, user: CurrentUser = None, d
 
 
 @router.delete("/steps/{step_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_step(step_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_step(step_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     obj = db.query(TestStep).filter(TestStep.id == step_id, TestStep.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="TestStep not found")

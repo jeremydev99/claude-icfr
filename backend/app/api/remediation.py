@@ -5,12 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import CurrentUser, get_db
+from app.core.permissions import require_write
 from app.models.remediation import (
     Deficiency,
     DesignAssessment,
     RemediationPlan,
     RemediationStatusHistory,
 )
+from app.models.user import User
 from app.schemas.remediation import (
     DeficiencyCreate,
     DeficiencyRead,
@@ -59,7 +61,7 @@ def list_deficiencies(skip: int = 0, limit: int = 100, user: CurrentUser = None,
 
 
 @router.post("/deficiencies", status_code=status.HTTP_201_CREATED, response_model=DeficiencyRead)
-def create_deficiency(body: DeficiencyCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> Deficiency:
+def create_deficiency(body: DeficiencyCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> Deficiency:
     baseline_control_id = instance_control_id = None
     if body.control_id is not None:
         target = resolve_assertion_target(db, body.control_id)
@@ -86,7 +88,7 @@ def get_deficiency(deficiency_id: UUID, user: CurrentUser = None, db: Session = 
 
 
 @router.patch("/deficiencies/{deficiency_id}", response_model=DeficiencyRead)
-def update_deficiency(deficiency_id: UUID, body: DeficiencyUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> Deficiency:
+def update_deficiency(deficiency_id: UUID, body: DeficiencyUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> Deficiency:
     obj = db.query(Deficiency).filter(Deficiency.id == deficiency_id, Deficiency.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="Deficiency not found")
@@ -98,7 +100,7 @@ def update_deficiency(deficiency_id: UUID, body: DeficiencyUpdate, user: Current
 
 
 @router.delete("/deficiencies/{deficiency_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_deficiency(deficiency_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_deficiency(deficiency_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     obj = db.query(Deficiency).filter(Deficiency.id == deficiency_id, Deficiency.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="Deficiency not found")
@@ -124,7 +126,7 @@ def list_plans(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Se
 
 
 @router.post("/plans", status_code=status.HTTP_201_CREATED, response_model=RemediationPlanRead)
-def create_plan(body: RemediationPlanCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> RemediationPlan:
+def create_plan(body: RemediationPlanCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> RemediationPlan:
     obj = RemediationPlan(**body.model_dump())
     db.add(obj)
     db.flush()
@@ -150,7 +152,7 @@ def get_plan(plan_id: UUID, user: CurrentUser = None, db: Session = Depends(get_
 
 
 @router.patch("/plans/{plan_id}", response_model=RemediationPlanRead)
-def update_plan(plan_id: UUID, body: RemediationPlanUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> RemediationPlan:
+def update_plan(plan_id: UUID, body: RemediationPlanUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> RemediationPlan:
     obj = db.query(RemediationPlan).filter(RemediationPlan.id == plan_id, RemediationPlan.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="RemediationPlan not found")
@@ -162,7 +164,7 @@ def update_plan(plan_id: UUID, body: RemediationPlanUpdate, user: CurrentUser = 
 
 
 @router.delete("/plans/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_plan(plan_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_plan(plan_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     obj = db.query(RemediationPlan).filter(RemediationPlan.id == plan_id, RemediationPlan.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="RemediationPlan not found")
@@ -171,7 +173,7 @@ def delete_plan(plan_id: UUID, user: CurrentUser = None, db: Session = Depends(g
 
 
 @router.post("/plans/{plan_id}/transition", response_model=RemediationPlanRead)
-def transition_plan(plan_id: UUID, body: RemediationTransitionRequest, user: CurrentUser = None, db: Session = Depends(get_db)) -> RemediationPlan:
+def transition_plan(plan_id: UUID, body: RemediationTransitionRequest, user: User = Depends(require_write), db: Session = Depends(get_db)) -> RemediationPlan:
     obj = db.query(RemediationPlan).filter(RemediationPlan.id == plan_id, RemediationPlan.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="RemediationPlan not found")
@@ -224,7 +226,7 @@ def list_design_assessments(skip: int = 0, limit: int = 100, user: CurrentUser =
 
 
 @router.post("/design-assessments", status_code=status.HTTP_201_CREATED, response_model=DesignAssessmentRead)
-def create_design_assessment(body: DesignAssessmentCreate, user: CurrentUser = None, db: Session = Depends(get_db)) -> DesignAssessment:
+def create_design_assessment(body: DesignAssessmentCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> DesignAssessment:
     existing = db.query(DesignAssessment).filter(
         DesignAssessment.control_id == body.control_id,
         DesignAssessment.fiscal_year == body.fiscal_year,
@@ -271,7 +273,7 @@ def get_design_assessment(assessment_id: UUID, user: CurrentUser = None, db: Ses
 
 
 @router.patch("/design-assessments/{assessment_id}", response_model=DesignAssessmentRead)
-def update_design_assessment(assessment_id: UUID, body: DesignAssessmentUpdate, user: CurrentUser = None, db: Session = Depends(get_db)) -> DesignAssessment:
+def update_design_assessment(assessment_id: UUID, body: DesignAssessmentUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> DesignAssessment:
     obj = db.query(DesignAssessment).filter(DesignAssessment.id == assessment_id, DesignAssessment.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="DesignAssessment not found")
@@ -283,7 +285,7 @@ def update_design_assessment(assessment_id: UUID, body: DesignAssessmentUpdate, 
 
 
 @router.delete("/design-assessments/{assessment_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_design_assessment(assessment_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> None:
+def delete_design_assessment(assessment_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     obj = db.query(DesignAssessment).filter(DesignAssessment.id == assessment_id, DesignAssessment.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="DesignAssessment not found")

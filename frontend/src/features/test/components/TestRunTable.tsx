@@ -25,6 +25,7 @@ import {
   RESULT_BADGE_CLASS,
 } from '../types'
 import type { Control } from '@/features/rcm/types'
+import { useCanWrite } from '@/features/auth/useCanWrite'
 
 interface Props {
   data: TestRunListResponse | undefined
@@ -50,6 +51,7 @@ export default function TestRunTable({
   isError,
   error,
 }: Props) {
+  const canWrite = useCanWrite()
   const { items = [], total = 0, skip = 0, limit = params.limit ?? 20 } = data ?? {}
 
   const currentPage = Math.floor(skip / limit) + 1
@@ -81,13 +83,17 @@ export default function TestRunTable({
     return (
       <div className="rounded-md border p-12 text-center text-sm text-muted-foreground">
         등록된 평가가 없습니다.{' '}
-        <button
-          className="underline underline-offset-2 hover:text-foreground"
-          onClick={onAddClick}
-        >
-          평가 추가
-        </button>{' '}
-        버튼으로 첫 평가를 만들어주세요.
+        {canWrite && (
+          <>
+            <button
+              className="underline underline-offset-2 hover:text-foreground"
+              onClick={onAddClick}
+            >
+              평가 추가
+            </button>{' '}
+            버튼으로 첫 평가를 만들어주세요.
+          </>
+        )}
       </div>
     )
   }

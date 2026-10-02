@@ -49,6 +49,7 @@ import {
 } from '../types'
 import type { Control } from '@/features/rcm/types'
 import TestRunEditDialog from './TestRunEditDialog'
+import { useCanWrite } from '@/features/auth/useCanWrite'
 
 // ── StepInlineForm ────────────────────────────────────────────
 
@@ -162,7 +163,9 @@ export default function TestRunDetailSheet({ runId, open, onOpenChange, controlM
   const ctrl = run ? controlMap?.[run.control_id] : undefined
   const nextTrans = run ? NEXT_TRANSITION[run.status] : null
   const steps = stepsData?.items ?? []
-  const isLocked = run?.status === 'approved'
+  const canWrite = useCanWrite()
+  // 승인 완료 또는 조회 전용(external_auditor) — 편집·단계 수정을 막는다
+  const isLocked = run?.status === 'approved' || !canWrite
 
   const handleTransition = () => {
     if (!run || !nextTrans) return
@@ -295,7 +298,7 @@ export default function TestRunDetailSheet({ runId, open, onOpenChange, controlM
                 <Separator />
                 <div className="py-2">
                   {nextTrans ? (
-                    <Button size="sm" onClick={handleTransition} disabled={transition.isPending}>
+                    <Button size="sm" onClick={handleTransition} disabled={transition.isPending || !canWrite}>
                       {transition.isPending && (
                         <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                       )}
