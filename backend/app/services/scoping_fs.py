@@ -1,6 +1,6 @@
 """재무제표 기반 스코핑 생성 (8-E, ADR-0037 §6, 마스터 확정 A안 2026-09-30).
 
-A안: **2026 스코핑은 그대로 두고, 다음 회계연도부터** 스코핑 계정 행을 템플릿 복사가 아니라 기준 연도의
+A안: **2026 스코핑은 그대로 두고, 다음 회계연도부터**(2026-10-03 마스터 결정으로 2026 도 재생성 — `reload_from_fs`) 스코핑 계정 행을 템플릿 복사가 아니라 기준 연도의
 **확정 재무제표 계정**에서 만든다. 템플릿은 8-C 링크(사람이 확정한 것)로 기본값만 공급한다.
 
 - 기준 연도 = 스코핑 회계연도 − 1(`scopings.base_fiscal_year`). 별도재무제표.
@@ -142,5 +142,98 @@ def create(db: Session, fiscal_year: int, template: ScopingTemplate) -> tuple[Sc
 
     def fill(db_: Session, s: Scoping) -> None:
         holder.update(fill_from_financial_statements(db_, s, template))
+        holder.update(fill_benchmarks(db_, s))   # 벤치마크 행은 계정보다 먼저 만들어져 있다
     s = svc.create_from_template(db, fiscal_year, template, fill_accounts=fill)
     return s, holder
+
+
+# ── 중요성 기준값(벤치마크 기준값) — 기준 연도 확정 재무제표에서 (2026-10-03 마스터) ─────────────
+# 계정 이름으로 찾는다(공시 재무제표 표준 표기). 이름이 다르면 비워 두고 경고한다 — 추정하지 않는다.
+# 총비용 = 영업비용 + 금융비용 + 기타영업외비용 + 법인세비용 (마스터 정의 2026-10-03). 묶음마다 첫 표기를 쓴다.
+BENCH_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "adjusted_pbt": ("PL", ("법인세비용차감전순이익", "법인세차감전순이익", "법인세비용차감전순손익", "법인세차감전순손익")),
+    "revenue": ("PL", ("매출액", "영업수익", "수익(매출액)")),
+    "total_assets": ("BS", ("자산총계",)),
+    "total_equity": ("BS", ("자본총계",)),
+    "operating_cf": ("CF", ("영업활동으로인한현금흐름", "영업활동현금흐름", "영업활동으로부터의현금흐름")),
+}
+TOTAL_EXPENSE_GROUPS: tuple[tuple[str, ...], ...] = (
+    ("영업비용",), ("금융비용", "금융원가"), ("기타영업외비용", "기타비용"), ("법인세비용",),
+)
+
+
+def _norm(name: str) -> str:
+    return "".join((name or "").split()).replace("(손실)", "").replace("(손익)", "")
+
+
+def benchmark_amounts(db: Session, base_year: int) -> tuple[dict[str, int], list[str]]:
+    """기준 연도 확정 재무제표 → {벤치마크: 원}. 못 찾은 것은 사유 목록으로."""
+    found: dict[str, int] = {}
+    missing: list[str] = []
+    by_type: dict[str, dict[str, int]] = {}
+    for stype in ("BS", "PL", "CF"):
+        st = _final(db, base_year, stype)
+        if st is None:
+            continue
+        names: dict[str, int] = {}
+        for r, a in fs.statement_rows(db, st):
+            if r.amount is None or fs.is_suspense(r):
+                continue
+            names.setdefault(_norm(a.name), _won(r.amount, st.unit, a.name))
+        by_type[stype] = names
+    for kind, (stype, candidates) in BENCH_RULES.items():
+        names = by_type.get(stype, {})
+        hit = next((names[_norm(c)] for c in candidates if _norm(c) in names), None)
+        if hit is None:
+            missing.append(f"{kind}: {stype} 에서 {'/'.join(candidates[:2])} 를 찾지 못함")
+        else:
+            found[kind] = hit
+    pl = by_type.get("PL", {})
+    parts = [next((pl[_norm(c)] for c in g if _norm(c) in pl), None) for g in TOTAL_EXPENSE_GROUPS]
+    if parts[0] is None:
+        missing.append("total_expenses: PL 에서 영업비용을 찾지 못함")
+    else:
+        found["total_expenses"] = sum(p for p in parts if p is not None)
+    return found, missing
+
+
+def fill_benchmarks(db: Session, s: Scoping) -> dict:
+    """스코핑의 벤치마크 기준값을 기준 연도 재무제표로 채운다(덮어쓴다). 요약을 돌려준다."""
+    from app.models.scoping import ScopingBenchmark
+    db.flush()
+    found, missing = benchmark_amounts(db, s.base_fiscal_year or s.fiscal_year - 1)
+    rows = db.scalars(select(ScopingBenchmark).where(ScopingBenchmark.scoping_id == s.id,
+                                                     ScopingBenchmark.is_deleted == False)).all()  # noqa: E712
+    for b in rows:
+        if b.kind in found:
+            b.base_amount = found[b.kind]
+    return {"benchmarks": found, "benchmark_missing": missing}
+
+
+def reload_from_fs(db: Session, s: Scoping, template: ScopingTemplate) -> dict:
+    """작성 중 스코핑의 계정 행·금액·기준값을 기준 연도 확정 재무제표로 **다시 만든다**.
+
+    기존 계정 행과 그 출처(배지)는 소프트 삭제하고 새로 채운다 — 재무제표를 스코핑보다 나중에 올린 경우의 경로다.
+    행 수백 개의 삭제를 하나하나 이력에 남기지 않고, 이력은 호출자가 요약 1건으로 남긴다.
+    """
+    from app.models.scoping import ScopingFieldOrigin
+    db.info["governance_bulk"] = True   # 대량 교체 — 값 변경 자동 이력 대신 요약 1건(호출자)
+    try:
+        old = db.scalars(select(ScopingAccount).where(ScopingAccount.scoping_id == s.id,
+                                                      ScopingAccount.is_deleted == False)).all()  # noqa: E712
+        ids = {a.id for a in old}
+        for a in old:
+            a.is_deleted = True
+        for o in db.scalars(select(ScopingFieldOrigin).where(ScopingFieldOrigin.scoping_id == s.id,
+                                                             ScopingFieldOrigin.target_type == ORIGIN_TARGET_ACCOUNT,
+                                                             ScopingFieldOrigin.is_deleted == False)).all():  # noqa: E712
+            if o.target_id in ids:
+                o.is_deleted = True
+        db.flush()
+        summary = fill_from_financial_statements(db, s, template)
+        summary.update(fill_benchmarks(db, s))
+        db.flush()
+    finally:
+        db.info.pop("governance_bulk", None)
+    summary["replaced_rows"] = len(old)
+    return summary

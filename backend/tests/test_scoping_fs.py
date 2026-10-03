@@ -140,3 +140,44 @@ def test_template_source_unchanged_and_bad_source(client: TestClient) -> None:
     assert _create(client, h, fy=2027, source="excel").status_code == 422
     viewer, _ = _tenant(client, roles=("external_auditor",))
     assert _create(client, viewer, fy=2028).status_code == 403
+
+
+# ── 중요성 기준값·다시 불러오기 (2026-10-03) ───────────────────────
+
+def _bench(d: dict) -> dict:
+    return {b["kind"]: b["base_amount"] for b in d["benchmarks"]}
+
+
+def test_fs_based_create_fills_benchmark_base_amounts(client: TestClient) -> None:
+    """세전이익·매출액·총자산·총자본은 이름으로 찾고, 총비용 = 영업비용+금융비용+기타영업외비용+법인세비용."""
+    h, _ = _tenant(client)
+    _fs_2025(client, h)
+    d = _create(client, h).json()
+    b = _bench(d)
+    assert b["adjusted_pbt"] == 430 and b["revenue"] == 1000
+    assert b["total_expenses"] == 600 + 20 + 30      # 기타영업외비용 없음 → 있는 것만
+    assert b["total_assets"] is not None and b["total_equity"] is not None
+    assert b["operating_cf"] is None                  # CF 확정본 없음 → 비움(추정하지 않는다)
+    assert d["overall_materiality"] is not None       # 기준값이 생겨 중요성이 계산된다
+
+
+def test_reload_from_fs_replaces_template_rows(client: TestClient) -> None:
+    """재무제표를 스코핑보다 나중에 올린 경우 — 템플릿으로 만든 작성 중 스코핑을 재무제표로 다시 채운다."""
+    h, _ = _tenant(client)
+    d = _create(client, h, source="template").json()
+    assert all(a["fs_account_id"] is None for a in d["accounts"]) and _bench(d)["revenue"] is None
+    _fs_2025(client, h)
+    r = client.post(f"/api/scoping/{d['id']}/reload-from-fs", headers=h)
+    assert r.status_code == 200, r.text
+    d2 = r.json()
+    assert _acc(d2, "현금및현금성자산", "BS")["current_amount"] == 100
+    assert _bench(d2)["revenue"] == 1000 and d2["id"] == d["id"]
+    ev = client.get(f"/api/scoping/{d['id']}/events", headers=h).json()
+    reload_ev = [e for e in ev if e["target"] == "재무제표에서 다시 불러오기"]
+    assert len(reload_ev) == 1 and reload_ev[0]["after"]["새 계정 행"] > 0
+    # 대량 교체는 행마다 이력을 남기지 않는다(요약 1건)
+    assert not any(e["action"] == "value_change" and (e["target"] or "").startswith("계정 ") for e in ev)
+    # 검토 요청 후에는 다시 불러올 수 없다
+    client.patch(f"/api/scoping/{d['id']}", headers=h, json={"rationale": "근거"})
+    assert client.post(f"/api/scoping/{d['id']}/transition", headers=h, json={"to_status": "review"}).status_code == 200
+    assert client.post(f"/api/scoping/{d['id']}/reload-from-fs", headers=h).status_code == 409

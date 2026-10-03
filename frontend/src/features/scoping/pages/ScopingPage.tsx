@@ -1,7 +1,11 @@
 import EmptyState from '@/components/illustration/EmptyState'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, Loader2, Lock } from 'lucide-react'
+import { AlertTriangle, Loader2, Lock, RefreshCw } from 'lucide-react'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -55,6 +59,7 @@ export default function ScopingPage() {
 
   // 결재 동작 → API. 외부 승인은 파일이 있어 FormData 로 직접 보낸다
   const [uploading, setUploading] = useState(false)
+  const [reloadOpen, setReloadOpen] = useState(false)
   const act = async (d: ScopingDetail, a: ApprovalAction) => {
     const base = `/${d.id}`
     switch (a.kind) {
@@ -153,6 +158,34 @@ export default function ScopingPage() {
       {detail && (
         <>
           <StatusBar d={detail} meta={meta} />
+          {detail.governance?.can.edit && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed bg-card/60 px-4 py-3 text-sm">
+              <span className="text-muted-foreground">
+                재무제표를 스코핑보다 나중에 올렸거나 수정했다면, FY{detail.base_fiscal_year} 확정 재무제표로 계정·금액·중요성 기준값을 다시 채울 수 있습니다.
+              </span>
+              <Button size="sm" variant="outline" onClick={() => setReloadOpen(true)} disabled={mutation.isPending}>
+                <RefreshCw className="mr-1 h-4 w-4" />재무제표에서 다시 불러오기
+              </Button>
+            </div>
+          )}
+          <AlertDialog open={reloadOpen} onOpenChange={setReloadOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>재무제표에서 다시 불러올까요?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  지금 계정 행 {detail.accounts.length}개와 그 배지·입력값이 FY{detail.base_fiscal_year} 확정 재무제표 기준으로 교체됩니다.
+                  템플릿 연결이 있는 계정은 질적 평가 기본값을 다시 가져옵니다. 중요성 기준값(세전이익·매출액·총자산·총자본·총비용·영업현금흐름)도 채웁니다.
+                  교체 내역은 변경·결재 이력에 남습니다.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>취소</AlertDialogCancel>
+                <AlertDialogAction onClick={() => { write('post', `/${detail.id}/reload-from-fs`); setReloadOpen(false) }}>
+                  다시 불러오기
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           {detail.governance && (
             <ApprovalPanel status={detail.status} g={detail.governance} pending={mutation.isPending || uploading}
               warnBeforeApprove={detail.badge_count > 0

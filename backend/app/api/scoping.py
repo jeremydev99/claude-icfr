@@ -439,6 +439,37 @@ def update_account(scoping_id: UUID, account_id: UUID, body: AccountUpdate,
     return _detail(db, s, user.id)
 
 
+@router.post("/{scoping_id}/reload-from-fs", response_model=ScopingDetail)
+def reload_from_fs(scoping_id: UUID, user: User = Depends(require_icfr_staff),
+                   db: Session = Depends(get_db)) -> ScopingDetail:
+    """작성 중 스코핑을 기준 연도 **확정 재무제표**로 다시 채운다 — 계정 행·당기/전기 금액·벤치마크 기준값.
+
+    재무제표를 스코핑보다 나중에 올렸을 때의 경로다(2026-10-03). 기존 계정 행·배지는 교체되며, 이력에는 요약 1건
+    (교체 행 수·채운 기준값·못 찾은 항목)이 남는다. 작성 중일 때만 — 검토·승인 중이나 확정이면 409.
+    """
+    s = _editable(db, scoping_id)
+    tpl = db.query(ScopingTemplate).filter(ScopingTemplate.code == (s.template_code or DEFAULT_TEMPLATE_CODE),
+                                           ScopingTemplate.is_deleted == False).order_by(  # noqa: E712
+        ScopingTemplate.version.desc())
+    if s.template_version is not None:
+        tpl = tpl.filter(ScopingTemplate.version == s.template_version)
+    template = tpl.first()
+    if template is None:
+        raise HTTPException(status_code=404, detail="스코핑 템플릿을 찾을 수 없습니다")
+    try:
+        summary = scoping_fs.reload_from_fs(db, s, template)
+    except scoping_fs.ScopingSourceError as e:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    glog.record(db, s.id, "value_change", version=s.version, target="재무제표에서 다시 불러오기",
+                reason=f"기준 연도 FY{s.base_fiscal_year or s.fiscal_year - 1} 확정 재무제표",
+                after={"교체한 계정 행": summary["replaced_rows"], "새 계정 행": summary["rows"],
+                       "템플릿 연결": summary["linked"], "기준값": summary["benchmarks"],
+                       "못 찾은 기준값": summary["benchmark_missing"]})
+    db.commit()
+    return _detail(db, s, user.id)
+
+
 @router.post("/{scoping_id}/confirm", response_model=ScopingDetail)
 def confirm_review(scoping_id: UUID, body: ConfirmRequest, user: User = Depends(require_icfr_staff),
                    db: Session = Depends(get_db)) -> ScopingDetail:

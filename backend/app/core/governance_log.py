@@ -136,6 +136,8 @@ def _event(session: Session, s: Scoping | None, entity_id, action: str, target: 
 def _log_governed_changes(session: Session, flush_context, instances) -> None:
     if get_active_tenant() is None:
         return   # 시드·마이그레이션 같은 테넌트 밖 작업은 대상이 아니다
+    if session.info.get("governance_bulk"):
+        return   # 대량 교체(재무제표에서 다시 불러오기) — 호출자가 요약 1건을 직접 남긴다
     out: list[GovernanceEvent] = []
     with session.no_autoflush:
         for obj in list(session.dirty):
