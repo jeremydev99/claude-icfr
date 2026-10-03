@@ -16,8 +16,8 @@ const POINTS = [
 export default function AuthLayout() {
   return (
     <div className="grid min-h-screen bg-background lg:grid-cols-[1.05fr_1fr]">
-      <aside className="relative hidden overflow-hidden bg-[hsl(225_52%_11%)] text-white lg:flex lg:flex-col">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,hsl(224_80%_50%/0.45),transparent_55%),radial-gradient(ellipse_at_bottom_right,hsl(199_89%_48%/0.35),transparent_55%)]" />
+      <aside className="relative hidden overflow-hidden bg-[hsl(224_40%_13%)] text-white lg:flex lg:flex-col">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,hsl(223_38%_34%/0.55),transparent_55%),radial-gradient(ellipse_at_bottom_right,hsl(220_24%_46%/0.35),transparent_55%)]" />
         <div className="relative z-10 flex items-center gap-3 px-12 pt-10">
           <LogoMark className="h-10 w-10 rounded-xl" />
           <div className="leading-tight">

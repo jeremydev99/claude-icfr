@@ -6,34 +6,35 @@
 
 @layer base {
   /* ── 디자인 토큰 (2026-10-03 전면 개선) ─────────────────────────────
-     브랜드: 신뢰감 있는 코발트 블루(primary) + 남색 계열 중립색.
+     브랜드: **곤색(#2c3c63) 단계** — 원색 파랑은 정당 상징색으로 읽힐 수 있어 쓰지 않는다(2026-10-03 마스터).
+     곤색을 명도·채도만 달리해 강조(짙게)·바탕(옅게)·보조(회청)로 나눠 쓴다. 원색 파랑·하늘색 계열 금지.
      캔버스(--background)는 아주 옅은 회청색, 카드는 흰색 — 카드가 떠 보여 정보 덩어리가 구분된다.
      본문 글꼴은 Pretendard(한글·영문 모두 고른 획), 숫자는 표에서 고정폭(tabular)으로 맞춘다. */
   :root {
     --background: 220 25% 97.5%;
-    --foreground: 224 40% 12%;
+    --foreground: 224 30% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 224 40% 12%;
+    --card-foreground: 224 30% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 224 40% 12%;
-    --primary: 224 76% 46%;
+    --popover-foreground: 224 30% 12%;
+    --primary: 223 38% 28%;
     --primary-foreground: 0 0% 100%;
     --secondary: 220 22% 94.5%;
-    --secondary-foreground: 224 40% 16%;
+    --secondary-foreground: 224 30% 16%;
     --muted: 220 22% 95%;
-    --muted-foreground: 222 12% 44%;
-    --accent: 224 100% 96.5%;
-    --accent-foreground: 224 76% 36%;
+    --muted-foreground: 222 14% 36%;
+    --accent: 222 33% 94.5%;
+    --accent-foreground: 223 38% 24%;
     --destructive: 0 74% 52%;
     --destructive-foreground: 0 0% 100%;
     --border: 222 18% 89%;
     --input: 222 18% 86%;
-    --ring: 224 76% 52%;
+    --ring: 223 30% 45%;
     --radius: 0.75rem;
 
     /* 브랜드 보조 — 그라데이션·배지에 쓴다 */
-    --brand-from: 224 80% 50%;
-    --brand-to: 199 89% 48%;
+    --brand-from: 224 40% 22%;
+    --brand-to: 220 24% 46%;
     --success: 152 60% 36%;
     --warning: 35 92% 45%;
 
@@ -46,13 +47,13 @@
        통째로 짙게 칠하던 이전 방식은 메뉴가 많을 때 시선을 과하게 끈다.
        기본(gray)은 캔버스보다 한 단계 짙은 회청색. */
     --sidebar: 222 24% 95.5%;
-    --sidebar-foreground: 224 40% 14%;
-    --sidebar-muted: 222 13% 42%;
+    --sidebar-foreground: 224 30% 13%;
+    --sidebar-muted: 222 14% 34%;
     --sidebar-hover: 222 24% 90.5%;
     --sidebar-border: 222 18% 87%;
-    --sidebar-selected: 224 90% 93%;
-    --sidebar-selected-foreground: 224 76% 36%;
-    --sidebar-indicator: 224 76% 46%;
+    --sidebar-selected: 222 30% 88%;
+    --sidebar-selected-foreground: 223 40% 20%;
+    --sidebar-indicator: 223 38% 28%;
   }
 
   /* white — 본문과 같은 흰색, 경계는 테두리로만. */
@@ -60,20 +61,19 @@
     --sidebar: 0 0% 100%;
     --sidebar-hover: 222 24% 95%;
     --sidebar-border: 222 18% 90%;
-    --sidebar-selected: 224 100% 96%;
+    --sidebar-selected: 222 33% 92%;
   }
 
-  /* navy — 짙은 남색 + 흰 글자. 선택은 한 단계 밝은 남색 바탕 + 흰 글자 + 하늘색 막대.
-     (이전 호박색 강조는 브랜드 블루와 충돌해 막대 색으로만 대비를 준다.) */
+  /* navy — 짙은 곤색 + 흰 글자. 선택은 한 단계 밝은 곤색 바탕 + 흰 글자 + 은회색 막대. */
   :root[data-sidebar-theme='navy'] {
-    --sidebar: 225 52% 13%;
+    --sidebar: 224 40% 15%;
     --sidebar-foreground: 0 0% 100%;
-    --sidebar-muted: 220 24% 72%;
-    --sidebar-hover: 225 40% 20%;
-    --sidebar-border: 225 32% 22%;
-    --sidebar-selected: 224 52% 26%;
+    --sidebar-muted: 220 20% 78%;
+    --sidebar-hover: 224 32% 21%;
+    --sidebar-border: 224 28% 24%;
+    --sidebar-selected: 223 30% 29%;
     --sidebar-selected-foreground: 0 0% 100%;
-    --sidebar-indicator: 199 89% 60%;
+    --sidebar-indicator: 220 22% 74%;
   }
 }
 
@@ -82,6 +82,9 @@
     @apply border-border;
   }
   html {
+    /* 기준 글자 17px(브라우저 기본 16px 의 106.25%) — 화면 전체가 비례해 커진다. 사용자가 브라우저 글자 크기를
+       키우면 그대로 따라간다(px 고정이 아니라 % 라서). 2026-10-03 마스터: 시력이 나쁜 사람도 잘 보이게 */
+    font-size: 106.25%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
