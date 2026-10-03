@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { ChevronUp, ChevronDown, ChevronsUpDown, Star, Pencil, Trash2, Upload, Loader2 } from 'lucide-react'
 import {
   Table,
@@ -118,7 +119,7 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
           </Button>
         )}
       </div>
-      <div className="rounded-md border overflow-x-auto">
+      <div className="overflow-x-auto rounded-xl border bg-card shadow-card">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
@@ -166,10 +167,10 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
           <TableBody>
             {items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={11} className="p-4">
                   {params.q || params.process_code || params.sub_process_code || params.risk_level || params.frequency || params.is_key_control !== undefined || params.auto_manual || params.preventive_detective || params.assertion || params.owner
-                    ? '검색 결과가 없습니다'
-                    : '등록된 통제가 없습니다. 통제 추가 버튼으로 첫 통제를 추가하세요.'}
+                    ? <EmptyState compact slot="empty-search" title="검색 결과가 없습니다" description="검색어나 필터 조건을 바꿔 보세요." className="border-0 bg-transparent" />
+                    : <EmptyState compact slot="empty-checklist" title="등록된 통제가 없습니다" description="통제 추가 버튼으로 첫 통제를 추가하세요." className="border-0 bg-transparent" />}
                 </TableCell>
               </TableRow>
             ) : (

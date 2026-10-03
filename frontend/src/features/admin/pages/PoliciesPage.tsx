@@ -24,11 +24,11 @@ export default function PoliciesPage() {
   const unknown = useMemo(() => unknownPolicies(data?.items), [data])
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">정책 설정</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight">정책 설정</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             테넌트 단위 운영 정책입니다. 설정하지 않은 항목은 서버 기본값을 따릅니다.
           </p>
         </div>

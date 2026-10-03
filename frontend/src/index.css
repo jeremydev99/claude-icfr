@@ -1,70 +1,79 @@
+@import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  /* ── 디자인 토큰 (2026-10-03 전면 개선) ─────────────────────────────
+     브랜드: 신뢰감 있는 코발트 블루(primary) + 남색 계열 중립색.
+     캔버스(--background)는 아주 옅은 회청색, 카드는 흰색 — 카드가 떠 보여 정보 덩어리가 구분된다.
+     본문 글꼴은 Pretendard(한글·영문 모두 고른 획), 숫자는 표에서 고정폭(tabular)으로 맞춘다. */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 220 25% 97.5%;
+    --foreground: 224 40% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 224 40% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --popover-foreground: 224 40% 12%;
+    --primary: 224 76% 46%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 22% 94.5%;
+    --secondary-foreground: 224 40% 16%;
+    --muted: 220 22% 95%;
+    --muted-foreground: 222 12% 44%;
+    --accent: 224 100% 96.5%;
+    --accent-foreground: 224 76% 36%;
+    --destructive: 0 74% 52%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 18% 89%;
+    --input: 222 18% 86%;
+    --ring: 224 76% 52%;
+    --radius: 0.75rem;
+
+    /* 브랜드 보조 — 그라데이션·배지에 쓴다 */
+    --brand-from: 224 80% 50%;
+    --brand-to: 199 89% 48%;
+    --success: 152 60% 36%;
+    --warning: 35 92% 45%;
 
     /* ── 사이드바 팔레트 ────────────────────────────────────────────
        사이드바는 본문과 다른 배경 위에 있어 **자체 전경색·강조색을 갖는다.**
-       본문 토큰(--foreground/--muted-foreground/--accent)을 그대로 쓰면 남색 배경에서
-       글자와 호버가 사라진다. 세 테마가 같은 토큰 이름을 채운다:
-
+       세 테마가 같은 토큰 이름을 채운다:
          --sidebar / -foreground / -muted / -hover / -border
-         --sidebar-selected / -selected-foreground
-
-       기본은 gray(회색 배경). 기존 'dark' 가 실제로는 밝은 회색이었다. */
-    --sidebar: 220 14% 92%;
-    --sidebar-foreground: 222.2 84% 4.9%;
-    --sidebar-muted: 215.4 16.3% 40%;
-    --sidebar-hover: 220 14% 85%;
-    --sidebar-border: 220 13% 82%;
-    --sidebar-selected: 222.2 47.4% 11.2%;
-    --sidebar-selected-foreground: 210 40% 98%;
+         --sidebar-selected / -selected-foreground / -indicator(선택 막대)
+       선택 표시는 **옅은 브랜드 바탕 + 브랜드색 글자 + 왼쪽 막대** — 글로벌 SaaS 의 표준 방식이다.
+       통째로 짙게 칠하던 이전 방식은 메뉴가 많을 때 시선을 과하게 끈다.
+       기본(gray)은 캔버스보다 한 단계 짙은 회청색. */
+    --sidebar: 222 24% 95.5%;
+    --sidebar-foreground: 224 40% 14%;
+    --sidebar-muted: 222 13% 42%;
+    --sidebar-hover: 222 24% 90.5%;
+    --sidebar-border: 222 18% 87%;
+    --sidebar-selected: 224 90% 93%;
+    --sidebar-selected-foreground: 224 76% 36%;
+    --sidebar-indicator: 224 76% 46%;
   }
 
-  /* white — 사이드바를 본문과 같은 흰색으로 두고 경계는 테두리로만 낸다.
-     호버는 gray 테마와 같은 정도(배경 대비 약 1.2)로 맞췄다 — 94% 로 두면 흰 배경과
-     거의 구분되지 않아 "눌리는 줄 모른다". */
+  /* white — 본문과 같은 흰색, 경계는 테두리로만. */
   :root[data-sidebar-theme='white'] {
     --sidebar: 0 0% 100%;
-    --sidebar-hover: 220 14% 92%;
-    --sidebar-border: 214.3 31.8% 88%;
+    --sidebar-hover: 222 24% 95%;
+    --sidebar-border: 222 18% 90%;
+    --sidebar-selected: 224 100% 96%;
   }
 
-  /* navy — 남색 배경 + 흰 글자.
-     선택 강조는 **호박색(amber)** 이다. 남색의 보색 계열이라 색상환에서 가장 멀어
-     구분이 쉽고, 명도 차이(16% vs 55%)까지 겹쳐 회색조·저시력에서도 갈린다.
-     남색 계열 강조를 쓰면 선택/비선택이 같은 색조 안에서만 갈려 한눈에 안 보인다.
-     호박색 위 글자는 흰색이 아니라 짙은 남색이다 — 밝은 바탕에 흰 글자는 읽히지 않는다. */
+  /* navy — 짙은 남색 + 흰 글자. 선택은 한 단계 밝은 남색 바탕 + 흰 글자 + 하늘색 막대.
+     (이전 호박색 강조는 브랜드 블루와 충돌해 막대 색으로만 대비를 준다.) */
   :root[data-sidebar-theme='navy'] {
-    --sidebar: 222 47% 16%;
+    --sidebar: 225 52% 13%;
     --sidebar-foreground: 0 0% 100%;
-    --sidebar-muted: 215 25% 72%;
-    --sidebar-hover: 222 40% 25%;
-    --sidebar-border: 222 30% 30%;
-    --sidebar-selected: 38 92% 55%;
-    --sidebar-selected-foreground: 222 47% 12%;
+    --sidebar-muted: 220 24% 72%;
+    --sidebar-hover: 225 40% 20%;
+    --sidebar-border: 225 32% 22%;
+    --sidebar-selected: 224 52% 26%;
+    --sidebar-selected-foreground: 0 0% 100%;
+    --sidebar-indicator: 199 89% 60%;
   }
 }
 
@@ -72,8 +81,30 @@
   * {
     @apply border-border;
   }
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
   body {
     @apply bg-background text-foreground;
+    font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI',
+      'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+    font-feature-settings: 'ss05', 'ss06';
+    letter-spacing: -0.005em;
+    /* 한글은 어절 단위로 줄을 바꾼다 — '관리자/님'처럼 단어 중간에서 끊기지 않게 */
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+  h1, h2, h3 {
+    letter-spacing: -0.02em;
+  }
+  /* 표의 숫자는 자릿수가 세로로 맞아야 읽힌다 */
+  td, th, .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection {
+    background: hsl(var(--primary) / 0.18);
   }
 }
 

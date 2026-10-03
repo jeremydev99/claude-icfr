@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
@@ -31,9 +32,9 @@ export default function LoginEventsTable() {
       ) : isError ? (
         <div className="rounded-md border p-8 text-center text-sm text-destructive">로그인 기록을 불러오지 못했습니다 (관리자 전용)</div>
       ) : data.length === 0 ? (
-        <div className="rounded-md border p-12 text-center text-sm text-muted-foreground">기록이 없습니다.</div>
+        <EmptyState slot="empty-default" title="기록이 없습니다." />
       ) : (
-        <div className="rounded-md border">
+        <div className="overflow-hidden rounded-xl border bg-card shadow-card">
           <Table>
             <TableHeader>
               <TableRow>

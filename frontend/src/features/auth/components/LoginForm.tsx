@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useLogin } from '../hooks/useAuth'
 import { loginErrorMessage } from '../loginError.pure'
 
@@ -30,9 +30,10 @@ export default function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <CardTitle className="text-center text-2xl">ICFR 시스템 로그인</CardTitle>
+    <Card className="w-full max-w-[420px] border-border/70 shadow-lift">
+      <CardHeader className="space-y-1.5 pb-4">
+        <CardTitle className="text-2xl font-bold tracking-tight">로그인</CardTitle>
+        <CardDescription>회사 계정으로 로그인하세요.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -74,7 +75,7 @@ export default function LoginForm() {
             </p>
           )}
 
-          <Button type="submit" className="w-full" disabled={loginMutation.isPending}>
+          <Button type="submit" size="lg" className="h-11 w-full text-[15px] font-semibold" disabled={loginMutation.isPending}>
             {loginMutation.isPending ? '로그인 중...' : '로그인'}
           </Button>
         </form>

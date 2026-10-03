@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { Loader2, Pencil, Trash2 } from 'lucide-react'
 import {
   Table,
@@ -44,16 +45,14 @@ export default function ProcessTable({ items, isLoading, isError, error, onEditC
 
   if (items.length === 0) {
     return (
-      <div className="rounded-md border p-12 text-center text-sm text-muted-foreground">
-        등록된 프로세스가 없습니다. 프로세스 추가 버튼으로 첫 프로세스를 등록하세요.
-      </div>
+      <EmptyState slot="empty-checklist" title="등록된 프로세스가 없습니다" description="프로세스 추가 버튼으로 첫 프로세스를 등록하세요." />
     )
   }
 
   return (
     <div className="space-y-2">
       <div className="text-sm text-muted-foreground">총 {items.length}건</div>
-      <div className="rounded-md border">
+      <div className="overflow-hidden rounded-xl border bg-card shadow-card">
         <Table>
           <TableHeader>
             <TableRow>

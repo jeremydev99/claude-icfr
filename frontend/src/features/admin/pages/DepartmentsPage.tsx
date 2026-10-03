@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
@@ -138,10 +139,10 @@ export default function DepartmentsPage() {
   }
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold">부서 관리</h1>
+          <h1 className="text-2xl font-bold tracking-tight">부서 관리</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             부서와 소속 인원을 관리합니다. 통제책임자의 <strong>주 소속</strong>이{' '}
             <Link to="/dashboard" className="underline">대시보드</Link>의 통제 조직별 집계 기준입니다.
@@ -170,9 +171,12 @@ export default function DepartmentsPage() {
           </CardHeader>
           <CardContent>
             {departments.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                등록된 부서가 없습니다. 부서를 만들면 대시보드의 &ldquo;미배정&rdquo;이 풀리기 시작합니다.
-              </p>
+              <EmptyState
+                compact
+                slot="empty-people"
+                title="등록된 부서가 없습니다"
+                description={<>부서를 만들면 대시보드의 &ldquo;미배정&rdquo;이 풀리기 시작합니다.</>}
+              />
             )}
             <ul className="divide-y">
               {departments.map((d) => {
@@ -233,7 +237,7 @@ export default function DepartmentsPage() {
           <CardContent>
             {!selected && <p className="text-sm text-muted-foreground">부서를 선택하세요</p>}
             {selected && members.length === 0 && (
-              <p className="text-sm text-muted-foreground">소속 인원이 없습니다</p>
+              <EmptyState compact slot="empty-people" title="소속 인원이 없습니다" />
             )}
             <ul className="divide-y">
               {members.map((m) => (

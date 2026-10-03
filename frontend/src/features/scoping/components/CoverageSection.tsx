@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
@@ -38,9 +39,12 @@ export default function CoverageSection({ scopingId }: { scopingId: string }) {
       </div>
 
       {data.significant_total === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          유의한 계정(최종 결론 Y)이 아직 없습니다 — 중요성 기준과 질적 평가를 입력하면 계산됩니다.
-        </p>
+        <EmptyState
+          compact
+          slot="empty-finance"
+          title="유의한 계정(최종 결론 Y)이 아직 없습니다"
+          description="중요성 기준과 질적 평가를 입력하면 계산됩니다."
+        />
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">

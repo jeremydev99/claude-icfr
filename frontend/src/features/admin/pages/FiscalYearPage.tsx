@@ -72,11 +72,11 @@ export default function FiscalYearPage() {
   }
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">회계연도 시작월</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight">회계연도 시작월</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             결산월이 아니라 <strong>시작월</strong>입니다. 12월 결산 회사는 1, 3월 결산 회사는 4입니다.
           </p>
         </div>

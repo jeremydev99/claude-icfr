@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Loader2, Lock, Upload } from 'lucide-react'
@@ -67,21 +68,28 @@ export default function FinancialStatementsPage() {
   if (isLoading) return <Loader2 className="m-8 h-5 w-5 animate-spin" />
   if (!list?.length) {
     return (
-      <Card className="m-6">
-        <CardHeader><CardTitle>재무제표</CardTitle></CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          <p>아직 올린 재무제표가 없습니다. 공시양식(재무상태표·손익계산서·현금흐름표) 엑셀을 올리고, 정산표를 결합하세요.</p>
-          {isManager ? <div className="mt-3">{uploadButton}</div> : <p className="mt-2">업로드는 내부회계관리자가 합니다.</p>}
-          {uploadDialog}
-        </CardContent>
-      </Card>
+      <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
+        <h1 className="text-2xl font-bold tracking-tight">재무제표</h1>
+        <EmptyState
+          slot="empty-finance"
+          title="아직 올린 재무제표가 없습니다"
+          description={
+            <>
+              <p>공시양식(재무상태표·손익계산서·현금흐름표) 엑셀을 올리고, 정산표를 결합하세요.</p>
+              {!isManager && <p className="mt-2">업로드는 내부회계관리자가 합니다.</p>}
+            </>
+          }
+          action={isManager ? uploadButton : undefined}
+        />
+        {uploadDialog}
+      </div>
     )
   }
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-lg font-semibold">재무제표</h1>
+        <h1 className="text-2xl font-bold tracking-tight">재무제표</h1>
         <select value={year ?? ''} onChange={(e) => setYear(Number(e.target.value))}
           className="h-9 rounded border bg-background px-2 py-1 text-sm leading-normal" aria-label="회계연도">
           {years.map((y) => <option key={y} value={y}>{y} 회계연도</option>)}
@@ -120,7 +128,7 @@ export default function FinancialStatementsPage() {
       </div>
       {view === 'template' && <TemplateMatchPanel statementType={stype} canEdit={isManager} />}
 
-      {view === 'amounts' && !current && <p className="text-sm text-muted-foreground">이 연도·구분에 {typeLabel(stype)}가 없습니다.</p>}
+      {view === 'amounts' && !current && <EmptyState compact slot="empty-finance" title={`이 연도·구분에 ${typeLabel(stype)}가 없습니다.`} />}
       {view === 'amounts' && current && loadingDetail && <Loader2 className="h-5 w-5 animate-spin" />}
       {view === 'amounts' && detail && <StatementView detail={detail} isManager={isManager} />}
     </div>

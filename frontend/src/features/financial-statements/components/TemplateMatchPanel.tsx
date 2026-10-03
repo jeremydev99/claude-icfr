@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Link2, Link2Off, Loader2 } from 'lucide-react'
@@ -101,7 +102,7 @@ export default function TemplateMatchPanel({ statementType, canEdit }: { stateme
               onLink={(t) => link.mutate([{ account_id: r.account_id, template_account_id: t }])}
               onUnlink={(id) => unlink.mutate(id)} />
           ))}
-          {!rows.length && <tr><td colSpan={3} className="py-6 text-center text-muted-foreground">해당하는 계정이 없습니다.</td></tr>}
+          {!rows.length && <tr><td colSpan={3} className="p-4"><EmptyState compact slot="empty-search" title="해당하는 계정이 없습니다." className="border-0 bg-transparent" /></td></tr>}
         </tbody>
       </table>
       {unusedTemplates.length > 0 && (

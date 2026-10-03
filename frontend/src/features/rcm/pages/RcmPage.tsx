@@ -105,10 +105,10 @@ export default function RcmPage() {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div>
-        <h1 className="text-2xl font-semibold">RCM 관리</h1>
-        <p className="text-sm text-muted-foreground mt-1">리스크-통제 매트릭스 관리</p>
+        <h1 className="text-2xl font-bold tracking-tight">RCM 관리</h1>
+        <p className="mt-1 text-sm text-muted-foreground">리스크-통제 매트릭스 관리</p>
       </div>
 
       <div className="flex items-center gap-1 border rounded-md p-1 w-fit">

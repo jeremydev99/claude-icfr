@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -16,7 +17,7 @@ export default function StatementTree({ tree, expanded, onToggle, errors, highli
   highlightId: string | null
 }) {
   const rows = flattenTree(tree, expanded)
-  if (!rows.length) return <p className="py-8 text-center text-sm text-muted-foreground">금액 행이 없습니다.</p>
+  if (!rows.length) return <EmptyState compact slot="empty-finance" title="금액 행이 없습니다." />
   return (
     <table className="w-full text-xs">
       <thead className="border-b text-muted-foreground">

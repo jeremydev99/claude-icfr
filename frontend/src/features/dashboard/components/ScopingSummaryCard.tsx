@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useScopingMeta, useScopingSummary } from '@/features/scoping/api/useScoping'
@@ -31,7 +32,7 @@ export default function ScopingSummaryCard() {
       </CardHeader>
       <CardContent>
         {data && !data.exists && (
-          <p className="text-sm text-muted-foreground">아직 스코핑이 없습니다 — 회계연도를 만들면 표준 템플릿이 복사됩니다.</p>
+          <EmptyState compact slot="empty-finance" title="아직 스코핑이 없습니다" description="회계연도를 만들면 표준 템플릿이 복사됩니다." />
         )}
         {data?.exists && meta && (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">

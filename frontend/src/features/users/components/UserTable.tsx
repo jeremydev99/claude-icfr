@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { Loader2, KeyRound, LockOpen, Pencil, Trash2 } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import {
@@ -59,16 +60,14 @@ export default function UserTable({
 
   if (items.length === 0) {
     return (
-      <div className="rounded-md border p-12 text-center text-sm text-muted-foreground">
-        등록된 사용자가 없습니다. 사용자 등록 버튼으로 첫 사용자를 추가하세요.
-      </div>
+      <EmptyState slot="empty-people" title="등록된 사용자가 없습니다" description="사용자 등록 버튼으로 첫 사용자를 추가하세요." />
     )
   }
 
   return (
     <div className="space-y-2">
       <div className="text-sm text-muted-foreground">총 {total}명</div>
-      <div className="rounded-md border">
+      <div className="overflow-hidden rounded-xl border bg-card shadow-card">
         <Table>
           <TableHeader>
             <TableRow>

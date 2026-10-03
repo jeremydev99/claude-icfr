@@ -11,16 +11,47 @@ import { useHelpPanel } from '@/features/help/store'
 import ChangePasswordDialog from '@/features/auth/components/ChangePasswordDialog'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
+import LogoMark from '@/components/brand/LogoMark'
 import { navigation, type NavItem } from '@/config/navigation'
 
 const NAV_GROUPS_KEY = 'icfr.nav.expandedGroups'
+
+/** 테마 견본 색 — 실제 사이드바 배경과 같은 색 */
+const THEME_SWATCH: Record<string, string> = {
+  gray: 'bg-[hsl(222_24%_93%)]',
+  white: 'bg-white',
+  navy: 'bg-[hsl(225_52%_13%)]',
+}
+
+/** 시스템 관리 권한(users.role) 표기 */
+const ROLE_LABEL: Record<string, string> = { admin: '시스템 관리자', user: '사용자' }
+
+/** 이름 → 아바타 글자. 한글 이름은 성을 뺀 두 글자(용남), 영문은 이니셜 두 개. */
+function initials(name: string): string {
+  const n = name.trim()
+  if (!n) return '?'
+  if (/^[가-힣]+$/.test(n)) return n.length >= 3 ? n.slice(1, 3) : n
+  return n.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+}
+
+/** 현재 경로 → 메뉴 이름(상단 바 제목). 가장 길게 일치하는 메뉴를 고른다(/admin/departments 등). */
+function currentTitle(pathname: string): string | null {
+  let best: { len: number; label: string } | null = null
+  for (const g of navigation) {
+    for (const it of g.items) {
+      const match = it.path === '/' ? pathname === '/' : pathname === it.path || pathname.startsWith(it.path + '/')
+      if (match && (!best || it.path.length > best.len)) best = { len: it.path.length, label: it.label }
+    }
+  }
+  return best?.label ?? null
+}
 
 /** 메뉴 한 줄. 권한이 없으면 **숨기지 않고 잠근다** — 숨기면 "그런 기능이 있는지"조차 모른다. */
 function NavRow({ item, locked, onNavigate }: { item: NavItem; locked: boolean; onNavigate?: () => void }) {
   if (locked) {
     return (
       <div
-        className="flex cursor-not-allowed items-center gap-2.5 rounded-md px-3 py-2 text-sm text-sidebar-muted/60"
+        className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] text-sidebar-muted/60"
         title="내부회계관리자만 사용할 수 있습니다"
       >
         <item.icon className="h-4 w-4 flex-shrink-0" />
@@ -35,9 +66,10 @@ function NavRow({ item, locked, onNavigate }: { item: NavItem; locked: boolean; 
       onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors',
+          // 선택: 옅은 브랜드 바탕 + 브랜드색 글자 + 왼쪽 막대(before:)
+          'relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] transition-colors duration-150',
           isActive
-            ? 'bg-sidebar-selected text-sidebar-selected-foreground font-medium'
+            ? 'bg-sidebar-selected text-sidebar-selected-foreground font-semibold before:absolute before:-left-3 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-r-full before:bg-sidebar-indicator'
             : 'text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground',
         )
       }
@@ -46,7 +78,7 @@ function NavRow({ item, locked, onNavigate }: { item: NavItem; locked: boolean; 
         <>
           <item.icon
             className={cn(
-              'h-4 w-4 flex-shrink-0',
+              'h-[18px] w-[18px] flex-shrink-0',
               isActive ? 'text-sidebar-selected-foreground' : 'text-sidebar-muted',
             )}
           />
@@ -99,13 +131,16 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <>
       {/* 로고 */}
-      <div className="px-5 py-4 border-b border-sidebar-border">
-        <h1 className="text-lg font-bold tracking-tight text-sidebar-foreground">ICFR</h1>
-        <p className="text-[10px] text-sidebar-muted mt-0.5 tracking-wide uppercase">내부회계관리시스템</p>
+      <div className="flex h-16 shrink-0 items-center gap-3 px-5">
+        <LogoMark className="h-9 w-9 shadow-sm rounded-[10px]" />
+        <div className="min-w-0 leading-tight">
+          <p className="text-[15px] font-extrabold tracking-tight text-sidebar-foreground">ICFR</p>
+          <p className="truncate text-[11px] font-medium text-sidebar-muted">내부회계관리시스템</p>
+        </div>
       </div>
 
       {/* 네비게이션 */}
-      <nav className="flex-1 px-3 py-3 space-y-1">
+      <nav className="flex-1 px-3 pb-3 pt-1 space-y-1">
         <div className="flex justify-end px-1 pb-1">
           <button
             onClick={() => setAllGroups(!allOpen)}
@@ -127,7 +162,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             <div key={idx} className="mb-3">
               <button
                 onClick={() => toggleGroup(group.groupLabel!)}
-                className="flex w-full items-center justify-between px-3 py-1 mb-0.5 text-[10px] font-semibold uppercase tracking-widest text-sidebar-muted hover:text-sidebar-foreground transition-colors"
+                className="flex w-full items-center justify-between px-3 pb-1 pt-2 text-[11px] font-semibold tracking-wide text-sidebar-muted/80 hover:text-sidebar-foreground transition-colors"
               >
                 {group.groupLabel}
                 {expandedGroups[group.groupLabel] ? (
@@ -151,52 +186,57 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* 테마 — 개인 설정(localStorage). 회사 설정이 아니므로 백엔드가 없다.
           3종이 되면서 토글로는 "다음이 뭔지" 알 수 없어 선택형으로 바꿨다. */}
-      <div className="px-4 py-2 border-t border-sidebar-border">
-        <p className="mb-1 text-[10px] uppercase tracking-widest text-sidebar-muted">사이드바 색</p>
-        <div className="flex gap-1" role="group" aria-label="사이드바 테마">
+      <div className="flex shrink-0 items-center justify-between px-5 py-2.5 border-t border-sidebar-border">
+        <p className="text-[11px] font-medium text-sidebar-muted">사이드바 색</p>
+        <div className="flex gap-1.5" role="group" aria-label="사이드바 테마">
           {SIDEBAR_THEMES.map((t) => (
             <button
               key={t.value}
               onClick={() => setTheme(t.value)}
               aria-pressed={theme === t.value}
+              aria-label={`사이드바 ${t.label}`}
+              title={`${t.label} — 이 브라우저에만 저장됩니다`}
               className={cn(
-                'flex-1 rounded-md border px-2 py-1 text-xs transition-colors',
+                'h-5 w-5 rounded-full border transition-all',
+                THEME_SWATCH[t.value],
                 theme === t.value
-                  ? 'border-transparent bg-sidebar-selected text-sidebar-selected-foreground font-medium'
-                  : 'border-sidebar-border text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground',
+                  ? 'ring-2 ring-sidebar-indicator ring-offset-2 ring-offset-sidebar'
+                  : 'border-sidebar-border hover:scale-110',
               )}
-              title="이 브라우저에만 저장됩니다"
-            >
-              {t.label}
-            </button>
+            />
           ))}
         </div>
       </div>
 
       {/* 하단 사용자 영역 */}
-      <div className="px-4 py-3 border-t border-sidebar-border pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="shrink-0 px-3 py-3 border-t border-sidebar-border pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {user && (
-          <div className="mb-2.5">
-            <p className="text-sm font-medium text-sidebar-foreground leading-tight">{user.display_name}</p>
-            <p className="text-xs text-sidebar-muted mt-0.5">{user.role}</p>
+          <div className="flex items-center gap-3 rounded-lg px-2 py-1.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-from to-brand-to text-sm font-bold text-white shadow-sm">
+              {initials(user.display_name)}
+            </span>
+            <div className="min-w-0 flex-1 leading-tight">
+              <p className="truncate text-sm font-semibold text-sidebar-foreground">{user.display_name}</p>
+              <p className="truncate text-[11px] text-sidebar-muted">{ROLE_LABEL[user.role] ?? user.role}</p>
+            </div>
+            <button
+              onClick={() => setPasswordOpen(true)}
+              className="rounded-md p-1.5 text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors"
+              title="비밀번호 변경"
+              aria-label="비밀번호 변경"
+            >
+              <KeyRound className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => logoutMutation.mutate()}
+              className="rounded-md p-1.5 text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors"
+              title="로그아웃"
+              aria-label="로그아웃"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         )}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <button
-            onClick={() => setPasswordOpen(true)}
-            className="flex items-center gap-2 text-xs text-sidebar-muted hover:text-sidebar-foreground transition-colors"
-          >
-            <KeyRound className="h-3.5 w-3.5" />
-            비밀번호 변경
-          </button>
-          <button
-            onClick={() => logoutMutation.mutate()}
-            className="flex items-center gap-2 text-xs text-sidebar-muted hover:text-sidebar-foreground transition-colors"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            로그아웃
-          </button>
-        </div>
         <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
       </div>
     </>
@@ -217,6 +257,7 @@ export default function AppLayout() {
   // `data-sidebar-theme` 속성은 아직 붙어 있지 않다(새로고침 직후).
   useEffect(() => applySidebarTheme(theme), [theme])
   useEffect(() => setDrawer(false), [location.pathname])
+  const title = currentTitle(location.pathname)
   const helpOpen = useHelpPanel((s) => s.open)
   const toggleHelp = useHelpPanel((s) => s.toggle)
 
@@ -254,7 +295,7 @@ export default function AppLayout() {
     <div className="flex min-h-screen bg-background">
       <aside
         ref={scrollRef}
-        className="sidebar-scroll hidden w-60 flex-shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex flex-col sticky top-0 h-screen overflow-y-auto"
+        className="sidebar-scroll hidden w-64 flex-shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex flex-col sticky top-0 h-screen overflow-y-auto"
       >
         <SidebarContent />
       </aside>
@@ -268,7 +309,7 @@ export default function AppLayout() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* 상단 바 — 모바일: 메뉴·로고 / 모든 크기: 앱 설치·도움말 */}
-        <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b bg-background/95 px-3 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-6">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border/70 bg-background/85 px-3 pt-[env(safe-area-inset-top)] backdrop-blur-md supports-[backdrop-filter]:bg-background/70 md:px-8">
           <button
             type="button"
             onClick={() => setDrawer(true)}
@@ -277,7 +318,11 @@ export default function AppLayout() {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span className="font-bold tracking-tight md:hidden">ICFR</span>
+          <span className="flex items-center gap-2 md:hidden">
+            <LogoMark className="h-7 w-7 rounded-lg" />
+            <span className="font-extrabold tracking-tight">ICFR</span>
+          </span>
+          {title && <span className="hidden text-[15px] font-semibold text-foreground md:inline">{title}</span>}
           <div className="ml-auto flex items-center gap-2">
             <InstallButton />
             <button
@@ -285,8 +330,8 @@ export default function AppLayout() {
               onClick={toggleHelp}
               aria-pressed={helpOpen}
               className={cn(
-                'flex items-center gap-1.5 rounded-md p-2 text-sm hover:bg-muted md:px-2.5 md:py-1.5',
-                helpOpen && 'bg-muted font-medium',
+                'flex items-center gap-1.5 rounded-lg p-2 text-sm text-muted-foreground transition-colors hover:bg-card hover:text-foreground hover:shadow-card md:px-3 md:py-1.5',
+                helpOpen && 'bg-card text-foreground font-medium shadow-card',
               )}
               aria-label="도움말 (F1)"
               title="도움말 (F1)"

@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { Loader2, Pencil, Trash2 } from 'lucide-react'
 import {
   Table,
@@ -69,27 +70,19 @@ export default function DeficiencyTable({
 
   if (items.length === 0) {
     return (
-      <div className="rounded-md border p-12 text-center text-sm text-muted-foreground">
-        등록된 미비점이 없습니다.{' '}
-        {canWrite && (
-          <>
-            <button
-              className="underline underline-offset-2 hover:text-foreground"
-              onClick={onAddClick}
-            >
-              미비점 등록
-            </button>{' '}
-            버튼으로 첫 미비점을 추가하세요.
-          </>
-        )}
-      </div>
+      <EmptyState
+        slot="empty-checklist"
+        title="등록된 미비점이 없습니다"
+        description={canWrite ? '미비점 등록 버튼으로 첫 미비점을 추가하세요.' : undefined}
+        action={canWrite ? <Button size="sm" onClick={onAddClick}>미비점 등록</Button> : undefined}
+      />
     )
   }
 
   return (
     <div className="space-y-2">
       <div className="text-sm text-muted-foreground">총 {total}건</div>
-      <div className="rounded-md border">
+      <div className="overflow-hidden rounded-xl border bg-card shadow-card">
         <Table>
           <TableHeader>
             <TableRow>
