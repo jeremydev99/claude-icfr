@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { useEucSummary } from '@/features/euc/api/useEucIuc'
 import type { CountBucket } from '@/features/euc/types'
+import HelpButton from '@/features/help/HelpButton'
 
 /**
  * 대시보드 EUC·IUC 카드 (5-1).
@@ -58,6 +59,7 @@ export default function EucIucSummaryCard() {
             {' · '}
             <Link to="/iuc" className="hover:underline">IUC</Link>
           </span>
+          <HelpButton k="screen.dashboard.euc-iuc-summary" className="self-center" />
           {data && (
             <span className="text-sm font-normal text-muted-foreground">
               EUC 파일 {data.file_total}건 · 정보 항목 {data.item_total}건

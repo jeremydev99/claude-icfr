@@ -25,6 +25,7 @@ import {
 } from '../types'
 import SourceBadge from './SourceBadge'
 import { EXCEL_UPLOAD_LOCKED, EXCEL_UPLOAD_LOCKED_MESSAGE } from '../excelUploadLock'
+import HelpTerm from '@/features/help/HelpTerm'
 
 interface Props {
   data: ControlListResponse | undefined
@@ -150,7 +151,7 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
                   주기 <SortIcon col="frequency" params={params} />
                 </span>
               </TableHead>
-              <TableHead className="w-36">어서션</TableHead>
+              <TableHead className="w-36"><HelpTerm k="term.assertion">어서션</HelpTerm></TableHead>
               <TableHead
                 className="w-24 cursor-pointer select-none"
                 onClick={() => toggleSort('owner_name')}

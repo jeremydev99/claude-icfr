@@ -22,6 +22,7 @@ import ResetPasswordDialog from '../components/ResetPasswordDialog'
 import UserRoleTable from '../components/UserRoleTable'
 import UserRoleFormDialog from '../components/UserRoleFormDialog'
 import type { User, UserRole } from '../types'
+import HelpButton from '@/features/help/HelpButton'
 
 type ActiveTab = 'users' | 'roles' | 'logins'
 
@@ -139,6 +140,10 @@ export default function UsersPage() {
         >
           로그인 기록
         </Button>
+        <HelpButton
+          k={activeTab === 'users' ? 'screen.users.users' : activeTab === 'roles' ? 'screen.users.roles' : 'screen.users.login-events'}
+          className="mx-1"
+        />
       </div>
 
       {activeTab === 'logins' && <LoginEventsTable />}

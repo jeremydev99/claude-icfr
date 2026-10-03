@@ -6,6 +6,7 @@ import { effectiveStatus } from '../moduleStatus.pure'
 import { navigation, type ModuleStatus, type NavItem } from '@/config/navigation'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import HelpButton from '@/features/help/HelpButton'
 
 /**
  * 배지 문구 — 상태의 **차이**가 드러나는 말을 쓴다.
@@ -78,7 +79,10 @@ export default function ModuleCards() {
       {/* 제목과 범례를 한 줄에 두면 좁은 폭에서 범례 끝이 잘린다 — 줄을 나누고 범례 안에서도
           항목 단위로 감싸지게 한다(A-2). */}
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold">모듈 현황</h2>
+        <h2 className="flex items-center gap-1 text-lg font-semibold">
+          모듈 현황
+          <HelpButton k="screen.dashboard.module-status" />
+        </h2>
         <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
           {(Object.keys(STATUS_META) as ModuleStatus[]).map((key) => (
             <li key={key} className="whitespace-nowrap">

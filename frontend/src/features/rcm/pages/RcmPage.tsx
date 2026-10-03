@@ -15,6 +15,7 @@ import ExcelUploadDialog from '../components/ExcelUploadDialog'
 import HierarchyManagementView from '../components/hierarchy/HierarchyManagementView'
 import { Button } from '@/components/ui/button'
 import { useCanWrite } from '@/features/auth/useCanWrite'
+import HelpButton from '@/features/help/HelpButton'
 
 function extractErrorMessage(err: unknown): string {
   if (isAxiosError(err)) {
@@ -117,6 +118,7 @@ export default function RcmPage() {
         <Button variant={rcmTab === 'hierarchy' ? 'default' : 'ghost'} size="sm" onClick={() => setRcmTab('hierarchy')}>
           계층 관리
         </Button>
+        <HelpButton k={rcmTab === 'controls' ? 'screen.rcm.controls' : 'screen.rcm.hierarchy'} className="mx-1" />
       </div>
 
       {rcmTab === 'controls' && (

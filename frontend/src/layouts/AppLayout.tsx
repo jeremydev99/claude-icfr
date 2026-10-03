@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, KeyRound, Lock, LogOut, Menu } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, HelpCircle, KeyRound, Lock, LogOut, Menu } from 'lucide-react'
 import { useAuthStore } from '@/features/auth/store'
 import { isIcfrManagerForUser } from '@/features/auth/permissions.pure'
 import { useLogout, useMe } from '@/features/auth/hooks/useAuth'
 import { SIDEBAR_THEMES, applySidebarTheme, useSidebarTheme } from '@/features/admin/sidebarTheme'
 import InstallButton from '@/features/pwa/InstallButton'
+import HelpPanel from '@/features/help/HelpPanel'
+import { useHelpPanel } from '@/features/help/store'
 import ChangePasswordDialog from '@/features/auth/components/ChangePasswordDialog'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
@@ -215,6 +217,20 @@ export default function AppLayout() {
   // `data-sidebar-theme` 속성은 아직 붙어 있지 않다(새로고침 직후).
   useEffect(() => applySidebarTheme(theme), [theme])
   useEffect(() => setDrawer(false), [location.pathname])
+  const helpOpen = useHelpPanel((s) => s.open)
+  const toggleHelp = useHelpPanel((s) => s.toggle)
+
+  // F1 = 도움말 열기/닫기. 입력 중 타이핑과 겹치지 않는 키라 입력칸에서도 그대로 둔다
+  // (브라우저 기본 도움말만 막는다).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'F1' || e.ctrlKey || e.altKey || e.metaKey) return
+      e.preventDefault()
+      toggleHelp()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggleHelp])
 
   // 스크롤바는 평소 숨기고 **스크롤 중에만** 보인다. 호버만으로는 휠을 굴리는 동안
   // 보이지 않아서, 스크롤 이벤트로 클래스를 잠깐 붙인다(CSS 만으로는 불가능하다).
@@ -251,7 +267,7 @@ export default function AppLayout() {
       </Sheet>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* 상단 바 — 모바일: 메뉴·로고 / 모든 크기: 앱 설치 */}
+        {/* 상단 바 — 모바일: 메뉴·로고 / 모든 크기: 앱 설치·도움말 */}
         <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b bg-background/95 px-3 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-6">
           <button
             type="button"
@@ -264,12 +280,29 @@ export default function AppLayout() {
           <span className="font-bold tracking-tight md:hidden">ICFR</span>
           <div className="ml-auto flex items-center gap-2">
             <InstallButton />
+            <button
+              type="button"
+              onClick={toggleHelp}
+              aria-pressed={helpOpen}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md p-2 text-sm hover:bg-muted md:px-2.5 md:py-1.5',
+                helpOpen && 'bg-muted font-medium',
+              )}
+              aria-label="도움말 (F1)"
+              title="도움말 (F1)"
+            >
+              <HelpCircle className="h-5 w-5 md:h-4 md:w-4" />
+              <span className="hidden md:inline">도움말</span>
+            </button>
           </div>
         </header>
         <main className="min-w-0 flex-1 overflow-x-hidden bg-background">
           <Outlet />
         </main>
       </div>
+
+      {/* 매뉴얼 패널 — 넓은 화면은 본문을 밀고, 좁은 화면은 겹친다(features/help/HelpPanel) */}
+      <HelpPanel />
     </div>
   )
 }

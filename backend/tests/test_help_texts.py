@@ -161,15 +161,9 @@ def test_load_entries_allows_source_with_as_of(tmp_path):
 def test_real_data_file_loads_and_reports_empty_body():
     entries = load_entries(DATA_FILE)
     empty = sorted(e["key"] for e in entries if not e["body"])
-    # 6-1 STEP 0 실측: 화면이 없는 메뉴 6개 — 지어내지 않고 키만 둔다
-    assert empty == sorted([
-        "menu.schedule",
-        "menu.report",
-        "menu.notification",
-        "menu.admin.role-assignments",
-        "menu.admin.policies",
-        "menu.admin.fiscal-year",
-    ])
+    # 6-1 STEP 0 때는 화면이 없는 메뉴 6개를 키만 뒀다. 2026-09-30 초안 화면이 생겨
+    # 2026-10-03(7-B) 문구를 채웠다 — 이제 빈 키는 없다. 새로 빈 키를 두면 여기서 드러난다.
+    assert empty == []
 
 
 # ── ④ term.* 개수 == §11 용어집 항목 수 ─────────────────────

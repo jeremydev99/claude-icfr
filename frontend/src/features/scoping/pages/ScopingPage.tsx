@@ -15,12 +15,14 @@ import {
 } from '../api/useScoping'
 import MaterialityCard from '../components/MaterialityCard'
 import AccountsTable from '../components/AccountsTable'
+import CoverageSection from '../components/CoverageSection'
 import CreateScopingDialog, { type ScopingSource } from '../components/CreateScopingDialog'
 import { ConfirmToggle, TemplateBadge } from '../components/bits'
 import type { ScopingDetail, ScopingMeta } from '../types'
 import apiClient from '@/lib/axios'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/queryKeys'
+import HelpButton from '@/features/help/HelpButton'
 
 /**
  * 스코핑 화면 (6-1, ADR-0034) — 회계연도별.
@@ -116,8 +118,12 @@ export default function ScopingPage() {
           )}
           <MaterialityCard key={`${detail.id}-m`} d={detail} meta={meta} write={write} />
           <Card>
-            <CardHeader><CardTitle className="text-base">계정 평가</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-1 text-base">계정 평가 <HelpButton k="screen.scoping.accounts" /></CardTitle></CardHeader>
             <CardContent><AccountsTable d={detail} meta={meta} write={write} /></CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle className="flex items-center gap-1 text-base">통제 커버리지 <HelpButton k="screen.scoping.coverage" /></CardTitle></CardHeader>
+            <CardContent><CoverageSection scopingId={detail.id} /></CardContent>
           </Card>
           <ReviewCard key={`${detail.id}-r`} d={detail} write={write} />
           <GuidanceCard d={detail} write={write} />
@@ -190,7 +196,7 @@ function ReviewCard({ d, write }: { d: ScopingDetail; write: (m: 'post' | 'patch
   })
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">외부감사인 검토 기록</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1 text-base">외부감사인 검토 기록 <HelpButton k="screen.scoping.auditor-review" /></CardTitle></CardHeader>
       <CardContent className="grid gap-2 sm:grid-cols-2">
         <input disabled={!d.can_edit} placeholder="감사인" value={f.review_auditor}
           onChange={(e) => setF({ ...f, review_auditor: e.target.value })} className="h-8 rounded border px-2 text-sm" />
@@ -211,7 +217,7 @@ function GuidanceCard({ d, write }: { d: ScopingDetail; write: (m: 'post' | 'pat
   const [open, setOpen] = useState<string | null>(null)
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">가이던스·판단 원칙</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1 text-base">가이던스·판단 원칙 <HelpButton k="screen.scoping.guidance" /></CardTitle></CardHeader>
       <CardContent className="space-y-1">
         {d.texts.map((t) => (
           <div key={t.id} className="rounded border">

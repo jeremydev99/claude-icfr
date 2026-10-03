@@ -22,6 +22,7 @@ import { errorDetail, labelOf } from '@/features/euc/components/RiskBadge'
 import type { InfoItem, InfoItemPayload } from '@/features/euc/types'
 import { useControls } from '@/features/rcm/api/useControls'
 import InfoItemDialog from '../components/InfoItemDialog'
+import HelpTerm from '@/features/help/HelpTerm'
 
 /**
  * IUC 화면 — **정보 항목(통제) 중심**(ADR-0033 §2.1 정정). 통제가 쓰는 정보를 기술한다.
@@ -81,7 +82,7 @@ export default function IucPage() {
     <div className="space-y-4 p-6">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold">IUC</h1>
+          <h1 className="text-2xl font-semibold"><HelpTerm k="term.iuc">IUC</HelpTerm></h1>
           <p className="mt-1 text-sm text-muted-foreground">
             통제에 쓰이는 정보(IPE)의 완전성·정확성. 정보 Type 이 EUC 인 항목은{' '}
             <Link to="/euc" className="underline">EUC 파일</Link>을 가리키며, 여기서 입력한 중요성이 파일 위험 등급의 재료가 됩니다.

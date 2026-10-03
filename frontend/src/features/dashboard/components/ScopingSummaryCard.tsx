@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useScopingMeta, useScopingSummary } from '@/features/scoping/api/useScoping'
+import HelpButton from '@/features/help/HelpButton'
 
 const won = (v: number | null) => (v === null ? '—' : v.toLocaleString('ko-KR'))
 
@@ -20,6 +21,7 @@ export default function ScopingSummaryCard() {
       <CardHeader>
         <CardTitle className="flex flex-wrap items-baseline gap-3">
           <Link to="/scoping" className="hover:underline">Scoping</Link>
+          <HelpButton k="screen.dashboard.scoping-summary" className="self-center" />
           {data?.exists && (
             <span className="text-sm font-normal text-muted-foreground">
               {data.fiscal_year} 회계연도 · {label(data.status)} · 검토 안 한 템플릿 값 {data.badge_count}개

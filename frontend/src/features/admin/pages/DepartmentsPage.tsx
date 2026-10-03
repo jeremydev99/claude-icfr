@@ -32,6 +32,7 @@ import {
 import DepartmentFormDialog from '../components/DepartmentFormDialog'
 import MemberAddDialog from '../components/MemberAddDialog'
 import type { Department, DepartmentPayload } from '../types'
+import HelpButton from '@/features/help/HelpButton'
 
 /** 서버가 보낸 문구를 그대로 쓴다 — "소속 인원 1명이 남아…" 처럼 사용자가 할 일을 알려준다. */
 const errorDetail = (e: unknown, fallback: string) =>
@@ -162,7 +163,10 @@ export default function DepartmentsPage() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">부서 {departments.length}개</CardTitle>
+            <CardTitle className="flex items-center gap-1 text-base">
+              부서 {departments.length}개
+              <HelpButton k="screen.admin.departments.departments" />
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {departments.length === 0 && (
@@ -215,7 +219,10 @@ export default function DepartmentsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between gap-2 text-base">
-              <span>{selected ? `${selected.name} 소속 인원` : '소속 인원'}</span>
+              <span className="flex items-center gap-1">
+                {selected ? `${selected.name} 소속 인원` : '소속 인원'}
+                <HelpButton k="screen.admin.departments.members" />
+              </span>
               {canManage && selected && (
                 <Button size="sm" variant="outline" onClick={() => setMemberOpen(true)}>
                   <UserPlus className="mr-1 h-3.5 w-3.5" /> 인원 추가

@@ -66,6 +66,7 @@ from app.schemas.scoping import (
     ConfirmRequest,
     HistoryRead,
     Option,
+    ScopingCoverage,
     ScopingCreate,
     ScopingDetail,
     ScopingListItem,
@@ -78,7 +79,7 @@ from app.schemas.scoping import (
     TransitionRequest,
 )
 from app.services import scoping as svc
-from app.services import scoping_fs
+from app.services import scoping_coverage, scoping_fs
 
 router = APIRouter(prefix="/api/scoping", tags=["scoping"])
 
@@ -209,6 +210,12 @@ def get_summary(user: CurrentUser = None, db: Session = Depends(get_db)) -> Scop
 @router.get("/{scoping_id}", response_model=ScopingDetail)
 def get_scoping(scoping_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> ScopingDetail:
     return _detail(db, _get(db, scoping_id), user.id)
+
+
+@router.get("/{scoping_id}/coverage", response_model=ScopingCoverage)
+def get_coverage(scoping_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """유의 계정 ↔ RCM 통제 커버리지(이름 대조 추정, 저장 안 함) — `services/scoping_coverage.py`."""
+    return scoping_coverage.coverage(db, _get(db, scoping_id))
 
 
 # ── 쓰기 (전부 icfr_manager) ───────────────────────────────

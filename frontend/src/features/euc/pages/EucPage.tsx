@@ -16,6 +16,7 @@ import { useDeleteEucFile, useEucFiles, useEucMeta, useSaveEucFile } from '../ap
 import EucFileDialog from '../components/EucFileDialog'
 import { RiskBadge, errorDetail, labelOf } from '../components/RiskBadge'
 import type { EucFile, EucFilePayload } from '../types'
+import HelpTerm from '@/features/help/HelpTerm'
 
 /**
  * EUC 화면 — **파일 중심**(ADR-0033 §2.1 정정). 파일 하나에 참조 통제가 여럿 붙을 수 있다.
@@ -68,7 +69,7 @@ export default function EucPage() {
     <div className="space-y-4 p-6">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold">EUC</h1>
+          <h1 className="text-2xl font-semibold"><HelpTerm k="term.euc">EUC</HelpTerm></h1>
           <p className="mt-1 text-sm text-muted-foreground">
             ERP 밖에서 현업이 만든 엑셀·매크로 등 — IT부서 통제를 받지 않는 도구입니다.
             위험 등급이 <strong>{threshold}</strong> 이상이면 EUC 통제 식별 대상입니다.

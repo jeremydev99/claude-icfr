@@ -21,6 +21,7 @@ import ProcessFormDialog from './ProcessFormDialog'
 import SubProcessFormDialog from './SubProcessFormDialog'
 import RiskFormDialog from './RiskFormDialog'
 import HierarchyDeleteConfirmDialog from './HierarchyDeleteConfirmDialog'
+import HelpButton from '@/features/help/HelpButton'
 
 type HierarchyTab = 'process' | 'subProcess' | 'risk'
 
@@ -100,6 +101,16 @@ export default function HierarchyManagementView() {
         <Button variant={activeTab === 'risk' ? 'default' : 'ghost'} size="sm" onClick={() => setActiveTab('risk')}>
           위험
         </Button>
+        <HelpButton
+          k={
+            activeTab === 'process'
+              ? 'screen.rcm.hierarchy-process'
+              : activeTab === 'subProcess'
+                ? 'screen.rcm.hierarchy-sub-process'
+                : 'screen.rcm.hierarchy-risk'
+          }
+          className="mx-1"
+        />
       </div>
 
       {activeTab === 'process' && (

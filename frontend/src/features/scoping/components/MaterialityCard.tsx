@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import type { Origin, ScopingDetail, ScopingMeta } from '../types'
 import { CommitInput, ConfirmToggle, TemplateBadge, parseRate, parseWon, pct, rangeText, won } from './bits'
+import HelpButton from '@/features/help/HelpButton'
+import HelpTerm from '@/features/help/HelpTerm'
 
 type Write = (method: 'post' | 'patch' | 'delete', path: string, body?: unknown) => void
 
@@ -32,7 +34,10 @@ export default function MaterialityCard({ d, meta, write }: { d: ScopingDetail; 
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-        <CardTitle className="text-base">중요성 기준</CardTitle>
+        <CardTitle className="flex items-center gap-1 text-base">
+          중요성 기준
+          <HelpButton k="screen.scoping.materiality" />
+        </CardTitle>
         <ConfirmToggle origins={origins} disabled={!editable} label="중요성 기준 확인"
           onConfirm={(undo) => write('post', `/${d.id}/confirm`, { scope: 'materiality', undo })} />
       </CardHeader>
@@ -108,7 +113,10 @@ export default function MaterialityCard({ d, meta, write }: { d: ScopingDetail; 
 
         {/* 조정세전순이익 — 부호를 붙인 금액을 더한다(감소 조정은 음수) */}
         <div className="rounded-md border p-3">
-          <h3 className="mb-2 text-sm font-semibold">조정세전순이익 조정 항목</h3>
+          <h3 className="mb-2 flex items-center gap-1 text-sm font-semibold">
+            조정세전순이익 조정 항목
+            <HelpButton k="screen.scoping.adjustments" />
+          </h3>
           {d.adjustments.length === 0 && <p className="text-xs text-muted-foreground">조정 없음 — 조정세전순이익 = 세전이익</p>}
           <ul className="space-y-1 text-sm">
             {d.adjustments.map((a) => (
@@ -168,7 +176,7 @@ export default function MaterialityCard({ d, meta, write }: { d: ScopingDetail; 
             )}
           </div>
           <div className="rounded-md border p-3">
-            <p className="text-xs text-muted-foreground">수행중요성 (유의한 왜곡표시 금액기준)</p>
+            <p className="text-xs text-muted-foreground"><HelpTerm k="term.pm">수행중요성</HelpTerm> (유의한 왜곡표시 금액기준)</p>
             <p className="text-lg font-semibold tabular-nums">{won(d.smt)}</p>
           </div>
         </div>

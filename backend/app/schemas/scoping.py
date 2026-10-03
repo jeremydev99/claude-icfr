@@ -239,3 +239,39 @@ class ScopingSummary(BaseModel):
     # 재무제표 종류별 {Y, N, unevaluated}
     by_statement: dict[str, dict[str, int]] = {}
 
+
+
+# ── 유의 계정 ↔ RCM 통제 커버리지 (초안, 2026-10-03) ──────────────
+
+class CoverageControl(BaseModel):
+    code: str | None
+    name: str | None
+    is_key_control: bool
+    match: str   # exact | partial (이름 대조 추정)
+
+
+class CoverageAccount(BaseModel):
+    name: str
+    statement_type: str
+    controls: list[CoverageControl]
+    covered: bool
+    key_covered: bool
+
+
+class CoverageUnmatchedToken(BaseModel):
+    token: str
+    control_codes: list[str]
+
+
+class ScopingCoverage(BaseModel):
+    scoping_id: UUID
+    fiscal_year: int
+    status: str
+    significant_total: int
+    covered: int
+    uncovered: int
+    key_covered: int
+    control_total: int
+    entity_level_controls: int
+    accounts: list[CoverageAccount]
+    unmatched_rcm_tokens: list[CoverageUnmatchedToken]

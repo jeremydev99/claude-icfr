@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { useRcmSummary } from '../api/useRcmSummary'
 import { useDrilldownControls } from '../api/useDrilldownControls'
 import type { RcmSummary, SummaryBucket, SummaryGroup } from '../api/types'
+import HelpButton from '@/features/help/HelpButton'
 
 /** 드릴스루 링크. RCM 화면이 마운트 시 이 파라미터를 읽어 필터를 걸고 시작한다(단방향). */
 function rcmLink(param: string, value: string) {
@@ -214,6 +215,7 @@ export default function RcmSummaryCard() {
           <Link to="/rcm" className="hover:underline">
             RCM 관리
           </Link>
+          <HelpButton k="screen.dashboard.rcm-summary" className="self-center" />
           {data && (
             <span className="text-sm font-normal text-muted-foreground">
               통제 {data.control_total}건 · 프로세스 {data.process_total}개
