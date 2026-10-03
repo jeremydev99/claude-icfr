@@ -152,7 +152,7 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
                   주기 <SortIcon col="frequency" params={params} />
                 </span>
               </TableHead>
-              <TableHead className="w-36"><HelpTerm k="term.assertion">어서션</HelpTerm></TableHead>
+              <TableHead className="w-48"><HelpTerm k="term.assertion">어서션</HelpTerm></TableHead>
               <TableHead
                 className="w-24 cursor-pointer select-none"
                 onClick={() => toggleSort('owner_name')}
@@ -217,9 +217,9 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
                   <TableCell className="text-xs">{AUTO_MANUAL_LABELS[ctrl.auto_manual]}</TableCell>
                   <TableCell className="text-xs">{FREQUENCY_LABELS[ctrl.frequency]}</TableCell>
                   <TableCell>
-                    <div className="flex flex-wrap gap-0.5">
+                    <div className="flex min-w-[10.5rem] flex-wrap gap-0.5">
                       {(ctrl.assertions ?? []).map((a) => (
-                        <Badge key={a} variant="secondary" className="text-xs px-1.5 py-0">
+                        <Badge key={a} variant="secondary" className="px-1.5 py-0 text-[0.7rem]">
                           {a}
                         </Badge>
                       ))}

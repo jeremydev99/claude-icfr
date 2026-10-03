@@ -1,10 +1,21 @@
 /** @type {import('tailwindcss').Config} */
+// 곤색 단계 — 원색 파랑 대신(2026-10-03 마스터 지시). blue·sky·indigo 를 이 표로 덮어
+// 화면 곳곳의 하드코딩 파랑(bg-blue-50, text-blue-700 …)이 한 번에 곤색 계열로 바뀐다.
+const NAVY = {
+  50: '#f3f5fa', 100: '#e4e8f2', 200: '#c9d1e3', 300: '#a3b0cc', 400: '#7385ab', 500: '#4f6390',
+  600: '#3a4c77', 700: '#2c3c63', 800: '#223052', 900: '#1a2542', 950: '#111a30',
+}
+
 module.exports = {
   darkMode: ['class'],
   content: ['./index.html', './src/**/*.{ts,tsx,js,jsx}'],
   theme: {
     extend: {
       colors: {
+        blue: NAVY,
+        sky: NAVY,
+        indigo: NAVY,
+        navy: NAVY,
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',

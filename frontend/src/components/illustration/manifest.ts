@@ -11,7 +11,8 @@
  */
 export const STYLE =
   'Premium enterprise SaaS illustration, soft 3D isometric style, glossy glass and matte surfaces, ' +
-  'cobalt blue (#1f4fd1) and cyan (#12a4d9) palette with soft lavender accents, gentle gradients, ' +
+  'deep navy (#223052) and muted slate blue-grey (#7385ab) palette with silver-white and pale grey surfaces, ' +
+  'tiny warm champagne-gold highlights, NO bright or saturated blue, NO cyan, gentle gradients, ' +
   'subtle soft shadows, calm and trustworthy mood, high detail, ' +
   'no text, no letters, no numbers, no logos, no watermark'
 
@@ -43,7 +44,7 @@ export const SLOTS: Record<IllustrationSlot, SlotSpec> = {
     prompt:
       'A floating composition of translucent financial dashboard cards, a shield with a checkmark, ' +
       'stacked documents and a bar chart, connected by thin glowing lines, representing internal control over financial reporting, ' +
-      'set on a seamless deep navy blue background (#101a3c) with a soft cobalt glow behind the objects, objects lit with cyan rim light',
+      'set on a seamless deep navy background (#16203a) with a soft slate-grey glow behind the objects, objects lit with silver rim light',
   },
   'dashboard-hero': {
     aspect: 'wide',

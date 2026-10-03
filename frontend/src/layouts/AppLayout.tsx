@@ -18,9 +18,9 @@ const NAV_GROUPS_KEY = 'icfr.nav.expandedGroups'
 
 /** 테마 견본 색 — 실제 사이드바 배경과 같은 색 */
 const THEME_SWATCH: Record<string, string> = {
-  gray: 'bg-[hsl(222_24%_93%)]',
+  gray: 'bg-[hsl(222_20%_93%)]',
   white: 'bg-white',
-  navy: 'bg-[hsl(225_52%_13%)]',
+  navy: 'bg-[hsl(224_40%_15%)]',
 }
 
 /** 시스템 관리 권한(users.role) 표기 */
@@ -51,10 +51,10 @@ function NavRow({ item, locked, onNavigate }: { item: NavItem; locked: boolean; 
   if (locked) {
     return (
       <div
-        className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] text-sidebar-muted/60"
+        className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2.5 text-[0.95rem] text-sidebar-muted/60"
         title="내부회계관리자만 사용할 수 있습니다"
       >
-        <item.icon className="h-4 w-4 flex-shrink-0" />
+        <item.icon className="h-5 w-5 flex-shrink-0" />
         <span className="flex-1">{item.label}</span>
         <Lock className="h-3 w-3 flex-shrink-0" />
       </div>
@@ -67,7 +67,7 @@ function NavRow({ item, locked, onNavigate }: { item: NavItem; locked: boolean; 
       className={({ isActive }) =>
         cn(
           // 선택: 옅은 브랜드 바탕 + 브랜드색 글자 + 왼쪽 막대(before:)
-          'relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] transition-colors duration-150',
+          'relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[0.95rem] transition-colors duration-150',
           isActive
             ? 'bg-sidebar-selected text-sidebar-selected-foreground font-semibold before:absolute before:-left-3 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-r-full before:bg-sidebar-indicator'
             : 'text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground',
@@ -78,7 +78,7 @@ function NavRow({ item, locked, onNavigate }: { item: NavItem; locked: boolean; 
         <>
           <item.icon
             className={cn(
-              'h-[18px] w-[18px] flex-shrink-0',
+              'h-5 w-5 flex-shrink-0',
               isActive ? 'text-sidebar-selected-foreground' : 'text-sidebar-muted',
             )}
           />
@@ -132,10 +132,10 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     <>
       {/* 로고 */}
       <div className="flex h-16 shrink-0 items-center gap-3 px-5">
-        <LogoMark className="h-9 w-9 shadow-sm rounded-[10px]" />
+        <LogoMark className="h-10 w-10 shadow-sm rounded-[11px]" />
         <div className="min-w-0 leading-tight">
-          <p className="text-[15px] font-extrabold tracking-tight text-sidebar-foreground">ICFR</p>
-          <p className="truncate text-[11px] font-medium text-sidebar-muted">내부회계관리시스템</p>
+          <p className="text-lg font-extrabold tracking-tight text-sidebar-foreground">ICFR</p>
+          <p className="truncate text-xs font-medium text-sidebar-muted">내부회계관리시스템</p>
         </div>
       </div>
 
@@ -144,7 +144,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <div className="flex justify-end px-1 pb-1">
           <button
             onClick={() => setAllGroups(!allOpen)}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors"
             title={allOpen ? '모든 메뉴 그룹 접기' : '모든 메뉴 그룹 펼치기'}
           >
             {allOpen ? <ChevronsDownUp className="h-3 w-3" /> : <ChevronsUpDown className="h-3 w-3" />}
@@ -162,7 +162,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             <div key={idx} className="mb-3">
               <button
                 onClick={() => toggleGroup(group.groupLabel!)}
-                className="flex w-full items-center justify-between px-3 pb-1 pt-2 text-[11px] font-semibold tracking-wide text-sidebar-muted/80 hover:text-sidebar-foreground transition-colors"
+                className="flex w-full items-center justify-between px-3 pb-1 pt-2.5 text-[0.8rem] font-bold tracking-wide text-sidebar-muted hover:text-sidebar-foreground transition-colors"
               >
                 {group.groupLabel}
                 {expandedGroups[group.groupLabel] ? (
@@ -187,7 +187,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       {/* 테마 — 개인 설정(localStorage). 회사 설정이 아니므로 백엔드가 없다.
           3종이 되면서 토글로는 "다음이 뭔지" 알 수 없어 선택형으로 바꿨다. */}
       <div className="flex shrink-0 items-center justify-between px-5 py-2.5 border-t border-sidebar-border">
-        <p className="text-[11px] font-medium text-sidebar-muted">사이드바 색</p>
+        <p className="text-xs font-medium text-sidebar-muted">사이드바 색</p>
         <div className="flex gap-1.5" role="group" aria-label="사이드바 테마">
           {SIDEBAR_THEMES.map((t) => (
             <button
@@ -216,8 +216,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               {initials(user.display_name)}
             </span>
             <div className="min-w-0 flex-1 leading-tight">
-              <p className="truncate text-sm font-semibold text-sidebar-foreground">{user.display_name}</p>
-              <p className="truncate text-[11px] text-sidebar-muted">{ROLE_LABEL[user.role] ?? user.role}</p>
+              <p className="truncate text-[0.95rem] font-semibold text-sidebar-foreground">{user.display_name}</p>
+              <p className="truncate text-xs text-sidebar-muted">{ROLE_LABEL[user.role] ?? user.role}</p>
             </div>
             <button
               onClick={() => setPasswordOpen(true)}
@@ -295,7 +295,7 @@ export default function AppLayout() {
     <div className="flex min-h-screen bg-background">
       <aside
         ref={scrollRef}
-        className="sidebar-scroll hidden w-64 flex-shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex flex-col sticky top-0 h-screen overflow-y-auto"
+        className="sidebar-scroll hidden w-72 flex-shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex flex-col sticky top-0 h-screen overflow-y-auto"
       >
         <SidebarContent />
       </aside>
@@ -322,7 +322,7 @@ export default function AppLayout() {
             <LogoMark className="h-7 w-7 rounded-lg" />
             <span className="font-extrabold tracking-tight">ICFR</span>
           </span>
-          {title && <span className="hidden text-[15px] font-semibold text-foreground md:inline">{title}</span>}
+          {title && <span className="hidden text-lg font-semibold text-foreground md:inline">{title}</span>}
           <div className="ml-auto flex items-center gap-2">
             <InstallButton />
             <button

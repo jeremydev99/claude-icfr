@@ -12,8 +12,8 @@ export default function LogoMark({ className }: { className?: string }) {
     <svg viewBox="0 0 64 64" className={cn('h-8 w-8 shrink-0', className)} aria-hidden="true">
       <defs>
         <linearGradient id={`lg-${id}`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="hsl(224 80% 50%)" />
-          <stop offset="1" stopColor="hsl(199 89% 48%)" />
+          <stop offset="0" stopColor="hsl(224 42% 22%)" />
+          <stop offset="1" stopColor="hsl(220 26% 44%)" />
         </linearGradient>
       </defs>
       <rect width="64" height="64" rx="15" fill={`url(#lg-${id})`} />
