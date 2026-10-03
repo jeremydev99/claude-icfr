@@ -14,6 +14,7 @@ from app.api import (
     dashboard,
     euc,
     evidence,
+    external,
     financial_statement,
     governance,
     health,
@@ -143,6 +144,9 @@ def create_app() -> FastAPI:
     app.include_router(test_module.router)
     app.include_router(dashboard.router)
     app.include_router(governance.router)
+    app.include_router(external.router)
+    app.include_router(external.public)
+    app.include_router(external.mfa_admin)
     app.include_router(proposals.router)
 
     @app.get("/")

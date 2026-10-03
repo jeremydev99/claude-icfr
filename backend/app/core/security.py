@@ -26,9 +26,11 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
-def create_refresh_token(subject: str) -> str:
+def create_refresh_token(subject: str, hours: int | None = None) -> str:
+    """갱신 토큰 — 기본 `jwt_refresh_token_expires_days` 일. 외부 사용자는 `hours`(ADR-0039: 8시간)."""
     settings = get_settings()
-    expire = datetime.now(UTC) + timedelta(days=settings.jwt_refresh_token_expires_days)
+    expire = datetime.now(UTC) + (timedelta(hours=hours) if hours else
+                                  timedelta(days=settings.jwt_refresh_token_expires_days))
     payload: dict[str, Any] = {"sub": subject, "exp": expire, "iat": datetime.now(UTC), "type": "refresh"}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
@@ -54,3 +56,11 @@ def issued_before_password_change(payload: dict, password_changed_at: datetime |
     if iat is None:
         return True
     return int(iat) < int(changed.timestamp())
+
+
+def create_mfa_token(subject: str, purpose: str) -> str:
+    """MFA 2단계용 5분 토큰 — `purpose` = verify(코드 입력) | setup(등록). 이 토큰으로는 API 를 못 쓴다."""
+    settings = get_settings()
+    payload: dict[str, Any] = {"sub": subject, "exp": datetime.now(UTC) + timedelta(minutes=5),
+                               "iat": datetime.now(UTC), "type": "mfa", "purpose": purpose}
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)

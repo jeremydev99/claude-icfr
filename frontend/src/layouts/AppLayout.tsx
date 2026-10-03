@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, HelpCircle, KeyRound, Lock, LogOut, Menu } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, HelpCircle, KeyRound, Lock, LogOut, Menu, ShieldCheck } from 'lucide-react'
 import { useAuthStore } from '@/features/auth/store'
 import { isIcfrManagerForUser } from '@/features/auth/permissions.pure'
+import { daysLeft, isPathAllowed } from '@/features/auth/externalScope.pure'
+import MfaDialog from '@/features/auth/mfa/MfaDialog'
 import { useLogout, useMe } from '@/features/auth/hooks/useAuth'
 import { SIDEBAR_THEMES, applySidebarTheme, useSidebarTheme } from '@/features/admin/sidebarTheme'
 import InstallButton from '@/features/pwa/InstallButton'
@@ -95,6 +97,12 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const logoutMutation = useLogout()
   const { theme, setTheme } = useSidebarTheme()
   const [passwordOpen, setPasswordOpen] = useState(false)
+  const [mfaOpen, setMfaOpen] = useState(false)
+  // 외부 사용자(ADR-0039)는 허용된 메뉴만 보인다 — 감사위원회·세무·기장대리인. 최종 판정은 서버
+  const nav = navigation
+    .map((g) => ({ ...g, items: g.items.filter((it) => isPathAllowed(user, it.path)) }))
+    .filter((g) => g.items.length > 0)
+  const left = daysLeft(user)
 
   // **`can_write` 가 아니라 `tenant_roles` 로 본다** — can_write 는 external_auditor 판정이고
   // icfr_manager 판정이 아니다. 섞으면 메뉴는 열리는데 서버가 403 을 낸다.
@@ -151,7 +159,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             {allOpen ? '전체 접기' : '전체 펼치기'}
           </button>
         </div>
-        {navigation.map((group, idx) =>
+        {nav.map((group, idx) =>
           group.groupLabel === null ? (
             <div key={idx} className="mb-3">
               {group.items.map((item) => (
@@ -217,8 +225,24 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             </span>
             <div className="min-w-0 flex-1 leading-tight">
               <p className="truncate text-[0.95rem] font-semibold text-sidebar-foreground">{user.display_name}</p>
-              <p className="truncate text-xs text-sidebar-muted">{ROLE_LABEL[user.role] ?? user.role}</p>
+              <p className="truncate text-xs text-sidebar-muted">
+                {user.external
+                  ? `${user.external.organization} · ${left === 0 ? '오늘 종료' : `${left}일 남음`}`
+                  : (ROLE_LABEL[user.role] ?? user.role)}
+              </p>
             </div>
+            <button
+              onClick={() => setMfaOpen(true)}
+              className={cn(
+                'relative rounded-md p-1.5 hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors',
+                user.mfa_enabled ? 'text-sidebar-muted' : 'text-amber-500',
+              )}
+              title={user.mfa_enabled ? '2단계 인증 사용 중' : '2단계 인증 등록'}
+              aria-label="2단계 인증"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              {!user.mfa_enabled && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-500" />}
+            </button>
             <button
               onClick={() => setPasswordOpen(true)}
               className="rounded-md p-1.5 text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors"
@@ -238,6 +262,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         )}
         <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
+        <MfaDialog open={mfaOpen} onOpenChange={setMfaOpen} />
       </div>
     </>
   )

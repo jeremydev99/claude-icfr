@@ -189,9 +189,11 @@ def _assert_single_tier(db: Session, user_id, role_name: str, exclude_id=None) -
 
     한 사람이 둘을 가지면 "작성자 ≠ 승인자"가 형식만 남는다. 단계를 바꾸려면 기존 단계를 지우고 새로 배정한다.
     """
-    if role_name not in TIER_ROLES:
+    # 외부 작성 역할(PA회계법인·세무·기장대리인)도 관리자 단계와 겹칠 수 없다 — 외부는 승인권자가 아니다(ADR-0039)
+    exclusive = set(TIER_ROLES) | {"external_advisor", "external_specialist"}
+    if role_name not in exclusive:
         return
-    q = db.query(UserRole).filter(UserRole.user_id == user_id, UserRole.role_name.in_(list(TIER_ROLES)),
+    q = db.query(UserRole).filter(UserRole.user_id == user_id, UserRole.role_name.in_(list(exclusive)),
                                   UserRole.is_deleted == False)  # noqa: E712
     if exclude_id is not None:
         q = q.filter(UserRole.id != exclude_id)

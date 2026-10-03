@@ -14,6 +14,42 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class LoginResponse(BaseModel):
+    """로그인 결과 — MFA 대상이면 토큰 대신 `mfa_token`(5분)과 다음 단계를 준다 (ADR-0039)."""
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str = "bearer"
+    mfa_required: bool = False          # 등록돼 있음 → 코드 입력
+    mfa_setup_required: bool = False    # 의무인데 미등록 → 등록 화면
+    mfa_token: str | None = None
+
+
+class MfaVerifyRequest(BaseModel):
+    mfa_token: str
+    code: str          # 6자리 OTP 또는 복구 코드(XXXX-XXXX)
+
+
+class MfaSetupRequest(BaseModel):
+    mfa_token: str | None = None   # 로그인 중 등록이면 필요, 로그인한 상태면 생략(Authorization 헤더)
+
+
+class MfaSetupResponse(BaseModel):
+    secret: str
+    otpauth_uri: str
+    qr_svg: str
+
+
+class MfaEnableRequest(BaseModel):
+    mfa_token: str | None = None
+    code: str
+
+
+class MfaEnableResponse(BaseModel):
+    recovery_codes: list[str]
+    access_token: str | None = None     # 로그인 중 등록이면 여기서 로그인이 끝난다
+    refresh_token: str | None = None
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
 

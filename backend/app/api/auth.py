@@ -12,6 +12,7 @@ from app.core.deps import get_current_user
 from app.core.permissions import can_write, tenant_roles
 from app.core.security import (
     create_access_token,
+    create_mfa_token,
     create_refresh_token,
     decode_token,
     hash_password,
@@ -25,9 +26,14 @@ from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
     ChangePasswordResponse,
+    LoginResponse,
+    MfaEnableRequest,
+    MfaEnableResponse,
+    MfaSetupRequest,
+    MfaSetupResponse,
+    MfaVerifyRequest,
     RefreshRequest,
     RefreshResponse,
-    TokenResponse,
 )
 from app.schemas.user import TenantAccessRead, UserRead
 
@@ -43,12 +49,38 @@ def _as_utc(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)  # sqlite 는 tz 를 버린다
 
 
-@router.post("/login", response_model=TokenResponse)
+def _is_external(db: Session, user: User) -> bool:
+    """어느 테넌트에서든 활성 외부 사용자인가 — 로그인 시점엔 활성 테넌트가 없어 자동 필터가 걸리지 않는다."""
+    from app.models.external import EXT_ACTIVE, ExternalProfile
+    return db.query(ExternalProfile).filter(ExternalProfile.user_id == user.id, ExternalProfile.status == EXT_ACTIVE,
+                                            ExternalProfile.is_deleted == False).first() is not None  # noqa: E712
+
+
+def _mfa_required(db: Session, user: User) -> bool:
+    """MFA 의무 — 외부 사용자는 처음부터, 내부 마스터·책임관리자는 유예일부터 (ADR-0039 §2.4)."""
+    from datetime import date
+
+    from app.models.role_assignment import ROLE_ICFR_LEAD, ROLE_ICFR_MANAGER
+    from app.models.user_mgmt import UserRole
+    if _is_external(db, user):
+        return True
+    if date.today() < date.fromisoformat(get_settings().mfa_internal_required_from):
+        return False
+    return db.query(UserRole).filter(UserRole.user_id == user.id, UserRole.is_deleted == False,  # noqa: E712
+                                     UserRole.role_name.in_([ROLE_ICFR_MANAGER, ROLE_ICFR_LEAD])).first() is not None
+
+
+def _issue(db: Session, user: User) -> tuple[str, str]:
+    hours = get_settings().external_refresh_hours if _is_external(db, user) else None
+    return create_access_token(str(user.id)), create_refresh_token(str(user.id), hours=hours)
+
+
+@router.post("/login", response_model=LoginResponse)
 def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
-) -> TokenResponse:
+) -> LoginResponse:
     """로그인 — 계정 잠금·시도 기록 포함 (보안 1단계, 2026-10-01).
 
     - 연속 실패 `login_lock_threshold` 회면 `login_lock_minutes` 분 잠금(423). 잠긴 동안은 비밀번호를
@@ -101,12 +133,112 @@ def login(
             )
         user.failed_login_count = 0
         user.locked_until = None
+        # MFA — 비밀번호가 맞아도 여기서 끝나지 않는다(ADR-0039). 성공 기록은 2단계 통과 때
+        if user.mfa_enabled_at is not None:
+            record(True, "mfa_challenge")
+            db.commit()
+            return LoginResponse(mfa_required=True, mfa_token=create_mfa_token(str(user.id), "verify"))
+        if _mfa_required(db, user):
+            record(True, "mfa_setup")
+            db.commit()
+            return LoginResponse(mfa_setup_required=True, mfa_token=create_mfa_token(str(user.id), "setup"))
         record(True, "ok")
         db.commit()
-    return TokenResponse(
-        access_token=create_access_token(str(user.id)),
-        refresh_token=create_refresh_token(str(user.id)),
-    )
+    access, refresh_tok = _issue(db, user)
+    return LoginResponse(access_token=access, refresh_token=refresh_tok)
+
+
+def _user_from_mfa_token(db: Session, token: str | None, purpose: str) -> User:
+    payload = decode_token(token or "")
+    if payload is None or payload.get("type") != "mfa" or payload.get("purpose") != purpose:
+        raise HTTPException(status_code=401, detail="인증 단계가 만료됐습니다 — 다시 로그인하세요")
+    from uuid import UUID
+    u = db.query(User).filter(User.id == UUID(payload["sub"]), User.is_deleted == False,  # noqa: E712
+                              User.is_active == True).first()  # noqa: E712
+    if u is None:
+        raise HTTPException(status_code=401, detail="사용자를 찾을 수 없습니다")
+    return u
+
+
+@router.post("/mfa/verify", response_model=LoginResponse)
+def mfa_verify(body: MfaVerifyRequest, request: Request, db: Session = Depends(get_db)) -> LoginResponse:
+    """로그인 2단계 — OTP 6자리 또는 복구 코드(1회용). 틀리면 로그인 실패로 센다(잠금 규칙 동일)."""
+    from app.core import mfa
+    user = _user_from_mfa_token(db, body.mfa_token, "verify")
+    settings = get_settings()
+    now = datetime.now(UTC)
+    secret = mfa.decrypt(user.mfa_secret_enc or "")
+    ok = bool(secret) and mfa.verify(secret, body.code)
+    used_recovery = False
+    if not ok:
+        rest = mfa.use_recovery_code(user.mfa_recovery, body.code)
+        if rest is not None:
+            ok, used_recovery = True, True
+            user.mfa_recovery = rest
+    with system_actor("system:auth-login"):
+        db.add(LoginEvent(user_id=user.id, email=user.email, success=ok,
+                          reason=("ok_recovery" if used_recovery else "ok") if ok else "mfa_bad_code",
+                          ip=_client_ip(request), user_agent=(request.headers.get("user-agent") or "")[:300] or None))
+        if not ok:
+            user.failed_login_count = (user.failed_login_count or 0) + 1
+            if user.failed_login_count >= settings.login_lock_threshold:
+                user.locked_until = now + timedelta(minutes=settings.login_lock_minutes)
+        else:
+            user.failed_login_count, user.locked_until = 0, None
+        db.commit()
+    if not ok:
+        raise HTTPException(status_code=401, detail="인증 코드가 올바르지 않습니다")
+    access, refresh_tok = _issue(db, user)
+    return LoginResponse(access_token=access, refresh_token=refresh_tok)
+
+
+def _mfa_subject(db: Session, request: Request, mfa_token: str | None) -> tuple[User, bool]:
+    """등록 주체 — 로그인 중(mfa_token, purpose=setup)이거나 로그인한 사용자(Authorization). (사용자, 로그인 중 여부)."""
+    if mfa_token:
+        return _user_from_mfa_token(db, mfa_token, "setup"), True
+    auth = request.headers.get("authorization") or ""
+    payload = decode_token(auth.removeprefix("Bearer ").strip()) if auth.startswith("Bearer ") else None
+    if payload is None or payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="로그인이 필요합니다")
+    from uuid import UUID
+    u = db.query(User).filter(User.id == UUID(payload["sub"]), User.is_deleted == False).first()  # noqa: E712
+    if u is None or issued_before_password_change(payload, u.password_changed_at):
+        raise HTTPException(status_code=401, detail="로그인이 필요합니다")
+    return u, False
+
+
+@router.post("/mfa/setup", response_model=MfaSetupResponse)
+def mfa_setup(body: MfaSetupRequest, request: Request, db: Session = Depends(get_db)) -> MfaSetupResponse:
+    """등록 시작 — 새 비밀값(아직 미적용)과 QR. 첫 코드를 확인해야 적용된다."""
+    from app.core import mfa
+    user, _ = _mfa_subject(db, request, body.mfa_token)
+    secret = mfa.new_secret()
+    with system_actor("system:auth-mfa"):
+        user.mfa_pending_enc = mfa.encrypt(secret)
+        db.commit()
+    uri = mfa.provisioning_uri(secret, user.email)
+    return MfaSetupResponse(secret=secret, otpauth_uri=uri, qr_svg=mfa.qr_svg_data_uri(uri))
+
+
+@router.post("/mfa/enable", response_model=MfaEnableResponse)
+def mfa_enable(body: MfaEnableRequest, request: Request, db: Session = Depends(get_db)) -> MfaEnableResponse:
+    """등록 확정 — 앱에 뜬 코드가 맞으면 적용하고 복구 코드 10개를 **한 번만** 보여 준다."""
+    from app.core import mfa
+    user, in_login = _mfa_subject(db, request, body.mfa_token)
+    pending = mfa.decrypt(user.mfa_pending_enc or "")
+    if not pending or not mfa.verify(pending, body.code):
+        raise HTTPException(status_code=422, detail="인증 코드가 맞지 않습니다 — 앱에 표시된 6자리를 다시 입력하세요")
+    codes, hashes = mfa.new_recovery_codes()
+    with system_actor("system:auth-mfa"):
+        user.mfa_secret_enc, user.mfa_pending_enc = user.mfa_pending_enc, None
+        user.mfa_enabled_at, user.mfa_recovery = datetime.now(UTC), hashes
+        db.add(LoginEvent(user_id=user.id, email=user.email, success=True, reason="mfa_enrolled",
+                          ip=_client_ip(request), user_agent=(request.headers.get("user-agent") or "")[:300] or None))
+        db.commit()
+    out = MfaEnableResponse(recovery_codes=codes)
+    if in_login:
+        out.access_token, out.refresh_token = _issue(db, user)
+    return out
 
 
 @router.post("/refresh", response_model=RefreshResponse)
@@ -172,6 +304,15 @@ def me(
     roles = tenant_roles(db, current_user.id)
     result.tenant_roles = sorted(roles)
     result.can_write = can_write(roles)
+    result.mfa_enabled = current_user.mfa_enabled_at is not None
+    result.mfa_required = _mfa_required(db, current_user)
+    from app.models.external import TYPE_LABELS, ExternalProfile
+    p = db.query(ExternalProfile).filter(ExternalProfile.user_id == current_user.id,
+                                         ExternalProfile.is_deleted == False).first()  # noqa: E712
+    if p is not None:
+        result.external = {"user_type": p.user_type, "type_label": TYPE_LABELS.get(p.user_type, p.user_type),
+                           "organization": p.organization, "modules": p.modules or [],
+                           "valid_from": str(p.valid_from), "valid_until": str(p.valid_until)}
     return result
 
 

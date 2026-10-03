@@ -14,7 +14,7 @@ apiClient.interceptors.request.use((config) => {
 })
 
 // tenant 확정 전(로그인/토큰갱신/최초 /me) 요청은 제외 — 헤더가 붙어도 무해하지만 명시적으로 뺀다.
-const TENANT_HEADER_EXCLUDED_PATHS = ['/auth/login', '/auth/refresh', '/auth/me']
+const TENANT_HEADER_EXCLUDED_PATHS = ['/auth/login', '/auth/refresh', '/auth/me', '/auth/mfa/', '/api/invite/']
 
 apiClient.interceptors.request.use((config) => {
   const url = config.url ?? ''
@@ -27,6 +27,8 @@ apiClient.interceptors.request.use((config) => {
   }
   return config
 })
+
+const NO_REFRESH_PATHS = ['/auth/login', '/auth/mfa/', '/api/invite/']
 
 let isRefreshing = false
 let failedQueue: Array<{
@@ -50,7 +52,10 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // 로그인·2단계 인증·초대 수락의 401 은 "코드·비밀번호가 틀림"이다 — 토큰 갱신·로그인 화면 이동을 하지 않는다
+    const url: string = originalRequest?.url ?? ''
+    const isAuthStep = NO_REFRESH_PATHS.some((p) => url.includes(p))
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthStep) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject })

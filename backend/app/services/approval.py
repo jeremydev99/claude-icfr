@@ -20,7 +20,7 @@ from app.models.governance import (
     REOPEN_PENDING,
     ReopenRequest,
 )
-from app.models.role_assignment import ROLE_ICFR_LEAD, TIER_ROLES
+from app.models.role_assignment import ROLE_EXTERNAL_ADVISOR, ROLE_ICFR_LEAD, TIER_ROLES
 from app.models.scoping import STATUS_CONFIRMED, STATUS_DRAFT, STATUS_REVIEW, Scoping
 from app.models.user_mgmt import UserRole
 
@@ -29,7 +29,10 @@ TIER_LABELS = {0: "권한 없음", 1: "일반관리자", 2: "책임관리자", 3
 
 def tier_of(roles: set[str]) -> int:
     """관리자 단계(0~3). 1~3 은 중복 배정이 막혀 있지만, 옛 데이터가 겹쳐도 가장 높은 단계를 쓴다."""
-    return max((TIER_ROLES[r] for r in roles if r in TIER_ROLES), default=0)
+    t = max((TIER_ROLES[r] for r in roles if r in TIER_ROLES), default=0)
+    if t == 0 and ROLE_EXTERNAL_ADVISOR in roles:
+        return 1   # PA회계법인 — 일반관리자처럼 작성·검토 요청만(ADR-0039 §2.1)
+    return t
 
 
 def user_tier(db: Session, user_id) -> int:

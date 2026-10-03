@@ -60,6 +60,22 @@ def _resolve_active_tenant(db: Session, user: User, x_tenant_id: str | None) -> 
     )
 
 
+def _check_external_window(db: Session, user: User) -> None:
+    """외부 사용자(ADR-0039) — 이 테넌트의 접근 기간 밖이거나 해지되면 403. 화면이 아니라 서버가 막는다.
+    `external_profiles` 는 AuditedBase 라 활성 테넌트로 자동 필터된다."""
+    from datetime import date
+
+    from app.models.external import EXT_ACTIVE, ExternalProfile
+    p = db.query(ExternalProfile).filter(ExternalProfile.user_id == user.id,
+                                         ExternalProfile.is_deleted == False).first()  # noqa: E712
+    if p is None:
+        return
+    today = date.today()
+    if p.status != EXT_ACTIVE or today < p.valid_from or today > p.valid_until:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail=f"외부 사용자 접근 기간이 아닙니다({p.valid_from}~{p.valid_until}) — 담당자에게 연장을 요청하세요")
+
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
@@ -95,6 +111,7 @@ async def get_current_user(
     # 활성 tenant 검증·설정 (전 비즈니스 쿼리의 자동 격리 기준)
     tenant_id = _resolve_active_tenant(db, user, x_tenant_id)
     set_active_tenant(tenant_id)
+    _check_external_window(db, user)
     # 감사 컬럼 행위자 — 같은 이유로 여기서 설정한다(ADR-0036). 사용자 id 문자열만 쓴다
     set_user_actor(user.id)
     return user

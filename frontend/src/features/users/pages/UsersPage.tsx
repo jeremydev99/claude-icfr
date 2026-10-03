@@ -23,8 +23,9 @@ import UserRoleTable from '../components/UserRoleTable'
 import UserRoleFormDialog from '../components/UserRoleFormDialog'
 import type { User, UserRole } from '../types'
 import HelpButton from '@/features/help/HelpButton'
+import ExternalAccessPanel from '../external/ExternalAccessPanel'
 
-type ActiveTab = 'users' | 'roles' | 'logins'
+type ActiveTab = 'users' | 'roles' | 'logins' | 'external'
 
 const getErrorDetail = (e: unknown) =>
   (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -140,13 +141,21 @@ export default function UsersPage() {
         >
           로그인 기록
         </Button>
+        <Button
+          variant={activeTab === 'external' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setActiveTab('external')}
+        >
+          외부 사용자
+        </Button>
         <HelpButton
-          k={activeTab === 'users' ? 'screen.users.users' : activeTab === 'roles' ? 'screen.users.roles' : 'screen.users.login-events'}
+          k={activeTab === 'users' ? 'screen.users.users' : activeTab === 'roles' ? 'screen.users.roles' : activeTab === 'external' ? 'screen.users.external' : 'screen.users.login-events'}
           className="mx-1"
         />
       </div>
 
       {activeTab === 'logins' && <LoginEventsTable />}
+      {activeTab === 'external' && <ExternalAccessPanel />}
 
       {/* 사용자 뷰 */}
       {activeTab === 'users' && (

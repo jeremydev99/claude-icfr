@@ -146,9 +146,15 @@ ROLE_SYS_ADMIN = "sys_admin"
 ROLE_ICFR_STAFF = "icfr_staff"
 ROLE_ICFR_LEAD = "icfr_lead"
 TIER_ROLES = {ROLE_ICFR_STAFF: 1, ROLE_ICFR_LEAD: 2, ROLE_ICFR_MANAGER: 3}
+# ── 외부 사용자 (ADR-0039) — PA회계법인(작성·제안, 단계 1로 판정) · 세무·기장대리인(지정 모듈만 작성)
+ROLE_EXTERNAL_ADVISOR = "external_advisor"
+ROLE_EXTERNAL_SPECIALIST = "external_specialist"
+# 이 역할만 가진 계정은 조회 전용 — 외부감사인·감사위원회
+READ_ONLY_ROLES = frozenset({ROLE_EXTERNAL_AUDITOR, ROLE_AUDITOR})
 TENANT_ROLES = (
     ROLE_ICFR_STAFF, ROLE_ICFR_LEAD,
     ROLE_ICFR_MANAGER, ROLE_CEO, ROLE_AUDITOR, ROLE_EXTERNAL_AUDITOR, ROLE_SYS_ADMIN,
+    ROLE_EXTERNAL_ADVISOR, ROLE_EXTERNAL_SPECIALIST,
 )
 
 # 구 3역할 — **읽기만 허용하고 신규 배정은 금지한다**(13.9-24, 13.9-35).

@@ -60,6 +60,11 @@ class UserRead(BaseModel):
     # require_write 와 같은 함수를 쓴다 — FE 가 규칙을 다시 구현하면 어긋난다.
     # 버튼 숨김은 이 값, 안내 문구는 tenant_roles 로 판단한다.
     can_write: bool = True
+    # MFA(ADR-0039) — 등록 여부와 의무 여부. 화면의 등록 안내·사이드바 표시용
+    mfa_enabled: bool = False
+    mfa_required: bool = False
+    # 외부 사용자면 유형·소속·허용 모듈·기간 — 메뉴 제한과 상단 안내에 쓴다(최종 판정은 서버)
+    external: dict | None = None
 
     model_config = {"from_attributes": True}
 

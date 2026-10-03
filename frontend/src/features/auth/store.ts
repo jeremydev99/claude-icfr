@@ -16,6 +16,20 @@ export interface UserProfile {
   active_tenant_id: string | null
   can_write: boolean
   tenant_roles: string[]
+  /** MFA(ADR-0039) — 등록 여부·의무 여부 */
+  mfa_enabled?: boolean
+  mfa_required?: boolean
+  /** 외부 사용자면 유형·소속·허용 모듈·기간. 내부 사용자는 null */
+  external?: ExternalInfo | null
+}
+
+export interface ExternalInfo {
+  user_type: 'advisor' | 'auditor' | 'committee' | 'specialist'
+  type_label: string
+  organization: string
+  modules: string[]
+  valid_from: string
+  valid_until: string
 }
 
 interface AuthState {

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import IdentityBase
@@ -23,3 +23,8 @@ class User(IdentityBase):
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # MFA(TOTP, ADR-0039) — 비밀값은 암호문만. pending 은 등록 중(첫 코드 확인 전), recovery 는 복구 코드 해시 목록
+    mfa_secret_enc: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    mfa_pending_enc: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    mfa_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    mfa_recovery: Mapped[list | None] = mapped_column(JSON, nullable=True)

@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # 계정 잠금 — 연속 실패 N 회면 M 분 잠금(관리자 해제·비밀번호 재설정으로도 풀린다)
     login_lock_threshold: int = 5
     login_lock_minutes: int = 15
+    # MFA 의무(ADR-0039) — 외부 사용자는 처음부터, 내부 마스터·책임관리자는 이 날짜부터(30일 유예)
+    mfa_internal_required_from: str = "2026-11-02"
+    # 외부 사용자 갱신 토큰(시간) — 내부(일)보다 짧게
+    external_refresh_hours: int = 8
 
     # Application
     environment: str = "development"

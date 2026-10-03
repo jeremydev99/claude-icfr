@@ -17,7 +17,10 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.models.role_assignment import (
+    READ_ONLY_ROLES,
+    ROLE_EXTERNAL_ADVISOR,
     ROLE_EXTERNAL_AUDITOR,
+    ROLE_EXTERNAL_SPECIALIST,
     ROLE_ICFR_MANAGER,
     ROLE_SYS_ADMIN,
     TIER_ROLES,
@@ -51,7 +54,10 @@ def can_write(roles: set[str]) -> bool:
     지금은 단일 조건이나 권한 판정이 계속 늘고 있다(회차 상태별·통제 단위·정책 토글·
     증빙 편집). 조건이 늘 때도 이 함수만 고치면 되도록 둔다.
     """
-    return ROLE_EXTERNAL_AUDITOR not in roles
+    if ROLE_EXTERNAL_AUDITOR in roles:
+        return False
+    # 조회 전용 역할(외부감사인·감사위원회)만 가진 계정 — ADR-0039 §2.1
+    return not (roles and roles <= READ_ONLY_ROLES)
 
 
 def require_write(user: CurrentUser, db: Session = Depends(get_db)) -> User:
@@ -83,11 +89,34 @@ def require_icfr_staff(user: CurrentUser, db: Session = Depends(get_db)) -> User
 
     `sys_admin` 만 가진 계정은 통과하지 못한다 — 시스템관리자는 제도 업무를 하지 않는다(§2.5).
     """
-    if not (tenant_roles(db, user.id) & set(TIER_ROLES)):
+    if not (tenant_roles(db, user.id) & (set(TIER_ROLES) | {ROLE_EXTERNAL_ADVISOR})):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="내부회계 관리자(일반·책임·마스터) 역할이 필요합니다",
         )
+    return user
+
+
+def fs_writer_kind(db: Session, user_id) -> str | None:
+    """재무제표 쓰기 주체 — 'manager'(내부회계관리자) / 'specialist'(재무제표 모듈이 열린 세무·기장대리인) / None."""
+    roles = tenant_roles(db, user_id)
+    if ROLE_ICFR_MANAGER in roles:
+        return "manager"
+    if ROLE_EXTERNAL_SPECIALIST in roles:
+        from app.models.external import EXT_ACTIVE, ExternalProfile
+        p = db.query(ExternalProfile).filter(ExternalProfile.user_id == user_id, ExternalProfile.status == EXT_ACTIVE,
+                                             ExternalProfile.is_deleted == False).first()  # noqa: E712
+        if p is not None and "financial_statements" in (p.modules or []):
+            return "specialist"
+    return None
+
+
+def require_fs_preparer(user: CurrentUser, db: Session = Depends(get_db)) -> User:
+    """재무제표 업로드·정산표 결합 — 내부회계관리자 또는 재무제표 모듈이 열린 세무·기장대리인(ADR-0039).
+    세무·기장대리인은 **작성까지만** 한다 — 확정은 하지 않는다(업로드 API 가 finalize 를 끈다)."""
+    if fs_writer_kind(db, user.id) is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="재무제표 작성 권한이 없습니다(내부회계관리자 또는 재무제표가 허용된 세무·기장대리인)")
     return user
 
 

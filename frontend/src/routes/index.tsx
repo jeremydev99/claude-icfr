@@ -4,6 +4,7 @@ import AuthLayout from '@/layouts/AuthLayout'
 import AppLayout from '@/layouts/AppLayout'
 import PrivateRoute from './PrivateRoute'
 import LoginPage from '@/pages/LoginPage'
+import InvitePage from '@/features/auth/pages/InvitePage'
 import DashboardPage from '@/pages/DashboardPage'
 import SchedulePage from '@/features/schedule/pages/SchedulePage'
 import ScopingPage from '@/features/scoping/pages/ScopingPage'
@@ -27,6 +28,12 @@ export const router = createBrowserRouter([
     path: '/login',
     element: <AuthLayout />,
     children: [{ index: true, element: <LoginPage /> }],
+  },
+  // 외부 사용자 초대 수락(ADR-0039) — 로그인 전 공개 화면
+  {
+    path: '/invite/:token',
+    element: <AuthLayout />,
+    children: [{ index: true, element: <InvitePage /> }],
   },
   {
     path: '/',

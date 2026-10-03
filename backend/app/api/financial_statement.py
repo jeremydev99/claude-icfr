@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser
-from app.core.permissions import require_icfr_manager
+from app.core.permissions import fs_writer_kind, require_fs_preparer, require_icfr_manager
 from app.models.financial_statement import (
     FS_BASES,
     FS_BASIS_LABELS,
@@ -281,7 +281,7 @@ def upload(file: UploadFile = File(...), mode: str = Form(default="preview"),
            include_prior: bool = Form(default=False), tolerance: str = Form(default="0"),
            finalize: bool = Form(default=True), mapping: str | None = Form(default=None),
            suspense: bool = Form(default=True),
-           user: User = Depends(require_icfr_manager), db: Session = Depends(get_db)) -> UploadResponse:
+           user: User = Depends(require_fs_preparer), db: Session = Depends(get_db)) -> UploadResponse:
     """재무제표 엑셀 업로드 (ADR-0037 §3). 권한 `icfr_manager`.
 
     - `mode=preview` — 저장하지 않는다. 트리·금액·추론 플래그·원본 소계 불일치·연도별 검증 결과.
@@ -294,6 +294,8 @@ def upload(file: UploadFile = File(...), mode: str = Form(default="preview"),
     """
     if mode not in ("preview", "commit"):
         raise HTTPException(status_code=422, detail="mode 는 'preview' 또는 'commit' 이어야 합니다")
+    if fs_writer_kind(db, user.id) == "specialist":
+        finalize = False   # 세무·기장대리인은 작성까지 — 확정은 내부회계관리자(ADR-0039)
     if kind not in UPLOAD_KINDS:
         raise HTTPException(status_code=422, detail=f"kind 가 올바르지 않습니다: {kind}")
     if statement_type is not None:
@@ -391,13 +393,15 @@ def upload_attach(file: UploadFile = File(...), mode: str = Form(default="previe
                   bridge_column: str | None = Form(default=None), category_map: str | None = Form(default=None),
                   fiscal_years: str | None = Form(default=None), finalize: bool = Form(default=True),
                   suspense: bool = Form(default=True),
-                  user: User = Depends(require_icfr_manager), db: Session = Depends(get_db)) -> AttachResponse:
+                  user: User = Depends(require_fs_preparer), db: Session = Depends(get_db)) -> AttachResponse:
     """정산표(가로 연도형)를 이미 올린 공시 재무제표에 붙인다 (8-B2, ADR-0037 §3.2). 권한 `icfr_manager`.
 
     정산표 COA 잎을 매핑 열 값으로 공시 행 아래에 달고, 그 공시 행을 소계로 바꾼다. 공시 행 금액 = COA 합을
     8-A 검증이 확인한다. 대상 재무제표가 final 이면 409(재오픈 후). `category_map` — JSON
     `{"매핑 값": "공시 계정명"}`(PL 분류명 → 공시 행). `unit` — 정산표엔 단위 표기가 없어 필수.
     """
+    if fs_writer_kind(db, user.id) == "specialist":
+        finalize = False   # 세무·기장대리인은 작성까지(ADR-0039)
     if mode not in ("preview", "commit"):
         raise HTTPException(status_code=422, detail="mode 는 'preview' 또는 'commit' 이어야 합니다")
     if statement_type is not None:
