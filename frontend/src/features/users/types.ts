@@ -72,10 +72,13 @@ export interface UserRoleUpdatePayload {
   scope?: string | null
 }
 
-// 배정용 — 신규 5역할(ADR-0031)만 선택 가능. 값은 snake_case 정규값.
+// 배정용 — 관리자 4단계(ADR-0038: 일반·책임·마스터 + 시스템관리자) + ADR-0031 역할. 값은 snake_case 정규값.
+// 일반·책임·마스터는 한 사람에 하나만(서버 409), 시스템관리자는 겸직 가능.
 
 export const ROLE_ASSIGN_OPTIONS = [
-  { value: 'icfr_manager', label: '내부회계관리자' },
+  { value: 'icfr_staff', label: '일반관리자 (내부회계 담당 직원)' },
+  { value: 'icfr_lead', label: '책임관리자 (담당 조직장)' },
+  { value: 'icfr_manager', label: '마스터관리자 (내부회계관리자)' },
   { value: 'ceo', label: '대표자' },
   { value: 'auditor', label: '감사' },
   { value: 'external_auditor', label: '외부감사인' },

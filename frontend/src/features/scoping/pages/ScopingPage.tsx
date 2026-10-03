@@ -6,7 +6,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useActiveTenantId, useAuthStore } from '@/features/auth/store'
-import { isIcfrManagerForUser } from '@/features/auth/permissions.pure'
+import { isIcfrStaffForUser } from '@/features/auth/permissions.pure'
+import ApprovalPanel, { type ApprovalAction } from '@/features/governance/ApprovalPanel'
+import GovernanceHistory from '@/features/governance/GovernanceHistory'
 import {
   errorDetail,
   useScopingDetail,
@@ -33,7 +35,8 @@ import HelpButton from '@/features/help/HelpButton'
  */
 export default function ScopingPage() {
   const { user } = useAuthStore()
-  const isManager = isIcfrManagerForUser(user)
+  // 작성 권한 = 관리자 1~3단계(ADR-0038). 결재 버튼은 서버가 준 governance.can 으로만 그린다
+  const isManager = isIcfrStaffForUser(user)
   const { data: meta } = useScopingMeta()
   const { data: list, isLoading } = useScopingList()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -49,6 +52,43 @@ export default function ScopingPage() {
 
   const write = (method: 'post' | 'patch' | 'delete', path: string, body?: unknown) =>
     mutation.mutate({ method, path, body }, { onError: (e) => toast.error(errorDetail(e, '저장하지 못했습니다')) })
+
+  // 결재 동작 → API. 외부 승인은 파일이 있어 FormData 로 직접 보낸다
+  const [uploading, setUploading] = useState(false)
+  const act = async (d: ScopingDetail, a: ApprovalAction) => {
+    const base = `/${d.id}`
+    switch (a.kind) {
+      case 'submit': return write('post', `${base}/transition`, { to_status: 'review', reason: a.reason })
+      case 'withdraw': return write('post', `${base}/transition`, { to_status: 'draft' })
+      case 'review_done': return write('post', `${base}/review`, { action: 'done' })
+      case 'return':
+        return a.viaReview ? write('post', `${base}/review`, { action: 'return', reason: a.reason })
+          : write('post', `${base}/transition`, { to_status: 'draft', reason: a.reason })
+      case 'approve': return write('post', `${base}/transition`, { to_status: 'confirmed', reason: a.reason })
+      case 'reopen_request': return write('post', `${base}/reopen-requests`, { reason: a.reason })
+      case 'reopen_decide':
+        return write('post', `${base}/reopen-requests/${a.requestId}/decide`, { approve: a.approve, reason: a.reason })
+      case 'external': {
+        const fd = new FormData()
+        fd.append('purpose', a.purpose)
+        fd.append('approver_body', a.body)
+        fd.append('approved_on', a.approvedOn)
+        if (a.reference) fd.append('reference', a.reference)
+        a.files.forEach((f) => fd.append('files', f))
+        setUploading(true)
+        try {
+          const res = await apiClient.post<ScopingDetail>(`/api/scoping${base}/external-approval`, fd)
+          queryClient.setQueryData(queryKeys.scoping.detail(tenantId, d.id), res.data)
+          queryClient.invalidateQueries({ queryKey: queryKeys.scoping.list(tenantId) })
+          toast.success('외부 승인을 기록했습니다')
+        } catch (e) {
+          toast.error(errorDetail(e, '기록하지 못했습니다'))
+        } finally {
+          setUploading(false)
+        }
+      }
+    }
+  }
 
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -95,7 +135,7 @@ export default function ScopingPage() {
           {isManager ? (
             <Button onClick={() => setCreateOpen(true)}>새 회계연도</Button>
           ) : (
-            <Badge variant="secondary" className="gap-1"><Lock className="h-3 w-3" /> 읽기 전용 · 내부회계관리자만 편집</Badge>
+            <Badge variant="secondary" className="gap-1"><Lock className="h-3 w-3" /> 읽기 전용 · 내부회계 관리자(일반·책임·마스터)만 편집</Badge>
           )}
         </div>
       </div>
@@ -112,7 +152,14 @@ export default function ScopingPage() {
 
       {detail && (
         <>
-          <StatusBar d={detail} meta={meta} write={write} isManager={isManager} />
+          <StatusBar d={detail} meta={meta} />
+          {detail.governance && (
+            <ApprovalPanel status={detail.status} g={detail.governance} pending={mutation.isPending || uploading}
+              warnBeforeApprove={detail.badge_count > 0
+                ? `아직 아무도 검토하지 않은 템플릿 값이 ${detail.badge_count}개 있습니다. 검토하지 않은 판단이 그대로 확정됩니다.`
+                : undefined}
+              onAction={(a) => act(detail, a)} />
+          )}
           {detail.warnings.length > 0 && (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               {detail.warnings.map((w) => <div key={w} className="flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5" />{w}</div>)}
@@ -129,37 +176,15 @@ export default function ScopingPage() {
           </Card>
           <ReviewCard key={`${detail.id}-r`} d={detail} write={write} />
           <GuidanceCard d={detail} write={write} />
+          <GovernanceHistory url={`/api/scoping/${detail.id}/events`} refreshKey={detail.governance?.version + detail.status} />
         </>
       )}
     </div>
   )
 }
 
-function StatusBar({ d, meta, write, isManager }: {
-  d: ScopingDetail; meta: ScopingMeta; write: (m: 'post' | 'patch' | 'delete', p: string, b?: unknown) => void
-  isManager: boolean
-}) {
+function StatusBar({ d, meta }: { d: ScopingDetail; meta: ScopingMeta }) {
   const label = (s: string) => meta.statuses.find((x) => x.value === s)?.label ?? s
-  const go = (to: string) => {
-    let reason: string | null = null
-    if (to === 'confirmed') {
-      // 배지가 남아 있어도 막지 않는다 — 개수를 드러내고 사유를 남긴다(ADR-0034 §2.2)
-      const warn = d.badge_count > 0
-        ? `아직 아무도 검토하지 않은 템플릿 값이 ${d.badge_count}개 있습니다. 검토하지 않은 판단이 그대로 확정됩니다.\n(동의하는 값은 '확인'을 누르면 이 숫자에서 빠집니다)\n\n`
-        : ''
-      reason = window.prompt(`${warn}확정 사유를 입력하세요 (필수)`)
-      if (!reason?.trim()) return
-    } else if (d.status === 'confirmed') {
-      reason = window.prompt('재오픈 사유를 입력하세요 (필수) — 이력에 남습니다')
-      if (!reason?.trim()) return
-    }
-    write('post', `/${d.id}/transition`, { to_status: to, reason })
-  }
-  const next: Record<string, Array<[string, string]>> = {
-    draft: [['review', '검토 요청']],
-    review: [['confirmed', '확정'], ['draft', '작성 중으로 되돌리기']],
-    confirmed: [['draft', '재오픈']],
-  }
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border p-3">
       <span className="text-sm">
@@ -174,13 +199,6 @@ function StatusBar({ d, meta, write, isManager }: {
         <span className="text-xs text-muted-foreground">
           확정 {d.confirmed_at?.slice(0, 10)} · 사유 「{d.confirm_reason}」 · 확정 시 검토 안 한 템플릿 값 {d.confirm_badge_count}개
         </span>
-      )}
-      {isManager && (
-        <div className="ml-auto flex gap-2">
-          {(next[d.status] ?? []).map(([to, text]) => (
-            <Button key={to} size="sm" variant={to === 'confirmed' ? 'default' : 'outline'} onClick={() => go(to)}>{text}</Button>
-          ))}
-        </div>
       )}
     </div>
   )

@@ -20,6 +20,7 @@ from app.models.role_assignment import (
     ROLE_EXTERNAL_AUDITOR,
     ROLE_ICFR_MANAGER,
     ROLE_SYS_ADMIN,
+    TIER_ROLES,
 )
 from app.models.user import User
 from app.models.user_mgmt import UserRole
@@ -73,6 +74,19 @@ def require_icfr_manager(user: CurrentUser, db: Session = Depends(get_db)) -> Us
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="내부회계관리자 권한이 필요합니다",
+        )
+    return user
+
+
+def require_icfr_staff(user: CurrentUser, db: Session = Depends(get_db)) -> User:
+    """내부회계 관리자 1~3단계(일반·책임·마스터) 가드 — 작성·수정·검토 요청 (ADR-0038 §2.1).
+
+    `sys_admin` 만 가진 계정은 통과하지 못한다 — 시스템관리자는 제도 업무를 하지 않는다(§2.5).
+    """
+    if not (tenant_roles(db, user.id) & set(TIER_ROLES)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="내부회계 관리자(일반·책임·마스터) 역할이 필요합니다",
         )
     return user
 

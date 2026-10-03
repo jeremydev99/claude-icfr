@@ -15,6 +15,7 @@ from app.api import (
     euc,
     evidence,
     financial_statement,
+    governance,
     health,
     iuc,
     notification,
@@ -140,6 +141,7 @@ def create_app() -> FastAPI:
     app.include_router(report.router)
     app.include_router(test_module.router)
     app.include_router(dashboard.router)
+    app.include_router(governance.router)
 
     @app.get("/")
     def root() -> dict[str, str]:

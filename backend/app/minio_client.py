@@ -55,6 +55,17 @@ def remove_object_safe(object_key: str) -> None:
         pass
 
 
+def build_governance_key(entity_type: str, entity_id, file_id) -> str:
+    """외부 승인 증빙(의사록·결재 스캔) 경로 — {tenant_id}/governance/{entity_type}/{entity_id}/{file_id} (ADR-0038 §2.2.1).
+    `build_evidence_key` 와 같은 원칙: 테넌트는 컨텍스트에서 직접 읽고 파일명은 경로에 쓰지 않는다."""
+    tenant_id = get_active_tenant()
+    if tenant_id is None:
+        raise RuntimeError("활성 tenant 없이 증빙 경로를 만들 수 없습니다")
+    if not str(entity_type).isidentifier():
+        raise ValueError(f"entity_type 이 올바르지 않습니다: {entity_type!r}")
+    return f"{tenant_id}/governance/{entity_type}/{entity_id}/{file_id}"
+
+
 def build_evidence_key(cycle_id, control_id, evidence_id) -> str:
     """증빙 저장 경로. **이 함수만 경로를 만든다** (ADR-0032 §2.2).
 

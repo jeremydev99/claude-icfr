@@ -88,6 +88,32 @@ def mgr(client: TestClient) -> dict:
     return _headers(client, "scope-mgr@acme.example")
 
 
+@pytest.fixture()
+def lead(client: TestClient) -> dict:
+    """책임관리자 — ADR-0038 자기 승인 금지 이후 **검토 요청은 lead, 승인은 mgr** 로 나눈다."""
+    _account("scope-lead@acme.example", ("icfr_lead",))
+    return _headers(client, "scope-lead@acme.example")
+
+
+def _submit_and_approve(client: TestClient, base: str, lead: dict, mgr: dict, reason: str) -> dict:
+    """검토 요청(책임관리자) → 승인(마스터). 승인 경로 = master(책임관리자 작성분)."""
+    r = client.post(f"{base}/transition", headers=lead, json={"to_status": "review"})
+    assert r.status_code == 200, r.text
+    r = client.post(f"{base}/transition", headers=mgr, json={"to_status": "confirmed", "reason": reason})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _reopen(client: TestClient, base: str, lead: dict, mgr: dict, reason: str) -> dict:
+    """재오픈 요청(책임관리자) → 승인(마스터)."""
+    d = client.post(f"{base}/reopen-requests", headers=lead, json={"reason": reason})
+    assert d.status_code == 201, d.text
+    rid = d.json()["governance"]["pending_reopen"]["id"]
+    r = client.post(f"{base}/reopen-requests/{rid}/decide", headers=mgr, json={"approve": True})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
 def _create(client: TestClient, h: dict, year: int) -> dict:
     r = client.post("/api/scoping", headers=h, json={"fiscal_year": year})
     assert r.status_code == 201, r.text
@@ -305,10 +331,10 @@ def test_badges_are_field_level(client: TestClient, mgr: dict) -> None:
 
 # ── 8·9·10. 확정 ───────────────────────────────────────────
 
-def test_confirm_records_badges_and_reason_then_locks(client: TestClient, mgr: dict) -> None:
+def test_confirm_records_badges_and_reason_then_locks(client: TestClient, mgr: dict, lead: dict) -> None:
     s = _create(client, mgr, 2096)
     base = f"/api/scoping/{s['id']}"
-    assert client.post(f"{base}/transition", headers=mgr, json={"to_status": "review"}).status_code == 200
+    assert client.post(f"{base}/transition", headers=lead, json={"to_status": "review"}).status_code == 200
     assert client.post(f"{base}/transition", headers=mgr,
                        json={"to_status": "confirmed"}).status_code == 422   # 사유 없음
     d = client.post(f"{base}/transition", headers=mgr,
@@ -321,17 +347,19 @@ def test_confirm_records_badges_and_reason_then_locks(client: TestClient, mgr: d
     a = d["accounts"][0]
     assert client.patch(f"{base}/accounts/{a['id']}", headers=mgr,
                         json={"qual_basis": "x"}).status_code == 409
-    # 재오픈 — 사유 필수, 이력
-    assert client.post(f"{base}/transition", headers=mgr, json={"to_status": "draft"}).status_code == 422
-    d = client.post(f"{base}/transition", headers=mgr,
-                    json={"to_status": "draft", "reason": "금액 재검토"}).json()
-    assert d["status"] == "draft" and d["confirmed_snapshot"] is None
+    # 재오픈 — 직접 전환 불가(ADR-0038), 요청(사유 필수) → 다른 사람 승인. 이력
+    assert client.post(f"{base}/transition", headers=mgr,
+                       json={"to_status": "draft", "reason": "x"}).status_code == 409
+    assert client.post(f"{base}/reopen-requests", headers=lead, json={"reason": ""}).status_code == 422
+    d = _reopen(client, base, lead, mgr, "금액 재검토")
+    assert d["status"] == "draft" and d["confirmed_snapshot"] is None and d["governance"]["version"] == 2
     assert [(h["from_status"], h["to_status"]) for h in d["history"]] == [
         ("draft", "review"), ("review", "confirmed"), ("confirmed", "draft")]
-    assert d["history"][-1]["reason"] == "금액 재검토"
+    assert "금액 재검토" in d["history"][-1]["reason"]
 
 
-def test_snapshot_keeps_criteria_and_conclusions_after_criteria_change(client: TestClient, mgr: dict) -> None:
+def test_snapshot_keeps_criteria_and_conclusions_after_criteria_change(client: TestClient, mgr: dict,
+                                                                       lead: dict) -> None:
     """**확정 후 기준을 바꿔도 스냅샷의 기준값·결론이 그대로다**(6-1b 검증 6).
 
     기준을 바꾸려면 재오픈해야 한다(확정 상태 쓰기는 409). 재오픈하면 `confirmed_snapshot` 은
@@ -343,9 +371,7 @@ def test_snapshot_keeps_criteria_and_conclusions_after_criteria_change(client: T
     client.post(f"{base}/adjustments", headers=mgr, json={"amount": 1000, "reason": "비경상"})
     aid = _acc(s, "대손충당금(매출채권)")["id"]
     client.patch(f"{base}/accounts/{aid}", headers=mgr, json={"current_amount": 1, "prior_amount": 2})
-    client.post(f"{base}/transition", headers=mgr, json={"to_status": "review"})
-    d = client.post(f"{base}/transition", headers=mgr,
-                    json={"to_status": "confirmed", "reason": "확정"}).json()
+    d = _submit_and_approve(client, base, lead, mgr, "확정")
     snap = d["confirmed_snapshot"]
     # 기준이 전부 들어 있다
     assert snap["policy"] == {"threshold": "2", "comparison": "ge"}
@@ -360,7 +386,7 @@ def test_snapshot_keeps_criteria_and_conclusions_after_criteria_change(client: T
     # 확정 상태에서는 기준을 바꿀 수 없다
     assert client.patch(base, headers=mgr, json={"qual_comparison": "gt"}).status_code == 409
     # 재오픈 → 기준 변경 → 판정이 바뀐다. 확정 이력의 스냅샷은 그대로
-    client.post(f"{base}/transition", headers=mgr, json={"to_status": "draft", "reason": "기준 재검토"})
+    _reopen(client, base, lead, mgr, "기준 재검토")
     client.patch(f"{base}/benchmarks/adjusted_pbt", headers=mgr, json={"guide_low": "0.01", "guide_high": "0.02"})
     d = client.patch(base, headers=mgr, json={"qual_comparison": "gt", "smt_guide_low": "0.6"}).json()
     assert _acc(d, "대손충당금(매출채권)")["qual"] == "N"
@@ -376,14 +402,13 @@ def test_snapshot_keeps_criteria_and_conclusions_after_criteria_change(client: T
     assert hs["accounts"][aid]["final"] == "Y"
 
 
-def test_summary_counts_snapshot_when_confirmed(client: TestClient, mgr: dict) -> None:
+def test_summary_counts_snapshot_when_confirmed(client: TestClient, mgr: dict, lead: dict) -> None:
     """대시보드 집계도 확정 후에는 스냅샷으로 센다 — 계정 표와 같은 기준. 미평가는 N 과 따로 센다."""
     s = _create(client, mgr, 2100)   # 테스트 중 가장 큰 연도 — 요약은 최근 연도를 본다
     base = f"/api/scoping/{s['id']}"
     before = client.get("/api/scoping/summary", headers=mgr).json()
     assert before["fiscal_year"] == 2100 and before["status"] == "draft"
-    client.post(f"{base}/transition", headers=mgr, json={"to_status": "review"})
-    client.post(f"{base}/transition", headers=mgr, json={"to_status": "confirmed", "reason": "확정"})
+    _submit_and_approve(client, base, lead, mgr, "확정")
     try:
         _set_policy(client, mgr, "scoping_qual_comparison", "gt")
         after = client.get("/api/scoping/summary", headers=mgr).json()
@@ -570,7 +595,7 @@ def test_undo_confirm_and_edited_untouched(client: TestClient, mgr: dict) -> Non
     assert all(o.confirmed_by_id is None for o in _origins_of(a["id"]))
 
 
-def test_confirming_everything_makes_warning_zero(client: TestClient, mgr: dict) -> None:
+def test_confirming_everything_makes_warning_zero(client: TestClient, mgr: dict, lead: dict) -> None:
     """**확정 경고 숫자 = template 만.** 계정·중요성 기준·문구를 전부 확인하면 0(검증 3)."""
     s = _create(client, mgr, 2087)
     base = f"/api/scoping/{s['id']}"
@@ -587,8 +612,7 @@ def test_confirming_everything_makes_warning_zero(client: TestClient, mgr: dict)
     assert set(d["scoping_badges"].values()) == {"confirmed"}
     assert all(t["badge"] == "confirmed" for t in d["texts"])
     # 확정 시 기록되는 숫자도 0
-    client.post(f"{base}/transition", headers=mgr, json={"to_status": "review"})
-    d = client.post(f"{base}/transition", headers=mgr, json={"to_status": "confirmed", "reason": "전부 검토"}).json()
+    d = _submit_and_approve(client, base, lead, mgr, "전부 검토")
     assert d["confirm_badge_count"] == 0
     # 확정 상태에서는 확인·취소도 409
     assert client.post(f"{base}/confirm", headers=mgr, json={"scope": "materiality", "undo": True}).status_code == 409
