@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { useMemo, useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -57,10 +58,10 @@ export default function SchedulePage() {
   }
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold">일정관리</h1>
+          <h1 className="text-2xl font-bold tracking-tight">일정관리</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             연간 ICFR 평가 일정 — 회계연도 시작월 {startMonth}월 기준. 익년 3개월(결산·보고)까지 표시합니다.
           </p>
@@ -170,9 +171,12 @@ export default function SchedulePage() {
           {loadingCycles ? (
             <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> 불러오는 중…</div>
           ) : fyCycles.length === 0 ? (
-            <p className="text-muted-foreground">
-              {fy} 회계연도에 해당하는 평가 회차가 없습니다. 평가자가 [회차 생성]으로 만들면 여기에 기간이 표시됩니다.
-            </p>
+            <EmptyState
+              compact
+              slot="empty-checklist"
+              title={`${fy} 회계연도에 해당하는 평가 회차가 없습니다`}
+              description="평가자가 [회차 생성]으로 만들면 여기에 기간이 표시됩니다."
+            />
           ) : (
             <ul className="divide-y">
               {fyCycles.map(({ c }) => (

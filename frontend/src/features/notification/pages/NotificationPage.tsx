@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,9 +13,9 @@ import { RULES, SAMPLE_VALUES, TEMPLATES, placeholdersOf, renderTemplate } from 
  */
 export default function NotificationPage() {
   return (
-    <div className="space-y-4 p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-bold">메일발송</h1>
+        <h1 className="text-2xl font-bold tracking-tight">메일발송</h1>
         <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">초안 — 발송 기능 미연결</Badge>
       </div>
       <p className="text-sm text-muted-foreground">
@@ -168,13 +169,10 @@ function RulesTab() {
 
 function HistoryTab() {
   return (
-    <Card>
-      <CardContent className="py-10 text-center">
-        <p className="font-medium">발송 이력이 없습니다.</p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          메일 발송 기능(SMTP·발송 큐)이 아직 연결되지 않았습니다. 연결 후에는 발송 일시·수신자·템플릿·결과(성공/실패)가 여기에 기록됩니다.
-        </p>
-      </CardContent>
-    </Card>
+    <EmptyState
+      slot="empty-default"
+      title="발송 이력이 없습니다."
+      description="메일 발송 기능(SMTP·발송 큐)이 아직 연결되지 않았습니다. 연결 후에는 발송 일시·수신자·템플릿·결과(성공/실패)가 여기에 기록됩니다."
+    />
   )
 }

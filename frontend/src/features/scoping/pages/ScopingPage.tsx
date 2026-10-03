@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, Loader2, Lock } from 'lucide-react'
@@ -73,10 +74,10 @@ export default function ScopingPage() {
   }
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold">Scoping</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Scoping</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             중요성 기준을 정하고 유의한 계정과목·주석을 가려냅니다. 대상은 별도재무제표입니다.
           </p>
@@ -102,10 +103,11 @@ export default function ScopingPage() {
       <CreateScopingDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={create} pending={creating} />
 
       {(list ?? []).length === 0 && (
-        <Card><CardContent className="py-6 text-sm text-muted-foreground">
-          아직 스코핑이 없습니다. 새 회계연도를 만들 때 직전 연도 확정 재무제표에서 계정·금액을 가져오거나(권장),
-          표준 템플릿(계정 192건·질적 평가값·판단 근거)을 복사할 수 있습니다. 템플릿에서 온 값에는 배지가 붙습니다.
-        </CardContent></Card>
+        <EmptyState
+          slot="empty-finance"
+          title="아직 스코핑이 없습니다"
+          description="새 회계연도를 만들 때 직전 연도 확정 재무제표에서 계정·금액을 가져오거나(권장), 표준 템플릿(계정 192건·질적 평가값·판단 근거)을 복사할 수 있습니다. 템플릿에서 온 값에는 배지가 붙습니다."
+        />
       )}
 
       {detail && (

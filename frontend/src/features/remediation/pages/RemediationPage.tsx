@@ -69,10 +69,10 @@ export default function RemediationPage() {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div>
-        <h1 className="text-2xl font-semibold">개선계획 (Remediation)</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1 className="text-2xl font-bold tracking-tight">개선계획 (Remediation)</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           미비점 등록·심각도 평가·개선계획 수립·워크플로 관리
         </p>
       </div>

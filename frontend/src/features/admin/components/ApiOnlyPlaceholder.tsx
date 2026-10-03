@@ -18,9 +18,9 @@ interface Props {
  */
 export default function ApiOnlyPlaceholder({ title, description, endpoints, note }: Props) {
   return (
-    <div className="p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div className="mb-4 flex items-center gap-3">
-        <h1 className="text-2xl font-semibold">{title}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
         <Badge variant="secondary">API 있음 · 화면 미구현</Badge>
       </div>
       <p className="mb-4 text-sm text-muted-foreground">{description}</p>

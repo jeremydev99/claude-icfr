@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { Loader2 } from 'lucide-react'
 import {
   Sheet,
@@ -92,9 +93,7 @@ export default function UserDetailSheet({ userId, open, onOpenChange }: Props) {
                 <span className="font-normal text-muted-foreground">({userRoles.length}건)</span>
               </h3>
               {userRoles.length === 0 ? (
-                <div className="rounded-md border p-6 text-center text-sm text-muted-foreground">
-                  할당된 역할이 없습니다.
-                </div>
+                <EmptyState compact slot="empty-people" title="할당된 역할이 없습니다." />
               ) : (
                 <div className="rounded-md border">
                   <Table>

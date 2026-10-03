@@ -7,10 +7,10 @@ interface PlaceholderPageProps {
 
 export default function PlaceholderPage({ title, description }: PlaceholderPageProps) {
   return (
-    <div className="p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        <p className="mt-2 text-muted-foreground">{description}</p>
+        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       </div>
       <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12">
         <Construction className="h-12 w-12 text-muted-foreground" />

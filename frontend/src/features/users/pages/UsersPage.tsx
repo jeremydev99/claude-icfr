@@ -109,10 +109,10 @@ export default function UsersPage() {
   const users = userData?.items ?? []
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div>
-        <h1 className="text-2xl font-semibold">담당자/권한 (User & Role)</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1 className="text-2xl font-bold tracking-tight">담당자/권한 (User & Role)</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           사용자 조회 및 역할 관리
         </p>
       </div>

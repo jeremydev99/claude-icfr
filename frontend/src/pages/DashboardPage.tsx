@@ -2,6 +2,7 @@ import ModuleCards from '@/features/dashboard/components/ModuleCards'
 import RcmSummaryCard from '@/features/dashboard/components/RcmSummaryCard'
 import EucIucSummaryCard from '@/features/dashboard/components/EucIucSummaryCard'
 import ScopingSummaryCard from '@/features/dashboard/components/ScopingSummaryCard'
+import WelcomeHero from '@/features/dashboard/components/WelcomeHero'
 
 /**
  * 대시보드 = 개발 현황판 + RCM 실데이터 (4-1).
@@ -11,13 +12,8 @@ import ScopingSummaryCard from '@/features/dashboard/components/ScopingSummaryCa
  */
 export default function DashboardPage() {
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">대시보드</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          모듈별 구현 현황과 RCM 실데이터 집계
-        </p>
-      </div>
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
+      <WelcomeHero />
       <ModuleCards />
       <ScopingSummaryCard />
       <RcmSummaryCard />

@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -79,10 +80,10 @@ export default function IucPage() {
   if (isError || !data) return <div className="p-6 text-sm text-destructive">정보 항목을 불러오지 못했습니다</div>
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold"><HelpTerm k="term.iuc">IUC</HelpTerm></h1>
+          <h1 className="text-2xl font-bold tracking-tight"><HelpTerm k="term.iuc">IUC</HelpTerm></h1>
           <p className="mt-1 text-sm text-muted-foreground">
             통제에 쓰이는 정보(IPE)의 완전성·정확성. 정보 Type 이 EUC 인 항목은{' '}
             <Link to="/euc" className="underline">EUC 파일</Link>을 가리키며, 여기서 입력한 중요성이 파일 위험 등급의 재료가 됩니다.
@@ -95,7 +96,7 @@ export default function IucPage() {
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-md border">
+      <div className="overflow-x-auto rounded-xl border bg-card shadow-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -111,8 +112,8 @@ export default function IucPage() {
           <TableBody>
             {data.items.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-sm text-muted-foreground">
-                  등록된 정보 항목이 없습니다
+                <TableCell colSpan={7} className="p-4">
+                  <EmptyState compact slot="empty-default" title="등록된 정보 항목이 없습니다" className="border-0 bg-transparent" />
                 </TableCell>
               </TableRow>
             )}

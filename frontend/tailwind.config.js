@@ -48,7 +48,22 @@ module.exports = {
           border: 'hsl(var(--sidebar-border))',
           selected: 'hsl(var(--sidebar-selected))',
           'selected-foreground': 'hsl(var(--sidebar-selected-foreground))',
+          indicator: 'hsl(var(--sidebar-indicator))',
         },
+        brand: {
+          from: 'hsl(var(--brand-from))',
+          to: 'hsl(var(--brand-to))',
+        },
+        success: 'hsl(var(--success))',
+        warning: 'hsl(var(--warning))',
+      },
+      boxShadow: {
+        // 카드는 테두리 + 아주 옅은 그림자 — 떠 있되 무겁지 않게
+        card: '0 1px 2px 0 rgb(16 24 40 / 0.04), 0 1px 3px 0 rgb(16 24 40 / 0.06)',
+        lift: '0 4px 12px -2px rgb(16 24 40 / 0.08), 0 2px 4px -2px rgb(16 24 40 / 0.05)',
+      },
+      fontFamily: {
+        sans: ['"Pretendard Variable"', 'Pretendard', '-apple-system', 'BlinkMacSystemFont', 'system-ui', '"Segoe UI"', '"Apple SD Gothic Neo"', '"Noto Sans KR"', '"Malgun Gothic"', 'sans-serif'],
       },
       borderRadius: {
         lg: 'var(--radius)',

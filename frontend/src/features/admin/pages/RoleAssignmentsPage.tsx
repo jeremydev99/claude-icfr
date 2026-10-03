@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Loader2, Lock, Plus, Trash2 } from 'lucide-react'
@@ -102,11 +103,11 @@ export default function RoleAssignmentsPage() {
   }
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">역할 배정</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight">역할 배정</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             역할은 사람이 아니라 통제에 붙습니다. 프로세스 배정은 소속 통제의 기본값이며, 통제별 배정이 우선합니다.
             이해상충(겸직) 조합은 사유를 남겨야 저장되고, 정책에서 금지하면 거부됩니다.
           </p>
@@ -169,9 +170,11 @@ export default function RoleAssignmentsPage() {
           ) : isError ? (
             <p className="py-8 text-sm text-destructive">배정 목록을 불러오지 못했습니다.</p>
           ) : filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              {rows.length === 0 ? '아직 배정이 없습니다.' : '조건에 맞는 배정이 없습니다.'}
-            </p>
+            rows.length === 0 ? (
+              <EmptyState compact slot="empty-people" title="아직 배정이 없습니다." />
+            ) : (
+              <EmptyState compact slot="empty-search" title="조건에 맞는 배정이 없습니다." />
+            )
           ) : (
             <div className="overflow-x-auto">
               <Table>

@@ -1,3 +1,4 @@
+import EmptyState from '@/components/illustration/EmptyState'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -66,10 +67,10 @@ export default function EucPage() {
   const threshold = labelOf(meta.risk_grade, meta.identification_threshold)
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold"><HelpTerm k="term.euc">EUC</HelpTerm></h1>
+          <h1 className="text-2xl font-bold tracking-tight"><HelpTerm k="term.euc">EUC</HelpTerm></h1>
           <p className="mt-1 text-sm text-muted-foreground">
             ERP 밖에서 현업이 만든 엑셀·매크로 등 — IT부서 통제를 받지 않는 도구입니다.
             위험 등급이 <strong>{threshold}</strong> 이상이면 EUC 통제 식별 대상입니다.
@@ -83,7 +84,7 @@ export default function EucPage() {
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-md border">
+      <div className="overflow-x-auto rounded-xl border bg-card shadow-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -101,8 +102,8 @@ export default function EucPage() {
           <TableBody>
             {data.items.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-sm text-muted-foreground">
-                  등록된 EUC 파일이 없습니다
+                <TableCell colSpan={9} className="p-4">
+                  <EmptyState compact slot="empty-upload" title="등록된 EUC 파일이 없습니다" className="border-0 bg-transparent" />
                 </TableCell>
               </TableRow>
             )}

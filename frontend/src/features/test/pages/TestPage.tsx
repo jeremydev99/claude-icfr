@@ -43,10 +43,10 @@ export default function TestPage() {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div>
-        <h1 className="text-2xl font-semibold">평가 (Test)</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1 className="text-2xl font-bold tracking-tight">평가 (Test)</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           통제별 운영평가 계획·실행·결과 관리
         </p>
       </div>

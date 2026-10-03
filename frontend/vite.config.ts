@@ -29,13 +29,21 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // 글꼴(Pretendard 하위 집합 90여 개)은 미리 받지 않는다 — 쓰는 글자 범위만 그때 받아 아래 runtimeCaching 이 보관한다
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,webp}'],
         // 링크 공유 미리보기 이미지는 메신저 크롤러용 — 설치된 앱이 미리 받을 필요 없다
         globIgnores: ['og-image.png'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
-        runtimeCaching: [],   // API 는 캐시 대상이 아니다 — 네트워크로만
+        // API 는 캐시 대상이 아니다 — 네트워크로만. 글꼴만 한 번 받으면 기기에 보관한다(내용이 바뀌지 않는 파일)
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.destination === 'font',
+            handler: 'CacheFirst',
+            options: { cacheName: 'icfr-fonts', expiration: { maxEntries: 120, maxAgeSeconds: 60 * 60 * 24 * 365 } },
+          },
+        ],
       },
     }),
   ],

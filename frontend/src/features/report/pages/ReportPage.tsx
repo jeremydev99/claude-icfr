@@ -97,10 +97,10 @@ export default function ReportPage() {
   const scopingStatusLabel = scopingMeta?.statuses.find((s) => s.value === facts.scopingStatus)?.label ?? facts.scopingStatus
 
   return (
-    <div className="min-w-0 space-y-4 p-4 sm:p-6">
+    <div className="mx-auto min-w-0 max-w-[1400px] space-y-6 p-6 md:p-8">
       <style>{DOC_CSS + PAGE_PRINT_CSS}</style>
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-bold">Report</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Report</h1>
         <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
           초안 — 보고서 양식(운영 양식과 맞춰 조정 예정)
         </Badge>
