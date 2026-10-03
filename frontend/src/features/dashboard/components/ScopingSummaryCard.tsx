@@ -56,6 +56,9 @@ export default function ScopingSummaryCard() {
                     <li className="flex justify-between"><span>유의</span><span className="tabular-nums font-medium">{c.Y}</span></li>
                     <li className={`flex justify-between ${c.N === 0 ? 'text-muted-foreground' : ''}`}><span>비유의</span><span className="tabular-nums">{c.N}</span></li>
                     <li className={`flex justify-between ${c.unevaluated === 0 ? 'text-muted-foreground' : ''}`}><span>미평가</span><span className="tabular-nums">{c.unevaluated}</span></li>
+                    {(c as { na?: number }).na ? (
+                      <li className="flex justify-between text-muted-foreground"><span>해당 없음</span><span className="tabular-nums">{(c as { na?: number }).na}</span></li>
+                    ) : null}
                   </ul>
                 </div>
               )

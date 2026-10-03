@@ -258,12 +258,20 @@ def origins_by_target(db: Session, scoping_id: UUID) -> dict[tuple[str, UUID], d
     return out
 
 
+def _na_account_ids(db: Session, scoping_id: UUID) -> set[UUID]:
+    return {a.id for a in _active(db.query(ScopingAccount), ScopingAccount).filter(
+        ScopingAccount.scoping_id == scoping_id, ScopingAccount.not_applicable == True).all()}  # noqa: E712
+
+
 def badge_count(db: Session, scoping_id: UUID) -> int:
-    """아직 템플릿 그대로인 필드 수 — 확정 경고에 쓴다. **`template` 만 센다**(confirmed 는 본 것이다)."""
-    return _active(db.query(ScopingFieldOrigin), ScopingFieldOrigin).filter(
+    """아직 템플릿 그대로인 필드 수 — 확정 경고에 쓴다. **`template` 만 센다**(confirmed 는 본 것이다).
+    해당 없음 계정 줄의 값은 세지 않는다 — 판정에 쓰이지 않으므로 검토할 대상이 아니다."""
+    na = _na_account_ids(db, scoping_id)
+    rows = _active(db.query(ScopingFieldOrigin), ScopingFieldOrigin).filter(
         ScopingFieldOrigin.scoping_id == scoping_id,
         ScopingFieldOrigin.status == ORIGIN_TEMPLATE,
-    ).count()
+    ).all()
+    return sum(1 for o in rows if not (o.target_type == ORIGIN_TARGET_ACCOUNT and o.target_id in na))
 
 
 def mark_edited(db: Session, scoping_id: UUID, target_type: str, target_id: UUID, field: str) -> None:
@@ -386,6 +394,11 @@ def evaluate(db: Session, s: Scoping) -> dict:
     accounts.sort(key=lambda a: (order.get(a.statement_type, 99), a.sort_order))
     acc_rows = []
     for a in accounts:
+        if a.not_applicable:   # 해당 없음 — 판정하지 않는다(미평가와 다르다)
+            acc_rows.append({"account": a, "quant": calc.NA, "qual_average": None,
+                             "change_rate": change_rate(a.current_amount, a.prior_amount),
+                             "qual": calc.NA, "computed": calc.NA, "final": calc.NA})
+            continue
         quant = calc.quantitative(a.statement_type, a.current_amount, smt)
         avg = calc.qualitative_average(a.ratings)
         qual = calc.qualitative(a.ratings, threshold, comparison)

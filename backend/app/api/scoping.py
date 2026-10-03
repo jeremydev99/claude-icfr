@@ -92,6 +92,7 @@ from app.schemas.scoping import (
     GovernanceEventRead,
     GovernanceInfo,
     HistoryRead,
+    NotApplicableBulk,
     Option,
     PersonRef,
     ReopenCreate,
@@ -179,6 +180,7 @@ def _detail(db: Session, s: Scoping, user_id: UUID) -> ScopingDetail:
             name=a.name, current_amount=a.current_amount, prior_amount=a.prior_amount,
             ratings={k: v for k, v in (a.ratings or {}).items() if v}, qual_basis=a.qual_basis,
             manual_conclusion=a.manual_conclusion, manual_reason=a.manual_reason,
+            not_applicable=a.not_applicable, na_reason=a.na_reason,
             quant=r["quant"], qual_average=r["qual_average"], change_rate=r["change_rate"], qual=r["qual"],
             computed=r["computed"], final=r["final"],
             snapshot_final=snap.get(str(a.id), {}).get("final") if snap else None,
@@ -224,7 +226,7 @@ def get_summary(user: CurrentUser = None, db: Session = Depends(get_db)) -> Scop
         Scoping.fiscal_year.desc()).first()
     if s is None:
         return ScopingSummary(exists=False)
-    by = {t: {"Y": 0, "N": 0, "unevaluated": 0} for t in STATEMENT_LABELS}
+    by = {t: {"Y": 0, "N": 0, "unevaluated": 0, "na": 0} for t in STATEMENT_LABELS}
     # 확정 상태면 스냅샷으로 센다 — 화면(계정 표)과 같은 기준. 정책이 바뀌어도 확정 결론은 그대로다
     if s.status == STATUS_CONFIRMED and s.confirmed_snapshot:
         snap = s.confirmed_snapshot
@@ -235,7 +237,7 @@ def get_summary(user: CurrentUser = None, db: Session = Depends(get_db)) -> Scop
         rows = [(r["account"].statement_type, r["final"]) for r in ev["accounts"]]
         overall, smt = ev["overall_materiality"], ev["smt"]
     for stype, final in rows:
-        by[stype][final if final in ("Y", "N") else "unevaluated"] += 1
+        by[stype][final if final in ("Y", "N", "na") else "unevaluated"] += 1
     return ScopingSummary(exists=True, fiscal_year=s.fiscal_year, status=s.status,
                           overall_materiality=overall, smt=smt,
                           badge_count=svc.badge_count(db, s.id), by_statement=by)
@@ -390,6 +392,33 @@ def update_text(scoping_id: UUID, key: str, body: TextUpdate, user: User = Depen
     return _detail(db, s, user.id)
 
 
+def _set_na(a: ScopingAccount, value: bool | None, reason: str | None) -> None:
+    """해당 없음 지정·해제 — 지정은 사유 필수(무엇을 왜 판정에서 뺐는지가 감사 증적)."""
+    if value:
+        reason = (reason or "").strip()
+        if not reason:
+            raise HTTPException(status_code=422, detail="해당 없음 사유가 필요합니다")
+        a.not_applicable, a.na_reason = True, reason
+    else:
+        a.not_applicable, a.na_reason = False, None
+
+
+@router.post("/{scoping_id}/accounts/not-applicable", response_model=ScopingDetail)
+def bulk_not_applicable(scoping_id: UUID, body: NotApplicableBulk, user: User = Depends(require_icfr_staff),
+                        db: Session = Depends(get_db)) -> ScopingDetail:
+    """여러 계정을 한 번에 해당 없음 지정·해제 — 화면의 "금액 0 계정 일괄 지정"."""
+    s = _editable(db, scoping_id)
+    rows = db.query(ScopingAccount).filter(ScopingAccount.scoping_id == s.id,
+                                           ScopingAccount.id.in_(body.account_ids),
+                                           ScopingAccount.is_deleted == False).all()  # noqa: E712
+    if len(rows) != len(set(body.account_ids)):
+        raise HTTPException(status_code=404, detail="일부 계정을 찾을 수 없습니다")
+    for a in rows:
+        _set_na(a, body.value, body.reason)
+    db.commit()
+    return _detail(db, s, user.id)
+
+
 @router.patch("/{scoping_id}/accounts/{account_id}", response_model=ScopingDetail)
 def update_account(scoping_id: UUID, account_id: UUID, body: AccountUpdate,
                    user: User = Depends(require_icfr_staff), db: Session = Depends(get_db)) -> ScopingDetail:
@@ -400,6 +429,12 @@ def update_account(scoping_id: UUID, account_id: UUID, body: AccountUpdate,
     if a is None:
         raise HTTPException(status_code=404, detail="계정을 찾을 수 없습니다")
     changes = body.model_dump(exclude_unset=True)
+    if "not_applicable" in changes:
+        _set_na(a, changes.pop("not_applicable"), changes.pop("na_reason", None))
+    elif "na_reason" in changes:
+        reason = changes.pop("na_reason")
+        if a.not_applicable:
+            _set_na(a, True, reason)
 
     for field in ("current_amount", "prior_amount"):
         if field in changes and svc.changed(getattr(a, field), changes[field]):

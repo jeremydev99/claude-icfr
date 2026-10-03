@@ -2,11 +2,12 @@
  * 계정 평가 표 보기(필터·정렬) — 순수 함수, `accountView.test.ts`.
  * **저장하지 않는다**: 화면 상태로만 두어 새로고침하면 원래 순서·전체 보기로 돌아간다(2026-10-03 마스터).
  */
-export type AccountFilter = 'all' | 'Y' | 'N' | 'unevaluated' | 'pending'
+export type AccountFilter = 'all' | 'Y' | 'N' | 'unevaluated' | 'na' | 'pending'
 export type AccountSort = 'default' | 'amount_desc' | 'amount_asc' | 'change_desc' | 'qual_desc' | 'name'
 
 export const FILTER_LABELS: Record<AccountFilter, string> = {
-  all: '전체', Y: '유의(Y)만', N: '비유의(N)만', unevaluated: '미평가만', pending: '검토 안 한 템플릿 값 있는 줄',
+  all: '전체', Y: '유의(Y)만', N: '비유의(N)만', unevaluated: '미평가만', na: '해당 없음만',
+  pending: '검토 안 한 템플릿 값 있는 줄',
 }
 export const SORT_LABELS: Record<AccountSort, string> = {
   default: '원래 순서(재무제표 순)', amount_desc: '기준 금액 큰 순', amount_asc: '기준 금액 작은 순',
@@ -32,8 +33,9 @@ export function filterRows<T extends ViewRow>(rows: T[], f: AccountFilter, confi
   switch (f) {
     case 'Y': return rows.filter((r) => conclusionOf(r, confirmed) === 'Y')
     case 'N': return rows.filter((r) => conclusionOf(r, confirmed) === 'N')
-    case 'unevaluated': return rows.filter((r) => { const c = conclusionOf(r, confirmed); return c !== 'Y' && c !== 'N' })
-    case 'pending': return rows.filter((r) => Object.values(r.badges).includes('template'))
+    case 'unevaluated': return rows.filter((r) => { const c = conclusionOf(r, confirmed); return c !== 'Y' && c !== 'N' && c !== 'na' })
+    case 'na': return rows.filter((r) => conclusionOf(r, confirmed) === 'na')
+    case 'pending': return rows.filter((r) => conclusionOf(r, confirmed) !== 'na' && Object.values(r.badges).includes('template'))
     default: return rows
   }
 }

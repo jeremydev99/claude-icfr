@@ -35,6 +35,17 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
   const [sort, setSort] = useState<AccountSort>('default')
   const shown = useMemo(() => sortRows(filterRows(rows, filter, confirmed), sort), [rows, filter, sort, confirmed])
   const grouped = sort === 'default'   // 정렬하면 재무제표 그룹 순서가 깨지므로 그룹 머리를 숨긴다
+  // 기준·전년 금액이 모두 0(또는 전년 없음)인데 아직 해당 없음이 아닌 줄 — 이 탭에서만
+  const zeroRows = quantApplies
+    ? rows.filter((a) => !a.not_applicable && a.current_amount === 0 && (a.prior_amount === 0 || a.prior_amount === null))
+    : []
+  const markZero = () => {
+    const reason = window.prompt(
+      `기준·전년 금액이 모두 0 인 계정 ${zeroRows.length}개를 '해당 없음'으로 지정합니다 — 판정에서 빠지고 이력에 남습니다.\n사유를 입력하세요(필수)`,
+      '기준·전년 금액 0 — 해당 거래 없음')
+    if (!reason?.trim()) return
+    write('post', `/${d.id}/accounts/not-applicable`, { account_ids: zeroRows.map((a) => a.id), value: true, reason: reason.trim() })
+  }
 
   return (
     <div className="space-y-2">
@@ -69,6 +80,12 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
           {(Object.keys(SORT_LABELS) as AccountSort[]).map((k) => <option key={k} value={k}>{SORT_LABELS[k]}</option>)}
         </select>
         <span className="text-muted-foreground">{shown.length} / {rows.length}개 표시</span>
+        {d.can_edit && zeroRows.length > 0 && (
+          <button type="button" onClick={markZero}
+            className="ml-auto rounded-md border px-3 py-1.5 text-xs hover:border-primary/40 hover:bg-accent">
+            금액 0 계정 {zeroRows.length}개 일괄 '해당 없음'
+          </button>
+        )}
         {(filter !== 'all' || sort !== 'default') && (
           <button type="button" className="text-xs text-primary underline-offset-2 hover:underline"
             onClick={() => { setFilter('all'); setSort('default') }}>초기화</button>
@@ -128,6 +145,19 @@ function AccountRow({
   const editable = d.can_edit
   const path = `/${d.id}/accounts/${a.id}`
   const [open, setOpen] = useState(false)
+  // 해당 없음 — 판정에서 빼는 것이라 사유를 받는다(이력에 남는다)
+  const toggleNa = () => {
+    if (a.not_applicable) {
+      if (window.confirm(`'${a.name}' 의 해당 없음을 해제할까요? 다시 판정 대상이 됩니다.`)) {
+        write('patch', path, { not_applicable: false })
+      }
+      return
+    }
+    const reason = window.prompt(`'${a.name}' 을(를) 해당 없음으로 지정합니다 — 판정에서 빠집니다. 사유를 입력하세요(필수)`,
+      a.current_amount === 0 ? '금액 0 — 해당 거래 없음' : '')
+    if (!reason?.trim()) return
+    write('patch', path, { not_applicable: true, na_reason: reason.trim() })
+  }
 
   const setManual = () => {
     const next = window.prompt(
@@ -154,8 +184,13 @@ function AccountRow({
           <td colSpan={99} className="px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">{a.group_label}</td>
         </tr>
       )}
-      <tr className="border-t align-top">
-        <td className="px-2 py-1 font-medium">{a.name}</td>
+      <tr className={cn('border-t align-top', a.not_applicable && 'bg-muted/30 text-muted-foreground')}>
+        <td className="px-2 py-1 font-medium">
+          {a.name}
+          {a.not_applicable && (
+            <span className="mt-0.5 block text-[11px] font-normal" title={a.na_reason ?? ''}>해당 없음 · {a.na_reason}</span>
+          )}
+        </td>
         {quantApplies && (
           <>
             <td className="px-1 py-1 text-right">
@@ -175,7 +210,7 @@ function AccountRow({
           return (
             <td key={f.value} className="px-0.5 py-1 text-center">
               <select
-                value={a.ratings[f.value] ?? ''} disabled={!editable}
+                value={a.ratings[f.value] ?? ''} disabled={!editable || !!a.not_applicable}
                 onChange={(e) => write('patch', path, { ratings: { [f.value]: e.target.value || null } })}
                 // 고정 높이 칸에 폼 기본 여백(위아래 0.5rem·오른쪽 2.5rem)이 붙으면 글자가 밀려 안 보인다 — 여백을 직접 준다
                 className={cn('h-7 w-full min-w-[2.6rem] rounded border bg-background bg-[length:0.9rem] bg-[position:right_0.15rem_center] py-0 pl-1.5 pr-4 text-xs font-semibold leading-none', originFieldClass(origin))}
@@ -214,9 +249,14 @@ function AccountRow({
                 {open ? '접기' : '전체 보기'}
               </button>
             )}
-            {editable && (
+            {editable && !a.not_applicable && (
               <button type="button" onClick={setManual} className="text-[11px] text-muted-foreground underline">
                 {a.manual_conclusion ? '수동 판정 변경' : '수동 판정'}
+              </button>
+            )}
+            {editable && (
+              <button type="button" onClick={toggleNa} className="text-[11px] text-muted-foreground underline">
+                {a.not_applicable ? '해당 없음 해제' : '해당 없음'}
               </button>
             )}
           </div>

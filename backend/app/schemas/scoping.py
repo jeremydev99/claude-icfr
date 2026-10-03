@@ -99,6 +99,15 @@ class AccountUpdate(BaseModel):
     qual_basis: str | None = None
     manual_conclusion: str | None = Field(None, pattern=_one_of(CONCLUSIONS))
     manual_reason: str | None = None
+    not_applicable: bool | None = None   # 해당 없음 — true 면 na_reason 필수
+    na_reason: str | None = None
+
+
+class NotApplicableBulk(BaseModel):
+    """여러 계정 해당 없음 지정·해제(금액 0 일괄 등). 지정 시 사유 필수."""
+    account_ids: list[UUID] = Field(min_length=1, max_length=500)
+    value: bool
+    reason: str | None = None
 
 
 class ConfirmRequest(BaseModel):
@@ -160,6 +169,8 @@ class AccountRead(BaseModel):
     qual_basis: str | None
     manual_conclusion: str | None
     manual_reason: str | None
+    not_applicable: bool = False
+    na_reason: str | None = None
     # 산출 (저장하지 않는다)
     quant: str | None           # Y / N / na(해당 없음) / null(미평가)
     qual_average: str | None

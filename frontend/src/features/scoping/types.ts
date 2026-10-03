@@ -81,6 +81,9 @@ export interface ScopingAccount {
   qual_basis: string | null
   manual_conclusion: 'Y' | 'N' | null
   manual_reason: string | null
+  /** 해당 없음 — 판정에서 빠짐(결론 'na'), 사유 필수 */
+  not_applicable?: boolean
+  na_reason?: string | null
   quant: Judgement
   qual_average: string | null
   /** (기준 − 전년) / |전년| — 비교용. 양적 판정에는 쓰지 않는다 */

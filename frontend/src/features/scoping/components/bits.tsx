@@ -123,7 +123,7 @@ export function changeText(v: string | null): string {
 export function JudgementBadge({ value }: { value: Judgement | undefined }) {
   if (value === 'Y') return <span className="rounded bg-red-50 px-1.5 text-xs font-semibold text-red-700">Y</span>
   if (value === 'N') return <span className="rounded bg-muted px-1.5 text-xs text-muted-foreground">N</span>
-  if (value === 'na') return <span className="text-xs text-muted-foreground" title="양적 판정 대상이 아닙니다(주석·현금흐름)">해당 없음</span>
+  if (value === 'na') return <span className="text-xs text-muted-foreground" title="판정 대상이 아닙니다 — 주석·현금흐름의 양적 판정이거나, 담당자가 '해당 없음'으로 지정한 계정">해당 없음</span>
   return <span className="rounded border border-dashed px-1 text-xs text-muted-foreground" title="입력이 모자라 판정할 수 없습니다">미평가</span>
 }
 

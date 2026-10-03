@@ -11,6 +11,9 @@ describe('filterRows', () => {
     expect(filterRows(rows, 'Y', false).map((x) => x.name)).toEqual(['나', '라'])
     expect(filterRows(rows, 'N', false).map((x) => x.name)).toEqual(['다'])
     expect(filterRows(rows, 'unevaluated', false).map((x) => x.name)).toEqual(['가'])
+    const na = [...rows, r('마', 0, 'na')]
+    expect(filterRows(na, 'na', false).map((x) => x.name)).toEqual(['마'])
+    expect(filterRows(na, 'unevaluated', false).map((x) => x.name)).toEqual(['가'])   // 해당 없음은 미평가가 아니다
   })
   it('확정 상태는 스냅샷 결론으로', () => {
     expect(filterRows([r('a', 1, 'N', { snapshot_final: 'Y' })], 'Y', true)).toHaveLength(1)

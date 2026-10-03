@@ -54,7 +54,7 @@ FIELD_LABELS = {
     "ratings": "질적 평가", "qual_basis": "질적 판단 근거", "manual_conclusion": "수동 판정", "manual_reason": "수동 판정 사유",
     "current_amount": "당기 금액", "prior_amount": "전기 금액", "base_amount": "기준값", "rate": "비율",
     "guide_low": "가이드 하한", "guide_high": "가이드 상한", "body": "문구", "amount": "금액", "reason": "사유",
-    "is_deleted": "삭제",
+    "is_deleted": "삭제", "not_applicable": "해당 없음", "na_reason": "해당 없음 사유",
 }
 
 

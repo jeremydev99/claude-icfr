@@ -181,3 +181,32 @@ def test_reload_from_fs_replaces_template_rows(client: TestClient) -> None:
     client.patch(f"/api/scoping/{d['id']}", headers=h, json={"rationale": "근거"})
     assert client.post(f"/api/scoping/{d['id']}/transition", headers=h, json={"to_status": "review"}).status_code == 200
     assert client.post(f"/api/scoping/{d['id']}/reload-from-fs", headers=h).status_code == 409
+
+
+# ── 해당 없음 (2026-10-03) ─────────────────────────────────
+
+def test_not_applicable_excludes_from_judgement_and_badges(client: TestClient) -> None:
+    h, _ = _tenant(client)
+    _fs_2025(client, h)
+    d = _create(client, h).json()
+    base = f"/api/scoping/{d['id']}"
+    note = next(a for a in d["accounts"] if a["statement_type"] == "NOTE" and a["badges"])
+    before = d["badge_count"]
+    # 사유 없이 지정 불가
+    assert client.patch(f"{base}/accounts/{note['id']}", headers=h, json={"not_applicable": True}).status_code == 422
+    d2 = client.patch(f"{base}/accounts/{note['id']}", headers=h,
+                      json={"not_applicable": True, "na_reason": "해당 거래 없음"}).json()
+    row = next(a for a in d2["accounts"] if a["id"] == note["id"])
+    assert row["not_applicable"] and row["final"] == "na" and row["quant"] == "na" and row["na_reason"] == "해당 거래 없음"
+    assert d2["badge_count"] == before - len(note["badges"])   # 그 줄의 템플릿 값은 세지 않는다
+    # 일괄 해제
+    d3 = client.post(f"{base}/accounts/not-applicable", headers=h,
+                     json={"account_ids": [note["id"]], "value": False}).json()
+    assert next(a for a in d3["accounts"] if a["id"] == note["id"])["not_applicable"] is False
+    assert d3["badge_count"] == before
+    # 일괄 지정은 사유 필수, 요약에 na 집계
+    assert client.post(f"{base}/accounts/not-applicable", headers=h,
+                       json={"account_ids": [note["id"]], "value": True}).status_code == 422
+    client.post(f"{base}/accounts/not-applicable", headers=h,
+                json={"account_ids": [note["id"]], "value": True, "reason": "금액 0"})
+    assert client.get("/api/scoping/summary", headers=h).json()["by_statement"]["NOTE"]["na"] == 1

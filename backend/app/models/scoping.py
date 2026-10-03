@@ -23,6 +23,7 @@ from uuid import UUID
 from sqlalchemy import (
     JSON,
     BigInteger,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -35,6 +36,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy import false as sa_false
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -354,6 +356,10 @@ class ScopingAccount(AuditedBase):
     # 수동 판정 — 사유 필수. 계산 결론은 따로 산출되므로 **둘 다 보존**된다
     manual_conclusion: Mapped[str | None] = mapped_column(String(1), nullable=True)
     manual_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 해당 없음(2026-10-03 마스터) — 금액 0 등 이 회사에 해당 거래가 없는 계정. 판정에서 빼고(결론 '해당 없음'),
+    # 그 줄의 템플릿 값은 '검토 안 한 값'으로 세지 않는다. 사유 필수(무엇을 왜 뺐는지가 감사 증적)
+    not_applicable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    na_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ScopingStatusHistory(AuditedBase):
