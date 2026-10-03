@@ -19,6 +19,9 @@ export default function WelcomeHero() {
   return (
     <section className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-card">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,hsl(var(--brand-from)/0.10),transparent_60%),radial-gradient(ellipse_at_bottom_right,hsl(var(--brand-to)/0.10),transparent_55%)]" />
+      {/* 배너 오른쪽 그림 — 왼쪽은 글자 자리라 그림이 오른쪽에 몰려 있다. 좁은 화면에서는 숨긴다 */}
+      <Illustration slot="dashboard-hero"
+        className="pointer-events-none absolute inset-y-0 right-0 hidden h-full w-[62%] object-cover object-right md:block [mask-image:linear-gradient(to_right,transparent,black_35%)]" />
       <div className="relative grid items-center gap-4 p-6 md:grid-cols-[1fr_auto] md:p-8">
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -44,7 +47,7 @@ export default function WelcomeHero() {
             ))}
           </div>
         </div>
-        <Illustration slot="dashboard-hero" className="hidden h-36 w-[300px] md:block lg:h-40 lg:w-[360px]" />
+        <div className="hidden md:block md:w-[220px] lg:w-[300px]" aria-hidden="true" />
       </div>
     </section>
   )

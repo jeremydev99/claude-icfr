@@ -25,7 +25,8 @@ export default function EmptyState({
   return (
     <div className={cn('flex flex-col items-center justify-center rounded-xl border border-dashed bg-card/60 text-center',
       compact ? 'gap-2 px-4 py-6' : 'gap-3 px-6 py-10', className)}>
-      <Illustration slot={slot} className={compact ? 'h-20 w-20' : 'h-32 w-32'} />
+      {/* 생성 배경이 완전한 흰색이 아니라 가장자리를 원형으로 사라지게 한다 — 카드 위에 사각 경계가 남지 않게 */}
+      <Illustration slot={slot} className={cn(compact ? 'h-24 w-24' : 'h-36 w-36', '[mask-image:radial-gradient(circle,black_48%,transparent_70%)]')} />
       <p className="text-[15px] font-semibold text-foreground">{title}</p>
       {description && <div className="max-w-md text-sm text-muted-foreground">{description}</div>}
       {action && <div className="mt-1">{action}</div>}

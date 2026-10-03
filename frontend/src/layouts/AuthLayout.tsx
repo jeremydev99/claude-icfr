@@ -26,7 +26,9 @@ export default function AuthLayout() {
           </div>
         </div>
         <div className="relative z-10 flex flex-1 items-center justify-center px-12">
-          <Illustration slot="login-hero" eager className="aspect-[4/5] w-full max-w-[420px] drop-shadow-2xl" />
+          {/* 그림 가장자리를 패널 남색으로 서서히 사라지게 — 사각 경계가 보이지 않게 */}
+          <Illustration slot="login-hero" eager
+            className="aspect-[4/5] w-full max-w-[440px] [mask-image:radial-gradient(ellipse_at_center,black_55%,transparent_78%)]" />
         </div>
         <div className="relative z-10 px-12 pb-12">
           <h2 className="text-[28px] font-bold leading-snug tracking-tight">

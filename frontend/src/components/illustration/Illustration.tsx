@@ -23,7 +23,7 @@ export default function Illustration({ slot, className, eager }: { slot: Illustr
         loading={eager ? 'eager' : 'lazy'}
         decoding="async"
         draggable={false}
-        className={cn('select-none object-contain', className)}
+        className={cn('select-none object-contain', !spec.dark && 'mix-blend-multiply', className)}
       />
     )
   }
