@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { ScopingAccount, ScopingDetail, ScopingMeta } from '../types'
+import { QUAL_SHORT, qualRuleText } from '../qualFactors.pure'
+import QualFactorGuide from './QualFactorGuide'
+import {
+  FILTER_LABELS, SORT_LABELS, filterRows, sortRows, type AccountFilter, type AccountSort,
+} from '../accountView.pure'
 import {
   AutoTextarea, CommitInput, ConfirmToggle, JudgementBadge, TemplateBadge, changeText, originFieldClass, parseWon,
 } from './bits'
@@ -25,6 +30,11 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
   const confirmed = d.status === 'confirmed'
   const policyLabel = `${d.policy.threshold} ${meta.qual_comparisons.find((o) => o.value === d.policy.comparison)?.label ?? ''}`
   const pending = rows.filter((a) => Object.values(a.badges).includes('template')).length
+  // 보기(필터·정렬) — 화면 상태로만. 저장하지 않으므로 새로고침하면 전체·원래 순서로 돌아간다
+  const [filter, setFilter] = useState<AccountFilter>('all')
+  const [sort, setSort] = useState<AccountSort>('default')
+  const shown = useMemo(() => sortRows(filterRows(rows, filter, confirmed), sort), [rows, filter, sort, confirmed])
+  const grouped = sort === 'default'   // 정렬하면 재무제표 그룹 순서가 깨지므로 그룹 머리를 숨긴다
 
   return (
     <div className="space-y-2">
@@ -47,6 +57,23 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
         </span>
       </div>
 
+      <QualFactorGuide factors={meta.qual_factors} rule={qualRuleText(d.policy)} />
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="font-medium">보기</span>
+        <select aria-label="계정 필터" value={filter} onChange={(e) => setFilter(e.target.value as AccountFilter)}
+          className="h-9 rounded-md border bg-background py-0 pl-3 pr-8 text-sm">
+          {(Object.keys(FILTER_LABELS) as AccountFilter[]).map((k) => <option key={k} value={k}>{FILTER_LABELS[k]}</option>)}
+        </select>
+        <select aria-label="정렬" value={sort} onChange={(e) => setSort(e.target.value as AccountSort)}
+          className="h-9 rounded-md border bg-background py-0 pl-3 pr-8 text-sm">
+          {(Object.keys(SORT_LABELS) as AccountSort[]).map((k) => <option key={k} value={k}>{SORT_LABELS[k]}</option>)}
+        </select>
+        <span className="text-muted-foreground">{shown.length} / {rows.length}개 표시</span>
+        {(filter !== 'all' || sort !== 'default') && (
+          <button type="button" className="text-xs text-primary underline-offset-2 hover:underline"
+            onClick={() => { setFilter('all'); setSort('default') }}>초기화</button>
+        )}
+      </div>
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full text-xs">
           <thead className="bg-muted/40 text-muted-foreground">
@@ -61,7 +88,10 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
               )}
               <th className="px-1">양적</th>
               {meta.qual_factors.map((f, i) => (
-                <th key={f.value} className="w-10 px-0.5" title={f.label}>{i + 1}</th>
+                <th key={f.value} className="w-10 px-0.5 align-bottom leading-tight" title={`${i + 1}. ${f.label}`}>
+                  <span className="block text-sm font-bold text-foreground">{i + 1}</span>
+                  <span className="block whitespace-nowrap text-[10px] font-medium">{QUAL_SHORT[f.value] ?? ''}</span>
+                </th>
               ))}
               <th className="px-1">평균</th>
               <th className="px-1">질적</th>
@@ -71,21 +101,15 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
             </tr>
           </thead>
           <tbody>
-            {rows.map((a, idx) => (
+            {shown.length === 0 && (
+              <tr><td colSpan={99} className="px-3 py-6 text-center text-sm text-muted-foreground">조건에 맞는 계정이 없습니다</td></tr>
+            )}
+            {shown.map((a, idx) => (
               <AccountRow key={a.id} a={a} d={d} meta={meta} write={write} quantApplies={quantApplies}
-                showGroup={idx === 0 || rows[idx - 1].group_label !== a.group_label} confirmed={confirmed} />
+                showGroup={grouped && (idx === 0 || shown[idx - 1].group_label !== a.group_label)} confirmed={confirmed} />
             ))}
           </tbody>
         </table>
-      </div>
-      {/* 1~10 이 무엇인지 표 아래에 늘 보이게 — 머리글 툴팁만으로는 발견되지 않는다 */}
-      <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
-        <p className="mb-1 font-semibold text-foreground">질적 요소 (열 1~10) — 각 요소의 위험을 H(높음)·M(중간)·L(낮음)으로 평가, 평균이 기준 이상이면 질적 유의</p>
-        <ol className="grid gap-x-4 gap-y-0.5 text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
-          {meta.qual_factors.map((f, i) => (
-            <li key={f.value}><span className="font-semibold text-foreground">{i + 1}</span> {f.label}</li>
-          ))}
-        </ol>
       </div>
       <p className="text-xs text-muted-foreground">
         점선 칸은 아직 검토하지 않은 템플릿 값, 초록 칸은 검토하고 동의한 값입니다.
