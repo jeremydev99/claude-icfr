@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils'
 import OpenProposalsCard from '@/features/proposals/OpenProposalsCard'
 import EmptyState from '@/components/illustration/EmptyState'
 import { useEffect, useMemo, useState } from 'react'
@@ -19,7 +20,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAuthStore } from '@/features/auth/store'
 import { isIcfrManagerForUser } from '@/features/auth/permissions.pure'
 import { errorDetail, errorValidation, useFsMeta, useFsStatement, useFsStatements, useFsWrite } from '../api/useFs'
-import { UNIT_LABEL, allExpanded, errorsByAccount, formatAmount, initialExpanded, pathTo } from '../fsTree.pure'
+import { UNIT_LABEL, allExpanded, errorsByAccount, formatAmount, initialExpanded, pathTo, usesStatementOrder } from '../fsTree.pure'
 import StatementTree from '../components/StatementTree'
 import ValidationPanel from '../components/ValidationPanel'
 import SuspensePanel from '../components/SuspensePanel'
@@ -150,6 +151,10 @@ function StatementView({ detail, isManager }: { detail: StatementDetail; isManag
     setFailed(null)
   }, [detail.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 손익·현금흐름은 공시 순서가 기본(매출부터). 합계 구조는 검증할 때 — 화면 상태만, 저장하지 않는다
+  const canOrder = usesStatementOrder(detail.statement_type)
+  const [order, setOrder] = useState<'statement' | 'tree'>('statement')
+
   const select = (accountId: string) => {
     const path = pathTo(detail.tree, accountId)
     if (path) setExpanded((prev) => new Set([...prev, ...path]))
@@ -192,13 +197,25 @@ function StatementView({ detail, isManager }: { detail: StatementDetail; isManag
       <Card>
         <CardHeader className="flex-row items-center justify-between py-3">
           <CardTitle className="text-sm">계정별 금액</CardTitle>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {canOrder && (
+              <div className="flex rounded-md border p-0.5 text-xs" role="group" aria-label="보기 순서">
+                {([['statement', '공시 순서'], ['tree', '합계 구조']] as const).map(([v, label]) => (
+                  <button key={v} type="button" onClick={() => setOrder(v)} aria-pressed={order === v}
+                    title={v === 'statement' ? '매출부터 위에서 아래로 — 공시 재무제표와 같은 순서' : '부모 = 하위 합계 — 금액 검증용'}
+                    className={cn('rounded px-2.5 py-1 transition-colors', order === v ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             <Button size="sm" variant="ghost" onClick={() => setExpanded(allExpanded(detail.tree))}>모두 펼치기</Button>
             <Button size="sm" variant="ghost" onClick={() => setExpanded(new Set())}>모두 접기</Button>
           </div>
         </CardHeader>
         <CardContent>
-          <StatementTree tree={detail.tree} expanded={expanded} onToggle={toggle} errors={errors} highlightId={highlight} />
+          <StatementTree tree={detail.tree} expanded={expanded} onToggle={toggle} errors={errors} highlightId={highlight}
+            order={canOrder ? order : 'tree'} />
         </CardContent>
       </Card>
 

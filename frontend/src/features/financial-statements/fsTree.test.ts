@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allExpanded, errorsByAccount, flattenTree, formatAmount, initialExpanded, pathTo, ruleLabel } from './fsTree.pure'
+import { allExpanded, errorsByAccount, flattenStatementOrder, flattenTree, formatAmount, initialExpanded, pathTo, ruleLabel } from './fsTree.pure'
 import type { AmountNode } from './types'
 
 const node = (id: string, children: AmountNode[] = [], extra: Partial<AmountNode> = {}): AmountNode => ({
@@ -65,5 +65,36 @@ describe('reclass targets', () => {
     const t = [node('P', [node('a'), node('b'), node('s', [], { raw_meta: { suspense: true } })]), node('Q')]
     expect(reclassTargets(t, 'P').map((n) => n.id)).toEqual(['a', 'b'])
     expect(reclassTargets(t, 'none')).toEqual([])
+  })
+})
+
+describe('flattenStatementOrder — 공시 순서', () => {
+  const n = (id: string, children: AmountNode[] = [], rollup_sign = 1): AmountNode => ({
+    id, code: null, name: id, statement_type: 'PL', section: 'pl', is_subtotal: children.length > 0, rollup_sign,
+    sort_order: 0, depth: 0, has_row: true, amount: '1', raw_row_no: null, raw_label: null, raw_indent: null,
+    raw_value: null, raw_meta: null, children,
+  })
+  const pl = [n('총포괄', [
+    n('순이익', [
+      n('세전', [n('영업이익', [n('영업수익', [n('수입수수료'), n('용역매출')]), n('영업비용', [n('급여')], -1)]), n('금융손익')]),
+      n('법인세', [n('법인세등')], -1),
+    ]),
+    n('기타포괄', [n('재분류안됨')]),
+  ])]
+
+  it('매출부터 위→아래, 결과 행은 구성 항목 아래', () => {
+    const rows = flattenStatementOrder(pl, new Set(['영업수익']))
+    expect(rows.map((r) => r.node.id)).toEqual([
+      '영업수익', '수입수수료', '용역매출', '영업비용', '영업이익', '금융손익', '세전', '법인세', '순이익', '기타포괄', '총포괄',
+    ])
+    expect(rows.filter((r) => r.isResult).map((r) => r.node.id)).toEqual(['영업이익', '세전', '순이익', '총포괄'])
+    expect(rows.find((r) => r.node.id === '수입수수료')?.depth).toBe(1)
+    expect(rows.find((r) => r.node.id === '총포괄')?.depth).toBe(0)
+  })
+
+  it('빼는 하위가 없는 트리(재무상태표 등)는 기존 순서와 같다', () => {
+    const bs = [n('자산', [n('유동', [n('현금')]), n('비유동')])]
+    const all = new Set(['자산', '유동'])
+    expect(flattenStatementOrder(bs, all).map((r) => r.node.id)).toEqual(flattenTree(bs, all).map((r) => r.node.id))
   })
 })

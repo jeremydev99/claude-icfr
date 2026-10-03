@@ -118,3 +118,40 @@ export function findNode(nodes: AmountNode[], id: string | null | undefined): Am
 export function reclassTargets(nodes: AmountNode[], parentId: string | null | undefined): AmountNode[] {
   return (findNode(nodes, parentId)?.children ?? []).filter((c) => !isSuspenseNode(c))
 }
+
+/**
+ * 결과 행인가 — 하위를 더하고 **빼서** 나오는 줄(영업이익 = 영업수익 − 영업비용), 또는 그런 줄을 품은 줄
+ * (법인세차감전순이익·당기순이익·총포괄이익). 공시 순서 보기에서 구성 항목 **아래**에 놓는다.
+ */
+export function isResultNode(n: AmountNode): boolean {
+  if (!n.children.length) return false
+  return n.children.some((c) => c.rollup_sign < 0 || isResultNode(c))
+}
+
+export interface StatementRow extends FlatRow {
+  /** 결과 행(영업이익·당기순이익 등) — 굵게, 위 구분선 */
+  isResult: boolean
+}
+
+/**
+ * 공시 순서로 편다(K-IFRS 1001 손익계산서 — 매출부터 위에서 아래로). 저장 구조(합계 트리)는 그대로 두고 보기만 바꾼다.
+ * - 결과 행: 구성 항목을 **같은 깊이로 먼저** 내놓고 자신은 그 뒤(후위 순회). 접기 없음.
+ * - 묶음 행(영업수익·영업비용 등, 더하기만): 머리 → 펼쳤으면 하위 항목을 한 단계 들여서.
+ */
+export function flattenStatementOrder(nodes: AmountNode[], expanded: Set<string>, depth = 0, out: StatementRow[] = []): StatementRow[] {
+  for (const n of nodes) {
+    if (isResultNode(n)) {
+      flattenStatementOrder(n.children, expanded, depth, out)
+      out.push({ node: n, depth, hasChildren: false, expanded: false, isSuspense: isSuspenseNode(n), isResult: true })
+      continue
+    }
+    const hasChildren = n.children.length > 0
+    const open = expanded.has(n.id)
+    out.push({ node: n, depth, hasChildren, expanded: open, isSuspense: isSuspenseNode(n), isResult: false })
+    if (hasChildren && open) flattenStatementOrder(n.children, expanded, depth + 1, out)
+  }
+  return out
+}
+
+/** 공시 순서 보기를 쓰는 재무제표 — 사다리 구조가 있는 손익(포괄손익 포함)·현금흐름 */
+export const usesStatementOrder = (statementType: string) => statementType === 'PL' || statementType === 'CF'
