@@ -1,3 +1,4 @@
+import OpenProposalsCard from '@/features/proposals/OpenProposalsCard'
 import EmptyState from '@/components/illustration/EmptyState'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -88,6 +89,7 @@ export default function FinancialStatementsPage() {
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
+      <OpenProposalsCard kind="fs_template_link" />
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold tracking-tight">재무제표</h1>
         <select value={year ?? ''} onChange={(e) => setYear(Number(e.target.value))}
