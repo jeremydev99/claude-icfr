@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { Check, ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ScopingAccount, ScopingDetail, ScopingMeta } from '../types'
 import { QUAL_SHORT, qualRuleText } from '../qualFactors.pure'
@@ -6,6 +8,7 @@ import QualFactorGuide from './QualFactorGuide'
 import {
   FILTER_LABELS, SORT_LABELS, filterRows, sortRows, type AccountFilter, type AccountSort,
 } from '../accountView.pure'
+import { groupRows, groupStatus, type GroupStatus } from '../accountGroups.pure'
 import {
   AutoTextarea, CommitInput, ConfirmToggle, JudgementBadge, TemplateBadge, changeText, originFieldClass, parseWon,
 } from './bits'
@@ -34,7 +37,39 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
   const [filter, setFilter] = useState<AccountFilter>('all')
   const [sort, setSort] = useState<AccountSort>('default')
   const shown = useMemo(() => sortRows(filterRows(rows, filter, confirmed), sort), [rows, filter, sort, confirmed])
-  const grouped = sort === 'default'   // 정렬하면 재무제표 그룹 순서가 깨지므로 그룹 머리를 숨긴다
+  const grouped = sort === 'default'   // 정렬하면 재무제표 그룹 순서가 깨지므로 묶음 없이 평평하게
+  // ── 묶음 카드(2026-10-03) — 상태는 필터와 무관하게 탭 전체 기준. 접힘은 화면 상태(새로고침 시 다시 '완료만 접힘')
+  const statusByLabel = useMemo(() => {
+    const m = new Map<string, GroupStatus>()
+    for (const g of groupRows(rows, confirmed)) m.set(g.label, g.status)
+    return m
+  }, [rows, confirmed])
+  const groups = useMemo(() => (grouped ? groupRows(shown, confirmed) : []), [grouped, shown, confirmed])
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const prevComplete = useRef<Record<string, boolean>>({})
+  useEffect(() => {
+    const updates: Record<string, boolean> = {}
+    const done: string[] = []
+    statusByLabel.forEach((st, label) => {
+      const key = `${tab}:${label}`
+      const before = prevComplete.current[key]
+      if (before === undefined) {
+        if (!(key in collapsed)) updates[key] = st.complete   // 처음 볼 때: 완료된 묶음만 접는다
+      } else if (!before && st.complete) {
+        updates[key] = true                                     // 방금 완료 → 접고 알린다
+        done.push(label)
+      }
+      prevComplete.current[key] = st.complete
+    })
+    if (Object.keys(updates).length) setCollapsed((c) => ({ ...c, ...updates }))
+    done.forEach((label) => toast.success(`'${label}' 묶음 평가를 마쳤습니다 — 접어 두었습니다`))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusByLabel, tab])
+  const isCollapsed = (label: string) => !!collapsed[`${tab}:${label}`]
+  const setAll = (v: boolean) =>
+    setCollapsed((c) => ({ ...c, ...Object.fromEntries([...statusByLabel.keys()].map((l) => [`${tab}:${l}`, v])) }))
+  const completeGroups = [...statusByLabel.values()].filter((g) => g.complete).length
+  const tabStatus = groupStatus(rows, confirmed)
   // 기준·전년 금액이 모두 0(또는 전년 없음)인데 아직 해당 없음이 아닌 줄 — 이 탭에서만
   const zeroRows = quantApplies
     ? rows.filter((a) => !a.not_applicable && a.current_amount === 0 && (a.prior_amount === 0 || a.prior_amount === null))
@@ -80,6 +115,15 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
           {(Object.keys(SORT_LABELS) as AccountSort[]).map((k) => <option key={k} value={k}>{SORT_LABELS[k]}</option>)}
         </select>
         <span className="text-muted-foreground">{shown.length} / {rows.length}개 표시</span>
+        {grouped && (
+          <>
+            <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-medium text-accent-foreground">
+              묶음 완료 {completeGroups}/{statusByLabel.size} · 계정 판정 {tabStatus.decided}/{tabStatus.total}
+            </span>
+            <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setAll(false)}>모두 펼치기</button>
+            <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setAll(true)}>모두 접기</button>
+          </>
+        )}
         {d.can_edit && zeroRows.length > 0 && (
           <button type="button" onClick={markZero}
             className="ml-auto rounded-md border px-3 py-1.5 text-xs hover:border-primary/40 hover:bg-accent">
@@ -98,21 +142,21 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
               <th className="min-w-[9rem] px-2 py-1 text-left">계정</th>
               {quantApplies && (
                 <>
-                  <th className="px-1 text-right">기준 금액<br />(FY{d.base_fiscal_year} 결산)</th>
-                  <th className="px-1 text-right">전년 금액<br />(FY{d.base_fiscal_year - 1})</th>
-                  <th className="px-1 text-right" title="(기준 − 전년) / |전년| — 비교용, 양적 판정에 쓰지 않습니다">증감률</th>
+                  <th className="min-w-[8.75rem] px-1 text-right">기준 금액<br />(FY{d.base_fiscal_year} 결산)</th>
+                  <th className="min-w-[8.75rem] px-1 text-right">전년 금액<br />(FY{d.base_fiscal_year - 1})</th>
+                  <th className="min-w-[4rem] px-1 text-right" title="(기준 − 전년) / |전년| — 비교용, 양적 판정에 쓰지 않습니다">증감률</th>
                 </>
               )}
-              <th className="px-1">양적</th>
+              <th className="min-w-[3.5rem] px-1">양적</th>
               {meta.qual_factors.map((f, i) => (
-                <th key={f.value} className="w-10 px-0.5 align-bottom leading-tight" title={`${i + 1}. ${f.label}`}>
+                <th key={f.value} className="w-10 min-w-[2.9rem] px-0.5 align-bottom leading-tight" title={`${i + 1}. ${f.label}`}>
                   <span className="block text-sm font-bold text-foreground">{i + 1}</span>
                   <span className="block whitespace-nowrap text-[10px] font-medium">{QUAL_SHORT[f.value] ?? ''}</span>
                 </th>
               ))}
-              <th className="px-1">평균</th>
-              <th className="px-1">질적</th>
-              <th className="px-1">결론</th>
+              <th className="min-w-[3rem] px-1">평균</th>
+              <th className="min-w-[3.5rem] px-1">질적</th>
+              <th className="min-w-[3.5rem] px-1">결론</th>
               <th className="min-w-[22rem] px-2 text-left">판단 근거 · 수동 판정</th>
               <th className="px-1">검토</th>
             </tr>
@@ -121,9 +165,23 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
             {shown.length === 0 && (
               <tr><td colSpan={99} className="px-3 py-6 text-center text-sm text-muted-foreground">조건에 맞는 계정이 없습니다</td></tr>
             )}
-            {shown.map((a, idx) => (
+            {grouped ? groups.map((g, gi) => {
+              const st = statusByLabel.get(g.label) ?? g.status
+              const closed = isCollapsed(g.label)
+              return (
+                <Fragment key={g.key}>
+                  {gi > 0 && <tr aria-hidden="true"><td colSpan={99} className="h-3 border-0 bg-background p-0" /></tr>}
+                  <GroupHeader label={g.label} st={st} closed={closed}
+                    onToggle={() => setCollapsed((c) => ({ ...c, [`${tab}:${g.label}`]: !closed }))} />
+                  {!closed && g.rows.map((a) => (
+                    <AccountRow key={a.id} a={a} d={d} meta={meta} write={write} quantApplies={quantApplies}
+                      showGroup={false} confirmed={confirmed} />
+                  ))}
+                </Fragment>
+              )
+            }) : shown.map((a) => (
               <AccountRow key={a.id} a={a} d={d} meta={meta} write={write} quantApplies={quantApplies}
-                showGroup={grouped && (idx === 0 || shown[idx - 1].group_label !== a.group_label)} confirmed={confirmed} />
+                showGroup={false} confirmed={confirmed} />
             ))}
           </tbody>
         </table>
@@ -133,6 +191,53 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
         {confirmed && ' 확정 상태에서는 결론 칸이 확정 당시 판단(스냅샷)을 보여줍니다.'}
       </p>
     </div>
+  )
+}
+
+/** 묶음 카드 머리 — 이름·계정 수·진행 막대·상태별 건수. 누르면 접고 편다 */
+function GroupHeader({ label, st, closed, onToggle }: { label: string; st: GroupStatus; closed: boolean; onToggle: () => void }) {
+  return (
+    <tr className={cn('cursor-pointer select-none border-t-2', st.complete ? 'border-success/40 bg-success/5' : 'border-primary/30 bg-accent/60')}
+      onClick={onToggle}>
+      <td colSpan={99} className="px-3 py-2">
+        {/* 표가 가로로 넓어도 머리 내용은 보이는 폭 안에 — 왼쪽에 붙여 둔다 */}
+        <div className="sticky left-3 flex w-max max-w-[calc(100vw-22rem)] flex-wrap items-center gap-x-4 gap-y-1.5">
+          <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+            {closed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {label}
+            <span className="font-normal text-muted-foreground">· {st.total}개</span>
+            {st.complete && <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-xs font-semibold text-success"><Check className="h-3.5 w-3.5" />완료</span>}
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="h-2 w-36 overflow-hidden rounded-full bg-muted">
+              <span className={cn('block h-full rounded-full', st.complete ? 'bg-success' : 'bg-primary')} style={{ width: `${st.percent}%` }} />
+            </span>
+            <span className="w-28 text-xs tabular-nums text-muted-foreground">판정 {st.decided}/{st.total} ({st.percent}%)</span>
+          </span>
+          <span className="flex flex-wrap items-center gap-1.5 text-xs">
+            <Chip tone="y" n={st.Y} label="유의 Y" />
+            <Chip tone="n" n={st.N} label="비유의 N" />
+            <Chip tone="na" n={st.na} label="해당 없음" />
+            <Chip tone="warn" n={st.unevaluated} label="미평가" />
+            <Chip tone="warn" n={st.pendingRows} label="검토 안 한 값" />
+          </span>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function Chip({ tone, n, label }: { tone: 'y' | 'n' | 'na' | 'warn'; n: number; label: string }) {
+  if (n === 0 && (tone === 'warn' || tone === 'na')) return null
+  return (
+    <span className={cn('rounded-full border px-2 py-0.5 font-medium',
+      tone === 'y' && n > 0 && 'border-red-200 bg-red-50 text-red-700',
+      tone === 'y' && n === 0 && 'border-border bg-background text-muted-foreground',
+      tone === 'n' && 'border-border bg-background text-muted-foreground',
+      tone === 'na' && 'border-border bg-muted text-muted-foreground',
+      tone === 'warn' && 'border-warning/40 bg-warning/10 text-warning')}>
+      {label} {n}
+    </span>
   )
 }
 
