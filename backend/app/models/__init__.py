@@ -24,6 +24,7 @@ from app.models.help_text import HelpText  # noqa: F401
 from app.models.iuc import InformationItem  # noqa: F401
 from app.models.login_event import LoginEvent  # noqa: F401
 from app.models.org import Department, UserDepartment  # noqa: F401
+from app.models.proposal import Proposal, ProposalItem  # noqa: F401
 from app.models.rcm import (  # noqa: F401
     Control,
     ControlAssertion,

@@ -14,8 +14,10 @@ from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.minio_client import get_object_stream
 from app.models.governance import GovernanceFile
+from app.models.proposal import P_PENDING_REVIEW, P_REVIEWED, Proposal
 from app.models.scoping import STATUS_CONFIRMED, STATUS_REVIEW, Scoping
 from app.services import approval
+from app.services import proposals as proposal_svc
 
 router = APIRouter(prefix="/api/governance", tags=["governance"])
 
@@ -50,6 +52,15 @@ def inbox(user: CurrentUser, db: Session = Depends(get_db)) -> list[InboxItem]:
             if flag:
                 out.append(InboxItem(entity_type="scoping", entity_id=s.id, title=title, action=action,
                                      label=label, path="/scoping"))
+    for p in db.query(Proposal).filter(Proposal.is_deleted == False,  # noqa: E712
+                                       Proposal.status.in_([P_PENDING_REVIEW, P_REVIEWED])).all():
+        c = proposal_svc.can(db, p, user.id)
+        if c.decide or c.review_done:
+            out.append(InboxItem(entity_type="proposal", entity_id=p.id, title=p.title, action="proposal_review",
+                                 label="1차 승인(항목별 검토)", path=f"/proposals/{p.id}"))
+        elif c.approve:
+            out.append(InboxItem(entity_type="proposal", entity_id=p.id, title=p.title, action="proposal_approve",
+                                 label="2차 승인", path=f"/proposals/{p.id}"))
     return out
 
 

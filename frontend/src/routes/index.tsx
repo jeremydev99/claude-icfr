@@ -1,3 +1,4 @@
+import ProposalPage from '@/features/proposals/ProposalPage'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import AuthLayout from '@/layouts/AuthLayout'
 import AppLayout from '@/layouts/AppLayout'
@@ -54,6 +55,7 @@ export const router = createBrowserRouter([
       { path: 'admin/role-assignments', element: <RoleAssignmentsPage /> },
       { path: 'admin/policies', element: <PoliciesPage /> },
       { path: 'admin/fiscal-year', element: <FiscalYearPage /> },
+      { path: 'proposals/:id', element: <ProposalPage /> },
       { path: '*', element: <Navigate to="/dashboard" replace /> },
     ],
   },

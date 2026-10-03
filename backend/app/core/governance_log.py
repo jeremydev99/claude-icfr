@@ -178,9 +178,10 @@ def _log_governed_changes(session: Session, flush_context, instances) -> None:
 
 
 def record(db: Session, entity_id, action: str, *, version: int | None, target: str | None = None,
-           reason: str | None = None, before: dict | None = None, after: dict | None = None) -> GovernanceEvent:
-    """상태 전이 등 API 가 직접 남기는 이력(사유 포함)."""
-    ev = GovernanceEvent(entity_type=ENTITY_SCOPING, entity_id=entity_id, action=action, target=target,
+           reason: str | None = None, before: dict | None = None, after: dict | None = None,
+           entity_type: str = ENTITY_SCOPING) -> GovernanceEvent:
+    """상태 전이 등 API 가 직접 남기는 이력(사유 포함). 문서 종류는 `entity_type`(기본 스코핑)."""
+    ev = GovernanceEvent(entity_type=entity_type, entity_id=entity_id, action=action, target=target,
                          actor_id=_actor_uuid(), reason=reason, before=_json(before) if before else None,
                          after=_json(after) if after else None, version=version)
     db.add(ev)
