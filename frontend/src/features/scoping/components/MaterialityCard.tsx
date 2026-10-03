@@ -193,7 +193,7 @@ export default function MaterialityCard({ d, meta, write }: { d: ScopingDetail; 
               <TemplateBadge origin={d.scoping_badges.qual_threshold} />
               <select value={d.policy.comparison} disabled={!editable}
                 onChange={(e) => write('patch', `/${d.id}`, { qual_comparison: e.target.value })}
-                className="h-7 rounded border bg-background px-1 text-xs">
+                className="h-7 rounded border bg-background py-0 pl-1.5 pr-6 text-xs leading-none">
                 {meta.qual_comparisons.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
               <TemplateBadge origin={d.scoping_badges.qual_comparison} />

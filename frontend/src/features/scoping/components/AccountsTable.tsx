@@ -78,9 +78,17 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
           </tbody>
         </table>
       </div>
+      {/* 1~10 이 무엇인지 표 아래에 늘 보이게 — 머리글 툴팁만으로는 발견되지 않는다 */}
+      <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
+        <p className="mb-1 font-semibold text-foreground">질적 요소 (열 1~10) — 각 요소의 위험을 H(높음)·M(중간)·L(낮음)으로 평가, 평균이 기준 이상이면 질적 유의</p>
+        <ol className="grid gap-x-4 gap-y-0.5 text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
+          {meta.qual_factors.map((f, i) => (
+            <li key={f.value}><span className="font-semibold text-foreground">{i + 1}</span> {f.label}</li>
+          ))}
+        </ol>
+      </div>
       <p className="text-xs text-muted-foreground">
-        열 번호는 질적 요소 순서입니다 — 머리글에 마우스를 올리면 요소 이름이 보입니다.
-        점선 하늘색 칸은 아직 검토하지 않은 템플릿 값, 초록 칸은 검토하고 동의한 값입니다.
+        점선 칸은 아직 검토하지 않은 템플릿 값, 초록 칸은 검토하고 동의한 값입니다.
         {confirmed && ' 확정 상태에서는 결론 칸이 확정 당시 판단(스냅샷)을 보여줍니다.'}
       </p>
     </div>
@@ -145,7 +153,8 @@ function AccountRow({
               <select
                 value={a.ratings[f.value] ?? ''} disabled={!editable}
                 onChange={(e) => write('patch', path, { ratings: { [f.value]: e.target.value || null } })}
-                className={cn('h-6 rounded border bg-background text-[11px]', originFieldClass(origin))}
+                // 고정 높이 칸에 폼 기본 여백(위아래 0.5rem·오른쪽 2.5rem)이 붙으면 글자가 밀려 안 보인다 — 여백을 직접 준다
+                className={cn('h-7 w-full min-w-[2.6rem] rounded border bg-background bg-[length:0.9rem] bg-[position:right_0.15rem_center] py-0 pl-1.5 pr-4 text-xs font-semibold leading-none', originFieldClass(origin))}
                 title={`${f.label}${origin === 'template' ? ' · 템플릿 값' : origin === 'confirmed' ? ' · 확인됨' : ''}`}
               >
                 <option value="">—</option>
