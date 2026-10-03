@@ -1,3 +1,4 @@
+import type { GovernanceInfo } from '@/features/governance/types'
 // 스코핑 도메인 타입 (6-1). 백엔드 `schemas/scoping.py` 와 1:1.
 //
 // **선택지·가이드 범위는 여기 두지 않는다** — `GET /api/scoping/meta` 가 준다(13.9-40).
@@ -136,6 +137,8 @@ export interface ScopingDetail {
   review_evidence_ref: string | null
   history: HistoryItem[]
   can_edit: boolean
+  /** 검토·승인 거버넌스(ADR-0038) — 결재선·버튼 판정은 이것만 본다 */
+  governance: GovernanceInfo | null
 }
 
 export interface ScopingListItem {

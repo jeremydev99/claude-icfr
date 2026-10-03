@@ -141,7 +141,13 @@ ROLE_EXTERNAL_AUDITOR = "external_auditor"
 ROLE_CEO = "ceo"
 ROLE_AUDITOR = "auditor"
 ROLE_SYS_ADMIN = "sys_admin"
+# ── 관리자 4단계 (ADR-0038 §2.1) — 1 일반관리자 · 2 책임관리자 · 3 마스터관리자(= icfr_manager) · 4 시스템관리자(sys_admin)
+# 1~3 은 한 사람에 하나만(중복 배정 409), 4 는 1~3 중 하나와 겸직 가능. 단계 숫자는 권한 판정에만 쓴다
+ROLE_ICFR_STAFF = "icfr_staff"
+ROLE_ICFR_LEAD = "icfr_lead"
+TIER_ROLES = {ROLE_ICFR_STAFF: 1, ROLE_ICFR_LEAD: 2, ROLE_ICFR_MANAGER: 3}
 TENANT_ROLES = (
+    ROLE_ICFR_STAFF, ROLE_ICFR_LEAD,
     ROLE_ICFR_MANAGER, ROLE_CEO, ROLE_AUDITOR, ROLE_EXTERNAL_AUDITOR, ROLE_SYS_ADMIN,
 )
 

@@ -3,6 +3,8 @@ import type { UserProfile } from './store'
 
 /** ADR-0031 §2.1 테넌트 역할 5종 중 판정에 쓰는 값. 목록 전체가 필요해지면 그때 넓힌다. */
 export const ROLE_ICFR_MANAGER = 'icfr_manager'
+/** 관리자 1~3단계(ADR-0038) — 일반·책임·마스터. 작성·검토 요청은 이 중 하나면 된다 */
+export const TIER_ROLES = ['icfr_staff', 'icfr_lead', ROLE_ICFR_MANAGER] as const
 
 /**
  * 제도 책임자인가 — 정책 변경·역할 배정 메뉴의 노출 판단.
@@ -17,4 +19,9 @@ export const ROLE_ICFR_MANAGER = 'icfr_manager'
  */
 export function isIcfrManagerForUser(user: UserProfile | null | undefined): boolean {
   return user?.tenant_roles?.includes(ROLE_ICFR_MANAGER) ?? false
+}
+
+/** 내부회계 관리자(일반·책임·마스터)인가 — 스코핑 작성 메뉴 노출. 최종 판정은 서버(`require_icfr_staff`). */
+export function isIcfrStaffForUser(user: UserProfile | null | undefined): boolean {
+  return TIER_ROLES.some((r) => user?.tenant_roles?.includes(r)) ?? false
 }

@@ -22,6 +22,9 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # 두 리스너는 서로 다른 컬럼만 건드려 실행 순서가 결과에 영향을 주지 않는다
 # (tenant_context 는 다른 모듈이 먼저 import 할 수 있어 순서를 여기서 보장하지 않는다).
 import app.core.audit_context  # noqa: E402,F401
+
+# - governance_log: 거버넌스 문서 값 변경·항목 확인 이력 자동 기록 (ADR-0038). 테넌트·행위자를 직접 찍으므로 순서 무관
+import app.core.governance_log  # noqa: E402,F401
 import app.core.tenant_context  # noqa: E402,F401
 
 

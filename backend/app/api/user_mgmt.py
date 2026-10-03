@@ -9,6 +9,7 @@ from app.core.permissions import require_role_assigner
 from app.core.security import hash_password
 from app.core.tenant_context import get_active_tenant
 from app.models.login_event import LoginEvent
+from app.models.role_assignment import TIER_ROLES
 from app.models.tenant import UserTenantAccess
 from app.models.user import User
 from app.models.user_mgmt import UserRole
@@ -183,11 +184,30 @@ def list_roles(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Se
     return {"items": [UserRoleRead.model_validate(i) for i in items], "total": total, "skip": skip, "limit": limit}
 
 
+def _assert_single_tier(db: Session, user_id, role_name: str, exclude_id=None) -> None:
+    """관리자 1~3단계(일반·책임·마스터)는 한 사람에 하나만 (ADR-0038 §2.1). 4단계(sys_admin)는 겸직 가능.
+
+    한 사람이 둘을 가지면 "작성자 ≠ 승인자"가 형식만 남는다. 단계를 바꾸려면 기존 단계를 지우고 새로 배정한다.
+    """
+    if role_name not in TIER_ROLES:
+        return
+    q = db.query(UserRole).filter(UserRole.user_id == user_id, UserRole.role_name.in_(list(TIER_ROLES)),
+                                  UserRole.is_deleted == False)  # noqa: E712
+    if exclude_id is not None:
+        q = q.filter(UserRole.id != exclude_id)
+    other = q.first()
+    if other is not None and other.role_name != role_name:
+        raise HTTPException(status_code=409, detail=(
+            "관리자 단계(일반·책임·마스터)는 한 사람에 하나만 배정할 수 있습니다 — "
+            "기존 단계를 해제한 뒤 배정하세요"))
+
+
 @router.post("/roles", status_code=status.HTTP_201_CREATED, response_model=UserRoleRead)
 def create_role(body: UserRoleCreate, user: User = Depends(require_role_assigner),
                 db: Session = Depends(get_db)) -> UserRole:
     """역할 배정. 허용 값은 스키마가 막고(422), 중복은 여기서 막는다(409)."""
     _assert_no_active_duplicate(db, body.user_id, body.role_name)
+    _assert_single_tier(db, body.user_id, body.role_name)
     obj = UserRole(**body.model_dump())
     db.add(obj)
     db.commit()
@@ -212,6 +232,7 @@ def update_role(role_id: UUID, body: UserRoleUpdate, user: User = Depends(requir
     changes = body.model_dump(exclude_none=True)
     if "role_name" in changes:
         _assert_no_active_duplicate(db, obj.user_id, changes["role_name"], exclude_id=obj.id)
+        _assert_single_tier(db, obj.user_id, changes["role_name"], exclude_id=obj.id)
     for field, val in changes.items():
         setattr(obj, field, val)
     db.commit()

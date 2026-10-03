@@ -274,6 +274,14 @@ class Scoping(AuditedBase):
     review_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     review_opinion: Mapped[str | None] = mapped_column(Text, nullable=True)
     review_evidence_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ── 검토·승인 거버넌스 (ADR-0038) — 검토 요청 시점에 경로를 정해 둔다(요청자 단계가 나중에 바뀌어도 그 건은 그대로)
+    review_requested_by_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    review_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_path: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    reviewed_by_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 재오픈마다 +1 — 이력(governance_events.version)이 어느 판에서 일어났는지 가른다
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
 
 class ScopingBenchmark(AuditedBase):

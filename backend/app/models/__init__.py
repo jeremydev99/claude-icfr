@@ -14,6 +14,12 @@ from app.models.financial_statement import (  # noqa: F401
     FsStatementStatusEvent,
     FsTemplateLink,
 )
+from app.models.governance import (  # noqa: F401
+    ExternalApproval,
+    GovernanceEvent,
+    GovernanceFile,
+    ReopenRequest,
+)
 from app.models.help_text import HelpText  # noqa: F401
 from app.models.iuc import InformationItem  # noqa: F401
 from app.models.login_event import LoginEvent  # noqa: F401

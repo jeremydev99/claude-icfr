@@ -216,6 +216,7 @@ class ScopingDetail(BaseModel):
     review_evidence_ref: str | None
     history: list[HistoryRead]
     can_edit: bool
+    governance: 'GovernanceInfo | None' = None   # ADR-0038 — 아래에 정의, 파일 끝에서 model_rebuild
 
 
 class ScopingListItem(BaseModel):
@@ -275,3 +276,101 @@ class ScopingCoverage(BaseModel):
     entity_level_controls: int
     accounts: list[CoverageAccount]
     unmatched_rcm_tokens: list[CoverageUnmatchedToken]
+
+
+# ── 검토·승인 거버넌스 (ADR-0038) ──────────────────────────────
+
+class PersonRef(BaseModel):
+    id: UUID
+    name: str
+
+
+class GovernanceCan(BaseModel):
+    """이 사용자가 지금 할 수 있는 일 — 판정은 서버(`services/approval.can`) 하나뿐, 화면은 이것만 본다."""
+    edit: bool
+    submit: bool
+    withdraw: bool
+    review: bool
+    review_return: bool
+    approve: bool
+    external_approve: bool
+    reopen_request: bool
+    reopen_decide: bool
+    reopen_external: bool
+    why: dict[str, str]
+
+
+class ReopenRead(BaseModel):
+    id: UUID
+    requested_by: PersonRef | None
+    requested_tier: int
+    reason: str
+    status: str
+    decided_by: PersonRef | None
+    decided_at: datetime | None
+    decision_reason: str | None
+    created_at: datetime
+
+
+class ExternalFileRead(BaseModel):
+    id: UUID
+    filename: str
+    size_bytes: int
+
+
+class ExternalApprovalRead(BaseModel):
+    id: UUID
+    purpose: str
+    approver_body: str
+    approved_on: date
+    reference: str | None
+    recorded_by: PersonRef | None
+    created_at: datetime
+    files: list[ExternalFileRead]
+
+
+class GovernanceInfo(BaseModel):
+    version: int
+    my_tier: int
+    my_tier_label: str
+    review_path: str | None
+    # 작성 중일 때 — 지금 내가 검토 요청하면 갈 경로(화면 결재선 미리보기)
+    preview_path: str | None = None
+    requested_by: PersonRef | None
+    requested_at: datetime | None
+    reviewed_by: PersonRef | None
+    reviewed_at: datetime | None
+    confirmed_by: PersonRef | None
+    pending_reopen: ReopenRead | None
+    external_approvals: list[ExternalApprovalRead]
+    can: GovernanceCan
+
+
+class GovernanceEventRead(BaseModel):
+    id: UUID
+    action: str
+    target: str | None
+    actor: PersonRef | None
+    reason: str | None
+    before: dict | None
+    after: dict | None
+    version: int | None
+    created_at: datetime
+
+
+class ReviewRequest(BaseModel):
+    """책임관리자 검토 — done(검토 완료) | return(반려, 사유 필수)."""
+    action: str = Field(pattern="^(done|return)$")
+    reason: str | None = None
+
+
+class ReopenCreate(BaseModel):
+    reason: str = Field(min_length=1)
+
+
+class ReopenDecision(BaseModel):
+    approve: bool
+    reason: str | None = None
+
+
+ScopingDetail.model_rebuild()
