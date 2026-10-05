@@ -39,6 +39,8 @@ def test_coverage_counts_with_fake_data(monkeypatch) -> None:
         {"code": "C-03", "name": "자금", "is_key_control": False, "related_accounts": "현금성자산, 마자급금"},
     ]
     monkeypatch.setattr(sc, "resolve_controls", lambda db: controls)
+    monkeypatch.setattr(sc, "_fs_ids", lambda db, s: {})
+    monkeypatch.setattr(sc, "_active_links", lambda db: {})
     c = sc.coverage(None, s)
     assert (c["significant_total"], c["covered"], c["uncovered"], c["key_covered"]) == (2, 1, 1, 1)
     assert c["entity_level_controls"] == 1 and c["control_total"] == 3

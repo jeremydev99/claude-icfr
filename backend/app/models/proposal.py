@@ -19,6 +19,8 @@ from app.models.base import AuditedBase
 
 ENTITY_PROPOSAL = "proposal"
 KIND_FS_TEMPLATE_LINK = "fs_template_link"
+# 통제 ↔ 계정 연결 묶음(ADR-0040) — 실무자가 검토 요청, 항목 = 연결 추가·해제
+KIND_CONTROL_LINK = "control_link"
 
 P_PENDING_REVIEW = "pending_review"   # 1차 대기
 P_REVIEWED = "reviewed"               # 1차 완료 → 2차 대기
@@ -29,6 +31,8 @@ P_STATUS_LABELS = {P_PENDING_REVIEW: "1차 승인 대기", P_REVIEWED: "2차 승
 
 ITEM_LINK = "link"        # 템플릿 계정에 연결
 ITEM_MANUAL = "manual"    # 대응 템플릿 없음 — 직접 평가 권고
+ITEM_LINK_ADD = "link_add"        # 통제 ↔ 계정 연결 추가
+ITEM_LINK_REMOVE = "link_remove"  # 활성 연결 해제
 D_PENDING, D_ACCEPTED, D_REJECTED, D_MODIFIED = "pending", "accepted", "rejected", "modified"
 
 
@@ -49,6 +53,8 @@ class Proposal(AuditedBase):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # 반영 결과 요약
+    # 사람이 낸 묶음(통제 연결 등)의 요청자 — 1차·2차 어디서도 본인 승인 불가(ADR-0038)
+    requested_by_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
 
 
 class ProposalItem(AuditedBase):
@@ -71,3 +77,8 @@ class ProposalItem(AuditedBase):
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     final_template_account_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     final_template_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # 통제 연결 항목(ADR-0040) — 대상 통제와 연결 행
+    control_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    control_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    control_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    link_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)

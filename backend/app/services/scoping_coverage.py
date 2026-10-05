@@ -66,22 +66,57 @@ def match_kind(account_name: str, token: str) -> str | None:
     return None
 
 
+def _uuid(v):
+    from uuid import UUID
+    try:
+        return UUID(str(v))
+    except ValueError:
+        return None
+
+
+def _fs_ids(db: Session, s: Scoping) -> dict:
+    """스코핑 계정 id → 재무제표 계정 id(통제 연결 키)."""
+    from app.models.scoping import ScopingAccount
+    return {a.id: a.fs_account_id for a in db.query(ScopingAccount).filter(
+        ScopingAccount.scoping_id == s.id, ScopingAccount.is_deleted == False).all()}  # noqa: E712
+
+
+def _active_links(db: Session) -> dict:
+    from app.services import control_links
+    return control_links.active_by_account(db)
+
+
 def coverage(db: Session, s: Scoping) -> dict:
     """유의 계정(최종 결론 Y)별 대응 통제 + 전사 통제 수 + 미대응 계정."""
+    fs_ids = _fs_ids(db, s)
     if s.status == STATUS_CONFIRMED and s.confirmed_snapshot:
-        accounts = [(v["name"], v["statement_type"], v["final"])
-                    for v in s.confirmed_snapshot.get("accounts", {}).values()]
+        accounts = [(v["name"], v["statement_type"], v["final"], fs_ids.get(_uuid(k)))
+                    for k, v in s.confirmed_snapshot.get("accounts", {}).items()]
     else:
         ev = svc.evaluate(db, s)
-        accounts = [(r["account"].name, r["account"].statement_type, r["final"]) for r in ev["accounts"]]
+        accounts = [(r["account"].name, r["account"].statement_type, r["final"], r["account"].fs_account_id)
+                    for r in ev["accounts"]]
+    # 승인된 통제 연결(ADR-0040)이 있는 계정은 **확정**, 없는 계정만 이름 추정
+    linked = _active_links(db)
 
     controls = resolve_controls(db)
     parsed = [(c, split_tokens(c.get("related_accounts"))) for c in controls]
     entity_level = [c for c, toks in parsed if any(t in ALL_ACCOUNTS_TOKENS for t in toks)]
 
     rows = []
-    for name, stype, final in accounts:
+    for name, stype, final, fs_id in accounts:
         if final != "Y":
+            continue
+        key = str(fs_id) if fs_id else "note:" + norm(name)
+        links = linked.get(key)
+        if links:
+            ctrl_by_id = {c["id"]: c for c in controls}
+            matched = [{"code": ln.control_code, "name": ln.control_name,
+                        "is_key_control": bool(ctrl_by_id.get(ln.control_id, {}).get("is_key_control")),
+                        "match": "linked"} for ln in links]
+            matched.sort(key=lambda m: m["code"] or "")
+            rows.append({"name": name, "statement_type": stype, "controls": matched, "basis": "linked",
+                         "covered": True, "key_covered": any(m["is_key_control"] for m in matched)})
             continue
         matched = []
         for c, toks in parsed:
@@ -93,11 +128,11 @@ def coverage(db: Session, s: Scoping) -> dict:
                     "match": "exact" if "exact" in kinds else "partial",
                 })
         matched.sort(key=lambda m: (m["match"] != "exact", m["code"] or ""))
-        rows.append({"name": name, "statement_type": stype, "controls": matched,
+        rows.append({"name": name, "statement_type": stype, "controls": matched, "basis": "estimated",
                      "covered": bool(matched), "key_covered": any(m["is_key_control"] for m in matched)})
 
     # RCM 에는 있는데 스코핑 계정 어디에도 안 맞는 토큰 — 이름이 다르거나(오타 포함) 스코핑에 없는 계정
-    names = [n for n, _, _ in accounts]
+    names = [n for n, _, _, _ in accounts]
     unknown: dict[str, list[str]] = {}
     for c, toks in parsed:
         for t in toks:
@@ -112,6 +147,7 @@ def coverage(db: Session, s: Scoping) -> dict:
         "scoping_id": s.id, "fiscal_year": s.fiscal_year, "status": s.status,
         "significant_total": total, "covered": covered, "uncovered": total - covered,
         "key_covered": sum(1 for r in rows if r["key_covered"]),
+        "linked_accounts": sum(1 for r in rows if r["basis"] == "linked"),
         "control_total": len(controls), "entity_level_controls": len(entity_level),
         "accounts": rows,
         "unmatched_rcm_tokens": [{"token": t, "control_codes": sorted(set(c))} for t, c in sorted(unknown.items())],

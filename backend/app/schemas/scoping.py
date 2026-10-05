@@ -259,7 +259,7 @@ class CoverageControl(BaseModel):
     code: str | None
     name: str | None
     is_key_control: bool
-    match: str   # exact | partial (이름 대조 추정)
+    match: str   # exact | partial (이름 대조 추정) | linked (승인된 연결, ADR-0040)
 
 
 class CoverageAccount(BaseModel):
@@ -268,6 +268,7 @@ class CoverageAccount(BaseModel):
     controls: list[CoverageControl]
     covered: bool
     key_covered: bool
+    basis: str = "estimated"   # linked(승인된 통제 연결) | estimated(이름 추정)
 
 
 class CoverageUnmatchedToken(BaseModel):
@@ -285,6 +286,7 @@ class ScopingCoverage(BaseModel):
     key_covered: int
     control_total: int
     entity_level_controls: int
+    linked_accounts: int = 0
     accounts: list[CoverageAccount]
     unmatched_rcm_tokens: list[CoverageUnmatchedToken]
 

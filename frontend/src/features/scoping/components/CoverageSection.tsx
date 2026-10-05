@@ -33,9 +33,14 @@ export default function CoverageSection({ scopingId }: { scopingId: string }) {
 
   return (
     <section className="space-y-3">
-      <div className="text-xs text-muted-foreground">
-        <Badge variant="outline" className="mr-1 align-middle">추정</Badge>
-        유의 계정마다 RCM 통제의 관련 계정 텍스트와 계정명을 대조한 결과입니다 — 최종 판단은 담당자가 합니다
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>
+          <Badge className="mr-1 align-middle">확정 {data.linked_accounts ?? 0}</Badge>
+          승인된 통제 연결이 있는 계정 ·{' '}
+          <Badge variant="outline" className="mr-1 align-middle">추정</Badge>
+          나머지는 RCM 관련 계정 텍스트와 계정명을 대조한 결과입니다
+        </span>
+        <Link to="/rcm/links" className="font-medium text-primary underline-offset-2 hover:underline">통제 ↔ 계정 연결 관리 →</Link>
       </div>
 
       {data.significant_total === 0 ? (
@@ -71,19 +76,22 @@ export default function CoverageSection({ scopingId }: { scopingId: string }) {
                 <li key={`${a.statement_type}-${a.name}`} className="flex flex-wrap items-start gap-2 px-3 py-2">
                   <Badge variant="outline" className="shrink-0">{a.statement_type}</Badge>
                   <span className="font-medium min-w-[8rem]">{a.name}</span>
+                  {a.basis === 'linked'
+                    ? <Badge className="shrink-0">확정</Badge>
+                    : <Badge variant="outline" className="shrink-0 text-muted-foreground">추정</Badge>}
                   {a.covered ? (
                     <span className="flex flex-wrap gap-1">
                       {a.controls.slice(0, 6).map((c) => (
                         <Badge key={c.code ?? c.name} variant="outline"
-                          className={c.match === 'exact' ? 'border-green-300 text-green-800' : 'border-gray-300 text-gray-600'}
-                          title={`${c.name ?? ''}${c.is_key_control ? ' · 핵심통제' : ''} · ${c.match === 'exact' ? '이름 일치' : '부분 일치'}`}>
+                          className={c.match === 'linked' ? 'border-primary/50 text-primary' : c.match === 'exact' ? 'border-green-300 text-green-800' : 'border-gray-300 text-gray-600'}
+                          title={`${c.name ?? ''}${c.is_key_control ? ' · 핵심통제' : ''} · ${c.match === 'linked' ? '승인된 연결' : c.match === 'exact' ? '이름 일치' : '부분 일치'}`}>
                           {c.code}{c.is_key_control ? ' ★' : ''}
                         </Badge>
                       ))}
                       {a.controls.length > 6 && <span className="text-xs text-muted-foreground">외 {a.controls.length - 6}개</span>}
                     </span>
                   ) : (
-                    <span className="text-red-700">대응 통제 없음 — <Link to="/rcm" className="underline">RCM</Link>에서 통제의 관련 계정을 확인하세요</span>
+                    <span className="text-red-700">대응 통제 없음 — <Link to="/rcm/links" className="underline">통제 ↔ 계정 연결</Link>에서 이어 주세요</span>
                   )}
                 </li>
               ))}

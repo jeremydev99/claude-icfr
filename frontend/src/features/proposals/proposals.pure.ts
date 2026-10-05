@@ -9,7 +9,7 @@ export interface ProposalItem {
   statement_type: string | null
   account_name: string
   group_label: string | null
-  action: 'link' | 'manual'
+  action: 'link' | 'manual' | 'link_add' | 'link_remove'
   template_account_id: string | null
   template_name: string | null
   rationale: string
@@ -19,6 +19,10 @@ export interface ProposalItem {
   decision_note: string | null
   final_template_account_id: string | null
   final_template_name: string | null
+  /** 통제 연결 묶음(kind=control_link) 항목 */
+  control_id?: string | null
+  control_code?: string | null
+  control_name?: string | null
 }
 
 export interface Proposal {
@@ -29,6 +33,7 @@ export interface Proposal {
   status: 'pending_review' | 'reviewed' | 'approved' | 'returned'
   status_label: string
   proposed_by: string
+  requested_by?: PersonRef | null
   reviewed_by: PersonRef | null
   approved_by: PersonRef | null
   closed_reason: string | null

@@ -1,4 +1,5 @@
 import ProposalPage from '@/features/proposals/ProposalPage'
+import ControlLinksPage from '@/features/rcm/links/ControlLinksPage'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import AuthLayout from '@/layouts/AuthLayout'
 import AppLayout from '@/layouts/AppLayout'
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
       { path: 'financial-statements', element: <FinancialStatementsPage /> },
       { path: 'scoping', element: <ScopingPage /> },
       { path: 'rcm', element: <RcmPage /> },
+      { path: 'rcm/links', element: <ControlLinksPage /> },
       { path: 'euc', element: <EucPage /> },
       { path: 'iuc', element: <IucPage /> },
       { path: 'test', element: <TestPage /> },

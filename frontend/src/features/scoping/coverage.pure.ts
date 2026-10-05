@@ -4,7 +4,7 @@ export interface CoverageControl {
   code: string | null
   name: string | null
   is_key_control: boolean
-  match: 'exact' | 'partial'
+  match: 'exact' | 'partial' | 'linked'
 }
 
 export interface CoverageAccount {
@@ -13,6 +13,8 @@ export interface CoverageAccount {
   controls: CoverageControl[]
   covered: boolean
   key_covered: boolean
+  /** linked = 승인된 통제 연결(ADR-0040), estimated = 이름 추정 */
+  basis?: 'linked' | 'estimated'
 }
 
 export interface ScopingCoverage {
@@ -25,6 +27,7 @@ export interface ScopingCoverage {
   key_covered: number
   control_total: number
   entity_level_controls: number
+  linked_accounts?: number
   accounts: CoverageAccount[]
   unmatched_rcm_tokens: { token: string; control_codes: string[] }[]
 }

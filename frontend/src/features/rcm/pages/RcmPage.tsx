@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { isAxiosError } from 'axios'
 import type { Control, ControlSearchParams } from '../types'
@@ -119,6 +119,7 @@ export default function RcmPage() {
           계층 관리
         </Button>
         <HelpButton k={rcmTab === 'controls' ? 'screen.rcm.controls' : 'screen.rcm.hierarchy'} className="mx-1" />
+        <Button asChild variant="ghost" size="sm"><Link to="/rcm/links">통제 ↔ 계정 연결 →</Link></Button>
       </div>
 
       {rcmTab === 'controls' && (

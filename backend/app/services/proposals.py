@@ -19,6 +19,7 @@ from app.models.proposal import (
     D_PENDING,
     ENTITY_PROPOSAL,
     ITEM_LINK,
+    KIND_CONTROL_LINK,
     KIND_FS_TEMPLATE_LINK,
     P_APPROVED,
     P_PENDING_REVIEW,
@@ -54,18 +55,22 @@ def items_of(db: Session, p: Proposal) -> list[ProposalItem]:
 def can(db: Session, p: Proposal, user_id: UUID) -> PCan:
     t = approval.user_tier(db, user_id)
     c = PCan()
+    own = p.requested_by_id is not None and user_id == p.requested_by_id   # 사람이 낸 묶음 — 본인 승인 금지
     if p.status == P_PENDING_REVIEW:
-        c.decide = c.return_ = t == 2
+        c.decide = c.return_ = t == 2 and not own
         undecided = sum(1 for i in items_of(db, p) if i.decision == D_PENDING)
-        c.review_done = t == 2 and undecided == 0
-        if t != 2:
+        c.review_done = t == 2 and not own and undecided == 0
+        if own:
+            c.why["review"] = "검토를 요청한 본인은 승인할 수 없습니다 — 자기 승인 금지"
+        elif t != 2:
             c.why["review"] = "1차 승인은 책임관리자가 합니다"
         elif undecided:
             c.why["review"] = f"결정하지 않은 항목이 {undecided}개 남았습니다"
     elif p.status == P_REVIEWED:
-        c.approve = c.return_ = t == 3 and user_id != p.reviewed_by_id
+        c.approve = c.return_ = t == 3 and user_id != p.reviewed_by_id and not own
         if not c.approve:
             c.why["approve"] = ("1차 검토자는 2차 승인을 할 수 없습니다 — 자기 승인 금지" if user_id == p.reviewed_by_id
+                                else "검토를 요청한 본인은 승인할 수 없습니다 — 자기 승인 금지" if own
                                 else "2차 승인은 마스터관리자가 합니다")
     return c
 
@@ -90,7 +95,11 @@ def decide_item(db: Session, p: Proposal, item: ProposalItem, user_id: UUID, dec
     if not can(db, p, user_id).decide:
         raise ProposalError("지금 이 제안의 항목을 결정할 수 없습니다(1차 승인 단계·책임관리자만)")
     before = {"결정": item.decision, "연결": item.final_template_name}
-    if decision == D_MODIFIED:
+    if p.kind == KIND_CONTROL_LINK and decision == D_MODIFIED:
+        raise ProposalError("통제 연결 항목은 승인 또는 반려만 합니다 — 다른 연결은 보드에서 새로 요청하세요")
+    if p.kind == KIND_CONTROL_LINK:
+        pass
+    elif decision == D_MODIFIED:
         if template_account_id is None:
             raise ProposalError("변경할 템플릿 계정을 고르세요")
         tpl = match_svc.get_template(db, p.template_code, p.template_version)
@@ -105,7 +114,8 @@ def decide_item(db: Session, p: Proposal, item: ProposalItem, user_id: UUID, dec
     item.decision, item.decided_by_id, item.decided_at = decision, user_id, datetime.now(UTC)
     item.decision_note = (note or "").strip() or None
     glog.record(db, p.id, "proposal_item_decide", version=None, entity_type=ENTITY_PROPOSAL,
-                target=f"{item.statement_type or ''} {item.account_name}".strip(), reason=item.decision_note,
+                target=(f"{item.control_code or ''} ↔ {item.account_name}" if p.kind == KIND_CONTROL_LINK
+                        else f"{item.statement_type or ''} {item.account_name}".strip()), reason=item.decision_note,
                 before=before, after={"결정": decision, "연결": item.final_template_name})
 
 
@@ -127,6 +137,9 @@ def return_(db: Session, p: Proposal, user_id: UUID, reason: str) -> None:
     if not reason.strip():
         raise ProposalError("반려 사유가 필요합니다")
     p.status, p.closed_reason = P_RETURNED, reason.strip()
+    if p.kind == KIND_CONTROL_LINK:
+        from app.services import control_links
+        control_links.revert_returned(db, p)
     glog.record(db, p.id, "proposal_return", version=None, entity_type=ENTITY_PROPOSAL, reason=reason.strip())
 
 
@@ -136,7 +149,10 @@ def approve(db: Session, p: Proposal, user_id: UUID, reason: str | None) -> dict
     if not c.approve:
         raise ProposalError(c.why.get("approve", "2차 승인을 할 수 없습니다"))
     result: dict = {}
-    if p.kind == KIND_FS_TEMPLATE_LINK:
+    if p.kind == KIND_CONTROL_LINK:
+        from app.services import control_links
+        result.update(control_links.apply_approved(db, p, items_of(db, p)))
+    elif p.kind == KIND_FS_TEMPLATE_LINK:
         pairs = [{"account_id": i.account_id, "template_account_id": i.final_template_account_id,
                   "note": f"제안 결재 반영 — 1차·2차 승인 「{p.title}」"}
                  for i in items_of(db, p)

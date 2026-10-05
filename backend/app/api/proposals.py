@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.core.permissions import require_icfr_staff
 from app.models.governance import GovernanceEvent
-from app.models.proposal import ENTITY_PROPOSAL, P_STATUS_LABELS, Proposal, ProposalItem
+from app.models.proposal import D_PENDING, ENTITY_PROPOSAL, P_STATUS_LABELS, Proposal, ProposalItem
 from app.models.user import User
 from app.services import proposals as svc
 
@@ -39,6 +39,9 @@ class ItemOut(BaseModel):
     decision_note: str | None
     final_template_account_id: UUID | None
     final_template_name: str | None
+    control_id: UUID | None = None
+    control_code: str | None = None
+    control_name: str | None = None
 
 
 class CanOut(BaseModel):
@@ -66,6 +69,7 @@ class ProposalOut(BaseModel):
     approved_at: datetime | None
     closed_reason: str | None
     result: dict | None
+    requested_by: Person | None = None
     created_at: datetime
     counts: dict[str, int]
     items: list[ItemOut] = []
@@ -118,7 +122,7 @@ def _out(db: Session, p: Proposal, user_id: UUID | None, with_items: bool) -> Pr
         template_code=p.template_code, template_version=p.template_version, scoping_id=p.scoping_id,
         reviewed_by=_person(db, p.reviewed_by_id), reviewed_at=p.reviewed_at,
         approved_by=_person(db, p.approved_by_id), approved_at=p.approved_at, closed_reason=p.closed_reason,
-        result=p.result, created_at=p.created_at, counts=counts)
+        result=p.result, requested_by=_person(db, p.requested_by_id), created_at=p.created_at, counts=counts)
     if with_items:
         out.items = [ItemOut(
             id=i.id, sort_order=i.sort_order, account_id=i.account_id, statement_type=i.statement_type,
@@ -126,7 +130,8 @@ def _out(db: Session, p: Proposal, user_id: UUID | None, with_items: bool) -> Pr
             template_account_id=i.template_account_id, template_name=i.template_name, rationale=i.rationale,
             decision=i.decision, decided_by=_person(db, i.decided_by_id), decided_at=i.decided_at,
             decision_note=i.decision_note, final_template_account_id=i.final_template_account_id,
-            final_template_name=i.final_template_name) for i in items]
+            final_template_name=i.final_template_name, control_id=i.control_id, control_code=i.control_code,
+            control_name=i.control_name) for i in items]
         if user_id is not None:
             c = svc.can(db, p, user_id)
             out.can = CanOut(decide=c.decide, review_done=c.review_done, approve=c.approve, return_=c.return_,
@@ -154,6 +159,20 @@ def _run(db: Session, fn) -> None:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(e)) from None
     db.commit()
+
+
+class DecideAll(BaseModel):
+    decision: str = Field(pattern="^(accepted|rejected)$")
+
+
+@router.post("/{pid}/decide-pending", response_model=ProposalOut)
+def decide_pending(pid: UUID, body: DecideAll, user: User = Depends(require_icfr_staff),
+                   db: Session = Depends(get_db)) -> ProposalOut:
+    """남은(미결정) 항목을 한꺼번에 승인·반려 — 항목이 많은 묶음(통제 연결 자동 매칭)용. 항목별 이력은 그대로 남는다."""
+    p = _get(db, pid)
+    _run(db, lambda: [svc.decide_item(db, p, i, user.id, body.decision, None, "일괄 결정")
+                      for i in svc.items_of(db, p) if i.decision == D_PENDING])
+    return _out(db, p, user.id, True)
 
 
 @router.post("/{pid}/items/{iid}/decide", response_model=ProposalOut)
