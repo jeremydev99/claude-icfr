@@ -107,3 +107,19 @@ def test_head_as_author_skips_dept_and_reject_path(client: TestClient, env) -> N
     assert mine["status"] == "rejected" and mine["rejected_by"] == "admin" and mine["admin_note"] == "목적 문구 보완"
     # 반려된 변경은 고쳐서 다시 임시저장 가능
     assert client.put(f"/api/rcm-changes/control/{cid}", headers=t.h["head"], json={"changes": {"objective": "목적 2"}}).json()["status"] == "draft"
+
+
+def test_bulk_draft_and_submit_per_control(client: TestClient, env) -> None:
+    t, cid = env
+    # 먼저 다른 항목을 임시저장해 두고, 일괄 변경이 그것을 지우지 않는지(merge)
+    client.put(f"/api/rcm-changes/control/{cid}", headers=t.h["owner"], json={"changes": {"objective": "목적"}})
+    r = client.post("/api/rcm-changes/bulk", headers=t.h["owner"],
+                    json={"control_ids": [cid, "aaaaaaaa-0000-7000-8000-00000000000b"], "changes": {"owner_name": "새 담당"}, "submit": True})
+    d = r.json()
+    assert r.status_code == 200 and len(d["ok"]) == 1 and len(d["failed"]) == 1
+    assert d["ok"][0]["status"] == "dept_review"
+    mine = client.get("/api/rcm-changes", headers=t.h["owner"]).json()["mine"][0]
+    assert mine["changes"] == {"objective": "목적", "owner_name": "새 담당"}
+    # 바로 반영과 같은 값 검증 — 허용값 밖이면 422
+    bad = client.post("/api/rcm-changes/bulk", headers=t.h["owner"], json={"control_ids": [cid], "changes": {"frequency": "S"}})
+    assert bad.status_code == 422

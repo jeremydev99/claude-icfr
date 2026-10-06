@@ -54,7 +54,8 @@ def direct_edit_allowed(db: Session, user_id: UUID) -> bool:
 
 
 def save_draft(db: Session, control_id: UUID, user_id: UUID, changes: dict, note: str | None,
-               allowed_fields: set[str]) -> ControlChange:
+               allowed_fields: set[str], merge: bool = False) -> ControlChange:
+    """임시저장. `merge` 면 내 기존 임시저장에 더한다(일괄 변경 — 다른 항목을 고쳐 둔 것을 지우지 않는다)."""
     c = control_of(db, control_id)
     if c is None:
         raise ChangeError("통제를 찾을 수 없습니다")
@@ -72,8 +73,10 @@ def save_draft(db: Session, control_id: UUID, user_id: UUID, changes: dict, note
     else:
         ch = ControlChange(control_id=control_id, author_id=user_id, status=CH_DRAFT, changes={}, before={})
         db.add(ch)
+    if merge and ch.changes:
+        changes = {**{k: v for k, v in ch.changes.items() if c.get(k) != v}, **changes}
     if not changes:
-        raise ChangeError("바뀐 내용이 없습니다")
+        raise ChangeError("바뀐 내용이 없습니다(이미 같은 값입니다)")
     ch.control_code, ch.control_name = c.get("code"), c.get("name")
     ch.changes, ch.before = changes, {k: c.get(k) for k in changes}
     ch.note, ch.status = (note or "").strip() or None, CH_DRAFT

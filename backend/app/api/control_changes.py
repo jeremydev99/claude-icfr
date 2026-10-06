@@ -51,6 +51,16 @@ class DecideBody(BaseModel):
     note: str | None = None
 
 
+def _validated(changes: dict) -> dict:
+    """바로 반영(PATCH)과 같은 검증 — 임시저장에 틀린 값이 들어가 결재 후 반영 단계에서 터지지 않게."""
+    from pydantic import ValidationError
+    try:
+        ControlUpdate.model_validate(changes)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=f"값이 올바르지 않습니다: {e.errors()[0].get('loc', [''])[0]}") from None
+    return changes
+
+
 def _run(db: Session, fn):
     try:
         out = fn()
@@ -124,8 +134,37 @@ def for_control(control_id: UUID, user: CurrentUser, db: Session = Depends(get_d
 
 @router.put("/control/{control_id}")
 def save_draft(control_id: UUID, body: DraftBody, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
-    ch = _run(db, lambda: svc.save_draft(db, control_id, user.id, body.changes, body.note, EDITABLE_FIELDS))
+    changes = _validated(body.changes)
+    ch = _run(db, lambda: svc.save_draft(db, control_id, user.id, changes, body.note, EDITABLE_FIELDS))
     return _out(db, [ch], user)[0]
+
+
+class BulkBody(BaseModel):
+    control_ids: list[UUID] = Field(min_length=1, max_length=500)
+    changes: dict
+    note: str | None = None
+    submit: bool = False
+
+
+@router.post("/bulk")
+def bulk(body: BulkBody, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
+    """여러 통제에 같은 변경(예: 담당자명)을 임시저장(+상신). 통제마다 따로 처리한다 — 한 통제가 안 돼도
+    나머지는 진행하고, 결과를 통제별로 돌려준다. 상신하면 통제마다 자기 조직장에게 간다."""
+    _validated(body.changes)
+    ok, failed = [], []
+    for cid in dict.fromkeys(body.control_ids):
+        try:
+            ch = svc.save_draft(db, cid, user.id, body.changes, body.note, EDITABLE_FIELDS, merge=True)
+            db.flush()
+            if body.submit:
+                svc.submit(db, ch, user.id)
+            db.commit()
+            ok.append({"control_id": cid, "control_code": ch.control_code, "status": ch.status})
+        except svc.ChangeError as e:
+            db.rollback()
+            c = svc.control_of(db, cid)
+            failed.append({"control_id": cid, "control_code": c.get("code") if c else None, "reason": str(e)})
+    return {"ok": ok, "failed": failed}
 
 
 @router.post("/{cid}/submit")

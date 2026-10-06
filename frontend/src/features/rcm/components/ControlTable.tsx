@@ -40,6 +40,9 @@ interface Props {
   isLoading?: boolean
   isError?: boolean
   error?: Error | null
+  /** 일괄 변경용 선택(2026-10-06) — 넘기면 맨 앞에 체크 칸이 생긴다 */
+  selected?: Set<string>
+  onToggleSelect?: (ids: string[], on: boolean) => void
 }
 
 const RISK_BADGE_VARIANT: Record<string, string> = {
@@ -60,8 +63,11 @@ function SortIcon({ col, params }: { col: SortCol; params: ControlSearchParams }
   )
 }
 
-export default function ControlTable({ data, params, onParamsChange, onSelect, onAddClick, onEdit, onDelete, onUploadClick, isLoading, isError, error }: Props) {
+export default function ControlTable({ data, params, onParamsChange, onSelect, onAddClick, onEdit, onDelete, onUploadClick, isLoading, isError, error, selected, onToggleSelect }: Props) {
   const { items = [], total = 0, skip = 0, limit = params.limit ?? 20 } = data ?? {}
+  const selectable = !!selected && !!onToggleSelect
+  const pageIds = items.map((c: Control) => c.id)
+  const allOnPage = selectable && pageIds.length > 0 && pageIds.every((id) => selected!.has(id))
 
   const toggleSort = (col: SortCol) => {
     if (params.sort_by === col) {
@@ -123,6 +129,12 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
+              {selectable && (
+                <TableHead className="w-10">
+                  <input type="checkbox" aria-label="이 페이지 통제 전체 선택" checked={allOnPage}
+                    onChange={() => onToggleSelect!(pageIds, !allOnPage)} />
+                </TableHead>
+              )}
               <TableHead
                 className="w-32 cursor-pointer select-none whitespace-nowrap"
                 onClick={() => toggleSort('code')}
@@ -167,7 +179,7 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
           <TableBody>
             {items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="p-4">
+                <TableCell colSpan={selectable ? 12 : 11} className="p-4">
                   {params.q || params.process_code || params.sub_process_code || params.risk_level || params.frequency || params.is_key_control !== undefined || params.auto_manual || params.preventive_detective || params.assertion || params.owner
                     ? <EmptyState compact slot="empty-search" title="검색 결과가 없습니다" description="검색어나 필터 조건을 바꿔 보세요." className="border-0 bg-transparent" />
                     : <EmptyState compact slot="empty-checklist" title="등록된 통제가 없습니다" description="통제 추가 버튼으로 첫 통제를 추가하세요." className="border-0 bg-transparent" />}
@@ -175,7 +187,13 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
               </TableRow>
             ) : (
               items.map((ctrl: Control) => (
-                <TableRow key={ctrl.id} className="group hover:bg-muted/30 cursor-pointer" onClick={() => onSelect?.(ctrl)}>
+                <TableRow key={ctrl.id} className={`group hover:bg-muted/30 cursor-pointer ${selectable && selected!.has(ctrl.id) ? 'bg-accent/50' : ''}`} onClick={() => onSelect?.(ctrl)}>
+                  {selectable && (
+                    <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" aria-label={`${ctrl.code} 선택`} checked={selected!.has(ctrl.id)}
+                        onChange={() => onToggleSelect!([ctrl.id], !selected!.has(ctrl.id))} />
+                    </TableCell>
+                  )}
                   <TableCell className="font-mono text-xs font-medium text-blue-600 whitespace-nowrap hover:underline cursor-pointer">
                     <div className="flex items-center gap-1.5">
                       {ctrl.code}

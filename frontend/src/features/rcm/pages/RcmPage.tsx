@@ -18,6 +18,7 @@ import { useCanWrite } from '@/features/auth/useCanWrite'
 import HelpButton from '@/features/help/HelpButton'
 import RoleMatrix from '@/features/admin/roleMatrix/RoleMatrix'
 import ChangeInbox from '../changes/ChangeInbox'
+import BulkChangeBar from '../changes/BulkChangeBar'
 
 function extractErrorMessage(err: unknown): string {
   if (isAxiosError(err)) {
@@ -40,6 +41,8 @@ type RcmTab = 'controls' | 'hierarchy' | 'roles' | 'changes'
 
 export default function RcmPage() {
   const [rcmTab, setRcmTab] = useState<RcmTab>('controls')
+  // 일괄 변경 선택 — 페이지를 넘겨도 유지된다(2026-10-06)
+  const [bulkSel, setBulkSel] = useState<Set<string>>(new Set())
   const [searchParams] = useSearchParams()
   // 초기값 계산은 최초 렌더에서만 — 이후 URL 이 바뀌어도 화면 상태를 덮지 않는다(단방향).
   const [params, setParams] = useState<ControlSearchParams>(() =>
@@ -133,6 +136,10 @@ export default function RcmPage() {
       {rcmTab === 'roles' && <RoleMatrix />}
       {rcmTab === 'changes' && <ChangeInbox />}
 
+      {rcmTab === 'controls' && canWrite && bulkSel.size > 0 && (
+        <BulkChangeBar ids={[...bulkSel]} onClear={() => setBulkSel(new Set())} onDone={() => { setBulkSel(new Set()); setRcmTab('changes') }} />
+      )}
+
       {rcmTab === 'controls' && (
         <>
           <ControlSearchBar params={params} onChange={handleChange} onReset={handleReset} />
@@ -150,6 +157,12 @@ export default function RcmPage() {
             isLoading={isLoading}
             isError={isError}
             error={error}
+            selected={canWrite ? bulkSel : undefined}
+            onToggleSelect={canWrite ? (ids, on) => setBulkSel((prev) => {
+              const n = new Set(prev)
+              ids.forEach((id) => (on ? n.add(id) : n.delete(id)))
+              return n
+            }) : undefined}
           />
 
           <ControlDetailSheet
