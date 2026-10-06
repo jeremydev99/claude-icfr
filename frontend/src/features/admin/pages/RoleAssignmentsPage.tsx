@@ -32,6 +32,8 @@ import {
 } from '../api/PolicyAssignmentApi'
 import { ASSIGNMENT_ROLES, ASSIGNMENT_SCOPES, roleLabel, scopeLabel } from '../PolicyDefs.pure'
 import AssignmentAddDialog from '../components/AssignmentAddDialog'
+import RoleMatrix from '../roleMatrix/RoleMatrix'
+import OfficerRoles from '../components/OfficerRoles'
 
 const ALL = '__all__'
 
@@ -49,6 +51,8 @@ export default function RoleAssignmentsPage() {
   const [scopeFilter, setScopeFilter] = useState(ALL)
   const [search, setSearch] = useState('')
   const [addOpen, setAddOpen] = useState(false)
+  // 기본은 표 — 통제 93개를 모달로 하나씩 하면 끝이 없다(2026-10-06 마스터)
+  const [view, setView] = useState<'matrix' | 'list'>('matrix')
   const [deleteTarget, setDeleteTarget] = useState<RoleAssignment | null>(null)
   const del = useDeleteAssignment()
 
@@ -123,6 +127,20 @@ export default function RoleAssignmentsPage() {
         )}
       </div>
 
+      <section className="space-y-2">
+        <h2 className="text-base font-semibold">회사 직책 <span className="text-sm font-normal text-muted-foreground">— 보고서 서명자·법정 보고 주체. 지정한 사람이 보고서 기본 정보에 자동으로 들어갑니다</span></h2>
+        <OfficerRoles canEdit={canManage} />
+      </section>
+
+      <h2 className="text-base font-semibold">통제별 역할 <span className="text-sm font-normal text-muted-foreground">— 통제책임자·부서승인자·평가자</span></h2>
+      <div className="flex w-fit items-center gap-1 rounded-md border p-1">
+        <Button size="sm" variant={view === 'matrix' ? 'default' : 'ghost'} onClick={() => setView('matrix')}>일괄 배정 표</Button>
+        <Button size="sm" variant={view === 'list' ? 'default' : 'ghost'} onClick={() => setView('list')}>배정 목록</Button>
+      </div>
+
+      {view === 'matrix' && <RoleMatrix />}
+
+      {view === 'list' && (
       <Card>
         <CardContent className="space-y-3 pt-6">
           <div className="flex flex-wrap gap-2">
@@ -223,6 +241,7 @@ export default function RoleAssignmentsPage() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {canManage && (
         <AssignmentAddDialog

@@ -120,6 +120,10 @@ export default function UserRoleFormDialog({ open, onOpenChange, editTarget }: P
           <DialogDescription>
             {isEdit ? '역할 정보를 수정합니다.' : '새 역할을 등록합니다.'} 필수 항목을 모두 입력해 주세요.
           </DialogDescription>
+          <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+            회사 밖 사람(외부감사인·사외이사 감사위원·PA회계법인·세무/기장대리인)은 여기서 배정하지 말고
+            <b> 담당자/권한 → 외부 사용자</b> 탭에서 초대하세요. 접근 기간과 2단계 인증이 함께 걸립니다.
+          </p>
         </DialogHeader>
 
         <Form {...form}>

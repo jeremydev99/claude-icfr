@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   STANDARD_TEMPLATE,
+  itemsToPhases,
   TOTAL_COLUMNS,
   buildColumns,
   calendarToOffset,
@@ -65,5 +66,17 @@ describe('schedule.pure', () => {
     expect(periodToSpan(2026, 1, '2026-03-01', '2026-05-31')).toEqual({ start: 3, end: 5 })
     expect(periodToSpan(2026, 1, '2025-11-01', '2026-02-28')).toEqual({ start: 1, end: 2 })
     expect(periodToSpan(2026, 1, '2024-01-01', '2024-12-31')).toBeNull()
+  })
+})
+
+describe('itemsToPhases', () => {
+  it('날짜 항목을 회계월 범위로, 그리드 밖은 뺀다', () => {
+    const items = [
+      { id: 'a', title: '스코핑', category: 'planning', start_date: '2026-01-05', end_date: '2026-02-20', description: null, tasks: [] },
+      { id: 'b', title: '킥오프', category: 'other', start_date: '2026-03-10', end_date: '2026-03-10', description: '감사인', tasks: [] },
+      { id: 'c', title: '먼 일정', category: 'planning', start_date: '2030-01-01', end_date: '2030-01-02', description: null, tasks: [] },
+    ]
+    const p = itemsToPhases(items, 2026, 1)
+    expect(p.map((x) => [x.itemId, x.start, x.end, x.category])).toEqual([['a', 1, 2, 'planning'], ['b', 3, 3, 'audit']])
   })
 })

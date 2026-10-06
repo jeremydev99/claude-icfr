@@ -83,6 +83,22 @@ export const POLICY_GROUPS: { title: string; defs: PolicyDef[] }[] = [
         defaultValue: true,
         parse: 'not-falsy',
       },
+      {
+        key: 'schedule_approval_line',
+        kind: 'select',
+        label: '일정안 결재선(전결라인)',
+        description:
+          '연간 일정안을 새로 만들거나 고쳐 결재 요청하면 이 순서로 승인받습니다. 요청자·앞 단계 승인자는 다음 단계를 승인할 수 없습니다. 요청 시점의 결재선이 그 건에 고정됩니다. (기본: 책임관리자 → 마스터관리자)',
+        defaultValue: 'lead,master',
+        options: [
+          { value: 'lead,master', label: '책임관리자 → 마스터관리자' },
+          { value: 'lead,master,ceo', label: '책임관리자 → 마스터관리자 → 대표이사' },
+          { value: 'master,ceo', label: '마스터관리자 → 대표이사' },
+          { value: 'master', label: '마스터관리자' },
+          { value: 'lead', label: '책임관리자' },
+          { value: 'none', label: '결재 없음(요청 즉시 확정)' },
+        ],
+      },
     ],
   },
   {

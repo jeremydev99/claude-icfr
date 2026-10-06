@@ -97,6 +97,8 @@ def login(
         func.lower(User.email) == email,
         User.is_deleted == False,  # noqa: E712
     ).first()
+    if user is not None:
+        request.state.audit_user_id = user.id   # 감사 로그 — 토큰이 아직 없으므로 계정을 직접 알린다(실패 시도도)
 
     def record(success: bool, reason: str) -> None:
         db.add(LoginEvent(
@@ -165,6 +167,7 @@ def mfa_verify(body: MfaVerifyRequest, request: Request, db: Session = Depends(g
     """로그인 2단계 — OTP 6자리 또는 복구 코드(1회용). 틀리면 로그인 실패로 센다(잠금 규칙 동일)."""
     from app.core import mfa
     user = _user_from_mfa_token(db, body.mfa_token, "verify")
+    request.state.audit_user_id = user.id
     settings = get_settings()
     now = datetime.now(UTC)
     secret = mfa.decrypt(user.mfa_secret_enc or "")
@@ -225,6 +228,7 @@ def mfa_enable(body: MfaEnableRequest, request: Request, db: Session = Depends(g
     """등록 확정 — 앱에 뜬 코드가 맞으면 적용하고 복구 코드 10개를 **한 번만** 보여 준다."""
     from app.core import mfa
     user, in_login = _mfa_subject(db, request, body.mfa_token)
+    request.state.audit_user_id = user.id
     pending = mfa.decrypt(user.mfa_pending_enc or "")
     if not pending or not mfa.verify(pending, body.code):
         raise HTTPException(status_code=422, detail="인증 코드가 맞지 않습니다 — 앱에 표시된 6자리를 다시 입력하세요")

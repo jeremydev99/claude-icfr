@@ -11,6 +11,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -28,6 +29,7 @@ from app.models.role_assignment import (
     TenantPolicy,
     conflict_policy_key,
 )
+from app.models.schedule import APPROVAL_LINES, POLICY_SCHEDULE_APPROVAL_LINE
 from app.models.scoping import (
     POLICY_SCOPING_QUAL_COMPARISON,
     POLICY_SCOPING_QUAL_THRESHOLD,
@@ -43,6 +45,7 @@ from app.schemas.org import (
     TenantPolicyRead,
     TenantPolicyUpsert,
 )
+from app.services import role_bulk
 from app.services.control_resolver import resolve_controls, resolve_processes
 from app.services.role_resolver import (
     _assignments_by_target,
@@ -203,6 +206,41 @@ def delete_assignment(assignment_id: UUID, user: User = Depends(require_write),
     db.commit()
 
 
+# ── 일괄 배정 (2026-10-06) ─────────────────────────────────
+class BulkChange(BaseModel):
+    scope: str = Field(pattern="^(process|control)$")
+    target_id: UUID
+    role_name: str = Field(pattern="^(control_owner|dept_approver|assessor)$")
+    user_id: UUID | None = None   # None = 배정 지움(통제 예외면 프로세스 기본값으로 돌아감)
+
+
+class BulkBody(BaseModel):
+    changes: list[BulkChange] = Field(min_length=1, max_length=2000)
+    conflict_reason: str | None = None
+
+
+@router.get("/role-matrix")
+def role_matrix(user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+    """역할 일괄 배정 표 — 프로세스 기본값·통제별 해석 역할(출처)·겸직·EUC/IUC 사용 수."""
+    return role_bulk.matrix(db, _tenant_role_users(db))
+
+
+@router.post("/assignments/bulk")
+def bulk_assign(body: BulkBody, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
+    """여러 배정을 한 번에. 겸직이 생기면 정책 금지 → 409, 아니면 사유 필수(없으면 409 + 통제 목록)."""
+    try:
+        res = role_bulk.apply_bulk(
+            db, [role_bulk.Change(c.scope, c.target_id, c.role_name, c.user_id) for c in body.changes],
+            body.conflict_reason, _tenant_role_users(db), lambda k: _policy_blocks(db, k))
+    except role_bulk.BulkError as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "message": str(e), "blocked": e.blocked,
+            "conflicts": [{"control_code": f["control_code"], "keys": f["keys"]} for f in e.conflicts]}) from None
+    db.commit()
+    return {"applied": res.applied, "removed": res.removed, "acknowledged": res.acknowledged}
+
+
 # ── 해석 ──────────────────────────────────────────────────
 
 @router.get("/controls/{control_id}/roles", response_model=ControlRolesRead)
@@ -245,6 +283,11 @@ def _assert_policy_value_valid(body: TenantPolicyUpsert) -> None:
             raise HTTPException(status_code=422, detail="질적 판정 기준값은 숫자여야 합니다") from None
         if not (Decimal(1) <= v <= Decimal(3)):
             raise HTTPException(status_code=422, detail="질적 판정 기준값은 1 이상 3 이하여야 합니다")
+        return
+    if body.policy_key == POLICY_SCHEDULE_APPROVAL_LINE:
+        # 일정안 결재선(2026-10-06) — 목록 밖 값이면 결재가 조용히 기본값으로 돈다. 저장 시 막는다
+        if body.policy_value not in APPROVAL_LINES:
+            raise HTTPException(status_code=422, detail=f"일정 결재선은 {', '.join(APPROVAL_LINES)} 중 하나여야 합니다")
         return
     if body.policy_key == POLICY_EUC_IDENTIFICATION_THRESHOLD:
         # 목록 밖 값이 저장되면 판정이 조용히 기본값으로 떨어진다 — 저장 시점에 막는다(5-1)

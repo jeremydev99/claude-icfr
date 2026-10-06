@@ -16,6 +16,7 @@ import HierarchyManagementView from '../components/hierarchy/HierarchyManagement
 import { Button } from '@/components/ui/button'
 import { useCanWrite } from '@/features/auth/useCanWrite'
 import HelpButton from '@/features/help/HelpButton'
+import RoleMatrix from '@/features/admin/roleMatrix/RoleMatrix'
 
 function extractErrorMessage(err: unknown): string {
   if (isAxiosError(err)) {
@@ -34,7 +35,7 @@ const DEFAULT_PARAMS: ControlSearchParams = {
   sort_order: 'asc',
 }
 
-type RcmTab = 'controls' | 'hierarchy'
+type RcmTab = 'controls' | 'hierarchy' | 'roles'
 
 export default function RcmPage() {
   const [rcmTab, setRcmTab] = useState<RcmTab>('controls')
@@ -115,12 +116,17 @@ export default function RcmPage() {
         <Button variant={rcmTab === 'controls' ? 'default' : 'ghost'} size="sm" onClick={() => setRcmTab('controls')}>
           통제
         </Button>
+        <Button variant={rcmTab === 'roles' ? 'default' : 'ghost'} size="sm" onClick={() => setRcmTab('roles')}>
+          담당자 배정
+        </Button>
         <Button variant={rcmTab === 'hierarchy' ? 'default' : 'ghost'} size="sm" onClick={() => setRcmTab('hierarchy')}>
           계층 관리
         </Button>
         <HelpButton k={rcmTab === 'controls' ? 'screen.rcm.controls' : 'screen.rcm.hierarchy'} className="mx-1" />
         <Button asChild variant="ghost" size="sm"><Link to="/rcm/links">통제 ↔ 계정 연결 →</Link></Button>
       </div>
+
+      {rcmTab === 'roles' && <RoleMatrix />}
 
       {rcmTab === 'controls' && (
         <>
