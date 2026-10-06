@@ -80,8 +80,8 @@ export const ROLE_ASSIGN_OPTIONS = [
   { value: 'icfr_lead', label: '책임관리자 (담당 조직장)' },
   { value: 'icfr_manager', label: '마스터관리자 (내부회계관리자)' },
   { value: 'ceo', label: '대표자' },
-  { value: 'auditor', label: '감사' },
-  { value: 'external_auditor', label: '외부감사인' },
+  { value: 'auditor', label: '감사 (상근감사·감사위원회 위원) — 조회 전용' },
+  { value: 'external_auditor', label: '외부감사인 — 조회 전용' },
   { value: 'sys_admin', label: '시스템관리자' },
 ] as const
 
@@ -95,4 +95,7 @@ export const ROLE_LABELS: Record<string, string> = {
   ExternalAuditor: '외부감사인',
   Executive: '경영진',
   ...Object.fromEntries(ROLE_ASSIGN_OPTIONS.map((o) => [o.value, o.label])),
+  // 외부 사용자 초대(ADR-0039)로만 생기는 역할 — 직접 배정 목록에는 없다(접근 기간·2단계 인증이 함께 걸려야 해서)
+  external_advisor: 'PA회계법인 (ICFR 자문)',
+  external_specialist: '세무·기장대리인',
 }

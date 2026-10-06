@@ -42,13 +42,13 @@ export default function PolicyField({ def, raw, canEdit }: Props) {
     <div className="flex flex-col gap-2 border-b py-3 last:border-b-0 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
-          <Label htmlFor={`policy-${def.key}`} className="font-medium">
+          {/* 내부 키(dept_approval_enabled 등)는 사용자에게 의미가 없어 화면에서 뺐다 — 지원·문의용으로 마우스를 올리면 보인다 */}
+          <Label htmlFor={`policy-${def.key}`} className="font-medium" title={`정책 키: ${def.key}`}>
             {def.label}
           </Label>
           {!isSet && <Badge variant="secondary">기본값</Badge>}
         </div>
         <p className="text-sm text-muted-foreground">{def.description}</p>
-        <p className="font-mono text-xs text-muted-foreground">{def.key}</p>
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
