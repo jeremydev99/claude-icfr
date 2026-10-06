@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import type { Control, ControlCreatePayload, ControlUpdatePayload } from '../types'
 import { useCreateControl, useUpdateControl } from '../api/useControls'
+import { useChangeAction, useControlChange } from '../changes/api'
 import { toControl } from '../api/controlsAdapter'
 import { isBaseline } from '../api/sourceEnvelope'
 import BasicInfoTab from './form-tabs/BasicInfoTab'
@@ -118,7 +119,14 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
   const [activeTab, setActiveTab] = useState('basic')
   const createMutation = useCreateControl()
   const updateMutation = useUpdateControl()
-  const isPending = createMutation.isPending || updateMutation.isPending
+  // 편집은 결재를 거친다(2026-10-06): 임시저장 → 상신 → 조직장 → 내부회계 일괄 상신 → 내부회계관리자 승인 → 반영.
+  // 바로 반영은 내부회계관리자만(서버 판정 direct_edit)
+  const { data: changeInfo } = useControlChange(mode === 'edit' && open ? control?.id : undefined)
+  const change = changeInfo?.change ?? null
+  const changeAction = useChangeAction()
+  const [action, setAction] = useState<'draft' | 'submit' | 'direct'>('draft')
+  const lockedByOther = !!change && (!change.is_mine || !['draft', 'rejected'].includes(change.status))
+  const isPending = createMutation.isPending || updateMutation.isPending || changeAction.isPending
   const showBaselineHint = mode === 'edit' && isBaseline(control?.envelope)
 
   const methods = useForm<ControlFormData>({
@@ -156,12 +164,16 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
         related_accounts: control.related_accounts ?? '',
         related_systems: control.related_systems ?? '',
         euc_description: control.euc_description ?? '',
+        // 내 임시저장(또는 반려된 변경)이 있으면 그 값으로 이어서 고친다
+        ...(change && change.is_mine && ['draft', 'rejected'].includes(change.status)
+          ? Object.fromEntries(Object.entries(change.changes).map(([k, v]) => [k, v ?? '']))
+          : {}),
       })
     } else {
       reset(DEFAULT_VALUES)
     }
     setActiveTab('basic')
-  }, [open, mode, control, reset])
+  }, [open, mode, control, reset, change])
 
   const errorTabCounts: Record<string, number> = {}
   for (const field of Object.keys(errors)) {
@@ -223,9 +235,19 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
           related_systems: data.related_systems || null,
           euc_description: data.euc_description || null,
         }
-        const saved = await updateMutation.mutateAsync({ id: control.id, payload })
-        toast.success('통제가 수정되었습니다')
-        onSuccess?.(toControl(saved))
+        if (action === 'direct') {
+          const saved = await updateMutation.mutateAsync({ id: control.id, payload })
+          toast.success('통제를 바로 반영했습니다')
+          onSuccess?.(toControl(saved))
+        } else {
+          const draft = await changeAction.mutateAsync({ method: 'put', url: `/api/rcm-changes/control/${control.id}`, body: { changes: payload } }) as { id: string; dept_approver: string | null }
+          if (action === 'submit') {
+            const r = await changeAction.mutateAsync({ method: 'post', url: `/api/rcm-changes/${draft.id}/submit` }) as { status: string; dept_approver: string | null; dept_skipped: string | null }
+            toast.success(r.status === 'dept_review' ? `상신했습니다 — 조직장(${r.dept_approver}) 결재 대기` : `상신했습니다 — ${r.dept_skipped}, 내부회계 대기함으로`)
+          } else {
+            toast.success('임시저장했습니다 — 상신해야 결재가 시작됩니다')
+          }
+        }
       }
       onOpenChange(false)
     } catch (err) {
@@ -271,7 +293,16 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
           </DialogDescription>
           {showBaselineHint && (
             <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
-              이 통제는 기준(baseline)입니다 — 저장 시 귀사 재정의(override)로 기록됩니다.
+              이 통제는 기준(baseline)입니다 — 반영 시 귀사 재정의(override)로 기록됩니다.
+            </p>
+          )}
+          {mode === 'edit' && (
+            <p className="rounded border bg-muted/60 px-2.5 py-1.5 text-xs text-muted-foreground">
+              {change
+                ? <>진행 중인 변경: <b>{change.status_label}</b> · 작성 {change.author}{change.rejected_by && change.status === 'rejected'
+                    ? ` · 반려 사유: ${(change.rejected_by === 'dept' ? change.dept_note : change.admin_note) ?? '-'}` : ''}
+                    {lockedByOther && ' — 결재가 끝나기 전에는 고칠 수 없습니다'}</>
+                : <>고친 내용은 <b>임시저장</b> 후 <b>상신</b>하면 조직장 → 내부회계 담당자 → 내부회계관리자 승인을 거쳐 반영됩니다.</>}
             </p>
           )}
         </DialogHeader>
@@ -317,9 +348,24 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
                 <Button type="button" variant="outline" onClick={handleCancel} disabled={isPending}>
                   취소
                 </Button>
-                <Button type="submit" disabled={isPending}>
-                  {isPending ? '저장 중...' : '저장'}
-                </Button>
+                {mode === 'create' ? (
+                  <Button type="submit" disabled={isPending}>{isPending ? '저장 중...' : '저장'}</Button>
+                ) : (
+                  <>
+                    <Button type="submit" variant="outline" disabled={isPending || lockedByOther} onClick={() => setAction('draft')}>
+                      임시저장
+                    </Button>
+                    <Button type="submit" disabled={isPending || lockedByOther} onClick={() => setAction('submit')}>
+                      {isPending && action === 'submit' ? '상신 중...' : '임시저장 후 상신'}
+                    </Button>
+                    {changeInfo?.direct_edit && (
+                      <Button type="submit" variant="ghost" disabled={isPending} onClick={() => setAction('direct')}
+                        title="결재 없이 바로 RCM 에 반영합니다(내부회계관리자) — 이력에 남습니다">
+                        바로 반영
+                      </Button>
+                    )}
+                  </>
+                )}
               </div>
             </DialogFooter>
           </form>

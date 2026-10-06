@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { useCanWrite } from '@/features/auth/useCanWrite'
 import HelpButton from '@/features/help/HelpButton'
 import RoleMatrix from '@/features/admin/roleMatrix/RoleMatrix'
+import ChangeInbox from '../changes/ChangeInbox'
 
 function extractErrorMessage(err: unknown): string {
   if (isAxiosError(err)) {
@@ -35,7 +36,7 @@ const DEFAULT_PARAMS: ControlSearchParams = {
   sort_order: 'asc',
 }
 
-type RcmTab = 'controls' | 'hierarchy' | 'roles'
+type RcmTab = 'controls' | 'hierarchy' | 'roles' | 'changes'
 
 export default function RcmPage() {
   const [rcmTab, setRcmTab] = useState<RcmTab>('controls')
@@ -116,6 +117,9 @@ export default function RcmPage() {
         <Button variant={rcmTab === 'controls' ? 'default' : 'ghost'} size="sm" onClick={() => setRcmTab('controls')}>
           통제
         </Button>
+        <Button variant={rcmTab === 'changes' ? 'default' : 'ghost'} size="sm" onClick={() => setRcmTab('changes')}>
+          변경 결재
+        </Button>
         <Button variant={rcmTab === 'roles' ? 'default' : 'ghost'} size="sm" onClick={() => setRcmTab('roles')}>
           담당자 배정
         </Button>
@@ -127,6 +131,7 @@ export default function RcmPage() {
       </div>
 
       {rcmTab === 'roles' && <RoleMatrix />}
+      {rcmTab === 'changes' && <ChangeInbox />}
 
       {rcmTab === 'controls' && (
         <>

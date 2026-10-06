@@ -778,8 +778,18 @@ def bulk_delete_controls(body: BulkDeleteRequest, user: User = Depends(require_w
     return {"deleted_count": deleted, "skipped_ids": skipped}
 
 
+def require_direct_control_edit(user: User = Depends(require_write), db: Session = Depends(get_db)) -> User:
+    """통제 내용 **바로 반영** — 내부회계관리자만(2026-10-06). 그 외는 임시저장 → 조직장 → 일괄 상신 → 내부회계관리자
+    결재로 반영한다(`/api/rcm-changes`). 회사에 내부회계관리자가 아직 없으면(결재할 사람이 없으면) 종전처럼 허용한다."""
+    from app.services.control_changes import direct_edit_allowed
+    if not direct_edit_allowed(db, user.id):
+        raise HTTPException(status_code=403, detail="통제 내용은 임시저장 후 상신 → 조직장 → 내부회계관리자 결재로 반영됩니다")
+    return user
+
+
 @router.post("/controls/bulk-update")
-def bulk_update_controls(body: BulkUpdateRequest, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
+def bulk_update_controls(body: BulkUpdateRequest, user: User = Depends(require_direct_control_edit),
+                         db: Session = Depends(get_db)) -> dict:
     """다건 수정 — 단건 PATCH 와 동일 분기를 id 마다 적용 (ADR-0027, 2-A-4-2).
 
     `exclude_unset` — 단건 PATCH 와 동일 기준으로 통일(2-A-4-2). 이전 `exclude_none` 은
@@ -956,8 +966,9 @@ def get_control(control_id: UUID, user: CurrentUser = None, db: Session = Depend
 
 
 @router.patch("/controls/{control_id}", response_model=ControlRead)
-def update_control(control_id: UUID, body: ControlUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
-    """단건 수정 — 분기는 `_apply_control_update` 공통 (ADR-0027, 2-A-4-1).
+def update_control(control_id: UUID, body: ControlUpdate, user: User = Depends(require_direct_control_edit),
+                   db: Session = Depends(get_db)) -> dict:
+    """단건 수정(바로 반영) — 분기는 `_apply_control_update` 공통 (ADR-0027, 2-A-4-1).
 
     `exclude_unset` 으로 미전송을 판별한다 — False/0/"" 는 유효 값(falsy 판정 금지).
     """

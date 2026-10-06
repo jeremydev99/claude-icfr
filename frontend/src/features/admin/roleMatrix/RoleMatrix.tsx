@@ -18,7 +18,7 @@ import {
 
 const FILTERS: { v: Filter; label: string }[] = [
   { v: 'all', label: '전체' }, { v: 'unassigned', label: '미배정 있음' }, { v: 'key', label: '핵심통제' },
-  { v: 'euc', label: 'EUC 사용' }, { v: 'iuc', label: 'IUC(정보) 사용' }, { v: 'conflict', label: '겸직' },
+  { v: 'iuc', label: 'IUC(정보) 사용' }, { v: 'euc', label: '그중 EUC(스프레드시트)' }, { v: 'conflict', label: '겸직' },
 ]
 const INHERIT = '__inherit__'
 const NONE = '__none__'
@@ -245,8 +245,12 @@ function ProcessGroup({ g, canEdit, pending, set, procs, names, sel, setSel, use
             <div className="flex items-center gap-1.5">
               <span className="font-mono text-xs text-muted-foreground">{c.code}</span>
               {c.is_key_control && <Star className="h-3 w-3 fill-amber-400 text-amber-500" aria-label="핵심통제" />}
-              {c.euc_count > 0 && <Badge variant="outline" className="px-1 text-[10px]">EUC {c.euc_count}</Badge>}
-              {c.iuc_count > 0 && <Badge variant="outline" className="px-1 text-[10px]">IUC {c.iuc_count}</Badge>}
+              {/* IUC(통제에 쓰는 정보) 안에 EUC(스프레드시트)가 포함된다 — 따로 세면 같은 것을 두 번 보인다 */}
+              {c.iuc_count > 0 && (
+                <Badge variant="outline" className="px-1 text-[10px]" title="통제에 쓰는 정보(IUC) 수 · 그중 사용자 스프레드시트(EUC)">
+                  IUC {c.iuc_count}{c.euc_count > 0 ? ` (EUC ${c.euc_count})` : ''}
+                </Badge>
+              )}
               {c.conflicts.length > 0 && <Badge variant="outline" className="border-amber-400 px-1 text-[10px] text-amber-700">겸직</Badge>}
             </div>
             <p className="line-clamp-1" title={c.name ?? ''}>{c.name}</p>
