@@ -98,12 +98,16 @@ def load_manifest() -> tuple[str, dict[str, dict]]:
     src = MANIFEST.read_text(encoding="utf-8")
     style_m = re.search(r"export const STYLE =\s*((?:'[^']*'\s*\+?\s*)+)", src)
     style = "".join(re.findall(r"'([^']*)'", style_m.group(1))) if style_m else ""
+    photo_m = re.search(r"export const PHOTO_STYLE =\s*((?:'[^']*'\s*\+?\s*)+)", src)
+    photo_style = "".join(re.findall(r"'([^']*)'", photo_m.group(1))) if photo_m else style
     slots = {}
     for m in re.finditer(r"'([a-z-]+)':\s*\{(.*?)\n  \},", src, re.S):
         body = m.group(2)
         aspect = re.search(r"aspect:\s*'(\w+)'", body).group(1)
         prompt = "".join(re.findall(r"'([^']*)'", body.split("prompt:", 1)[1]))
-        slots[m.group(1)] = {"aspect": aspect, "prompt": prompt}
+        # 사진 슬롯(photo: true)은 3D 화풍 대신 사진 화풍을 붙인다(2026-10-06)
+        slots[m.group(1)] = {"aspect": aspect, "prompt": prompt,
+                             "style": photo_style if re.search(r"photo:\s*true", body) else style}
     return style, slots
 
 
@@ -164,7 +168,7 @@ def main() -> None:
     for name in targets:
         spec = slots[name]
         try:
-            imgs = generate(sv, name, [f"{style}. {spec['prompt']}"] * n, ASPECTS[spec["aspect"]], a.email, a.approve)
+            imgs = generate(sv, name, [f"{spec['style']}. {spec['prompt']}"] * n, ASPECTS[spec["aspect"]], a.email, a.approve)
         except Exception as e:  # 한 슬롯 실패가 전체를 멈추지 않게
             print(f"ERR {name}: {e}")
             continue

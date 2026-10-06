@@ -14,6 +14,8 @@ import ChangePasswordDialog from '@/features/auth/components/ChangePasswordDialo
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import LogoMark from '@/components/brand/LogoMark'
+import { illustrationUrl } from '@/components/illustration/Illustration'
+import type { IllustrationSlot } from '@/components/illustration/manifest'
 import { navigation, type NavItem } from '@/config/navigation'
 
 const NAV_GROUPS_KEY = 'icfr.nav.expandedGroups'
@@ -91,6 +93,20 @@ function NavRow({ item, locked, onNavigate }: { item: NavItem; locked: boolean; 
   )
 }
 
+// 상단 바 사진 — 메뉴 묶음별. 사진 파일이 없으면 아무것도 그리지 않는다(illustrationUrl 이 null)
+const GROUP_BANNER: Record<string, IllustrationSlot> = {
+  계획: 'banner-plan', 통제: 'banner-control', 평가: 'banner-eval', 보고: 'banner-report',
+}
+const sidebarPhoto = illustrationUrl('sidebar-photo')
+
+function bannerFor(pathname: string): string | null {
+  for (const g of navigation) {
+    const slot = g.groupLabel ? GROUP_BANNER[g.groupLabel] : undefined
+    if (slot && g.items.some((it) => pathname === it.path || pathname.startsWith(it.path + '/'))) return illustrationUrl(slot)
+  }
+  return null
+}
+
 /** 사이드바 내용 — PC 고정 사이드바와 모바일 서랍(Sheet)이 같은 것을 쓴다. */
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAuthStore()
@@ -138,12 +154,21 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <>
-      {/* 로고 */}
-      <div className="flex h-16 shrink-0 items-center gap-3 px-5">
-        <LogoMark className="h-10 w-10 shadow-sm rounded-[11px]" />
-        <div className="min-w-0 leading-tight">
-          <p className="text-lg font-extrabold tracking-tight text-sidebar-foreground">ICFR</p>
-          <p className="truncate text-xs font-medium text-sidebar-muted">내부회계관리시스템</p>
+      {/* 로고 — 저녁 도시 사진 띠 위에. 사진은 아래로 사이드바 색에 녹아 사라진다(테마 3종 모두) */}
+      <div className="relative shrink-0 overflow-hidden">
+        {sidebarPhoto && (
+          <>
+            <img src={sidebarPhoto} alt="" aria-hidden draggable={false}
+              className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-[50%_35%]" />
+            <div className="absolute inset-0 bg-gradient-to-b from-[hsl(224_45%_10%/0.55)] via-[hsl(224_45%_10%/0.45)] to-sidebar" />
+          </>
+        )}
+        <div className={cn('relative flex items-center gap-3 px-5', sidebarPhoto ? 'h-24 pb-4' : 'h-16')}>
+          <LogoMark className="h-10 w-10 shadow-sm rounded-[11px]" />
+          <div className="min-w-0 leading-tight">
+            <p className={cn('text-lg font-extrabold tracking-tight', sidebarPhoto ? 'text-white drop-shadow' : 'text-sidebar-foreground')}>ICFR</p>
+            <p className={cn('truncate text-xs font-medium', sidebarPhoto ? 'text-white/80 drop-shadow' : 'text-sidebar-muted')}>내부회계관리시스템</p>
+          </div>
         </div>
       </div>
 
@@ -283,6 +308,7 @@ export default function AppLayout() {
   useEffect(() => applySidebarTheme(theme), [theme])
   useEffect(() => setDrawer(false), [location.pathname])
   const title = currentTitle(location.pathname)
+  const banner = bannerFor(location.pathname)
   const helpOpen = useHelpPanel((s) => s.open)
   const toggleHelp = useHelpPanel((s) => s.toggle)
 
@@ -334,7 +360,12 @@ export default function AppLayout() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* 상단 바 — 모바일: 메뉴·로고 / 모든 크기: 앱 설치·도움말 */}
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border/70 bg-background/85 px-3 pt-[env(safe-area-inset-top)] backdrop-blur-md supports-[backdrop-filter]:bg-background/70 md:px-8">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 overflow-hidden border-b border-border/70 bg-background/85 px-3 pt-[env(safe-area-inset-top)] backdrop-blur-md supports-[backdrop-filter]:bg-background/70 md:px-8">
+          {/* 메뉴 묶음(계획·통제·평가·보고)별 사진 — 오른쪽 끝에 은은하게, 왼쪽으로 사라진다. 좁은 화면에선 숨긴다 */}
+          {banner && (
+            <img src={banner} alt="" aria-hidden draggable={false}
+              className="pointer-events-none absolute inset-y-0 right-0 hidden h-full w-[46%] max-w-[760px] select-none object-cover opacity-50 [mask-image:linear-gradient(to_left,black_25%,transparent)] dark:opacity-30 md:block" />
+          )}
           <button
             type="button"
             onClick={() => setDrawer(true)}
@@ -348,7 +379,7 @@ export default function AppLayout() {
             <span className="font-extrabold tracking-tight">ICFR</span>
           </span>
           {title && <span className="hidden text-lg font-semibold text-foreground md:inline">{title}</span>}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="relative ml-auto flex items-center gap-2 rounded-xl bg-background/60 px-1 backdrop-blur-sm">
             <InstallButton />
             <button
               type="button"

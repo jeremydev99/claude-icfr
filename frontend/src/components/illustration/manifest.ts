@@ -16,7 +16,24 @@ export const STYLE =
   'subtle soft shadows, calm and trustworthy mood, high detail, ' +
   'no text, no letters, no numbers, no logos, no watermark'
 
+/**
+ * 사진 화풍(2026-10-06 마스터 "대문·사이드바·헤드에 이미지를 적극, 과하지 않게") — 히어로·배너 자리에만 쓴다.
+ * 빈 상태 일러스트(3D)와 섞이지 않게 사진은 큰 자리에만, 남색·호박색 톤으로 맞춘다.
+ */
+export const PHOTO_STYLE =
+  'Cinematic editorial photograph, shot on full-frame camera with 35mm lens, natural realistic lighting, ' +
+  'muted deep navy and slate blue color grading with warm amber accent lights, shallow depth of field, ' +
+  'sophisticated corporate atmosphere, Korean business setting, photorealistic, high detail, ' +
+  'no text, no readable letters or numbers on screens, no logos, no watermark'
+
 export type IllustrationSlot =
+  | 'login-photo'
+  | 'sidebar-photo'
+  | 'dashboard-photo'
+  | 'banner-plan'
+  | 'banner-control'
+  | 'banner-eval'
+  | 'banner-report'
   | 'login-hero'
   | 'dashboard-hero'
   | 'empty-default'
@@ -30,6 +47,8 @@ export type IllustrationSlot =
 export interface SlotSpec {
   /** 어두운 배경으로 생성 — 밝은 화면용(흰 배경)은 multiply 로 카드에 녹이고, 어두운 것은 그대로 둔다 */
   dark?: boolean
+  /** 사진 화풍(PHOTO_STYLE) — 생성 스크립트가 STYLE 대신 붙인다. 화면에서는 object-cover 로 채운다 */
+  photo?: boolean
   /** 화면에서의 가로세로비 (생성 크기 선택에도 쓴다) */
   aspect: 'portrait' | 'landscape' | 'square' | 'wide'
   alt: string
@@ -37,6 +56,67 @@ export interface SlotSpec {
 }
 
 export const SLOTS: Record<IllustrationSlot, SlotSpec> = {
+  'login-photo': {
+    aspect: 'portrait',
+    dark: true,
+    photo: true,
+    alt: '저녁 무렵 사무실에서 태블릿으로 재무 대시보드를 검토하는 직장인',
+    prompt:
+      'A confident Korean professional woman in her 30s wearing a dark navy blazer, standing by floor-to-ceiling windows ' +
+      'in a modern open-plan office at dusk, reviewing an abstract financial dashboard on a tablet held in both hands, ' +
+      'city skyline lights softly blurred outside, colleagues working at desks blurred in the background, warm pendant lamps, ' +
+      'subject placed on the right third of the frame, the left half darker and calm for overlaid text',
+  },
+  'sidebar-photo': {
+    aspect: 'portrait',
+    dark: true,
+    photo: true,
+    alt: '저녁 무렵 유리 건물과 도시 야경',
+    prompt:
+      'Looking up at a modern glass office tower at blue hour, geometric facade lines, a few warm lit windows, ' +
+      'deep navy sky, calm minimal composition with lots of dark negative space, no people',
+  },
+  'dashboard-photo': {
+    aspect: 'wide',
+    photo: true,
+    alt: '밝은 회의실에서 보고서를 함께 검토하는 팀',
+    prompt:
+      'A small Korean finance team of three reviewing printed reports and a laptop together at a light wooden table ' +
+      'in a bright modern meeting room with soft daylight, documents and a coffee cup, natural candid moment, ' +
+      'people on the right half of the frame, the left half bright, soft and uncluttered for overlaid text',
+  },
+  'banner-plan': {
+    aspect: 'landscape',
+    photo: true,
+    alt: '계획 — 달력과 노트가 놓인 책상',
+    prompt:
+      'Top-down view of a tidy desk with a paper wall calendar, a notebook with a pen, a laptop edge and a coffee cup, ' +
+      'soft morning light, lots of clean empty space, calm planning mood',
+  },
+  'banner-control': {
+    aspect: 'landscape',
+    photo: true,
+    alt: '통제 — 정돈된 서류철과 도장',
+    prompt:
+      'Neatly arranged document binders and folders on a shelf with a company seal stamp and a fountain pen on a desk, ' +
+      'soft side light, orderly and secure mood, shallow depth of field',
+  },
+  'banner-eval': {
+    aspect: 'landscape',
+    photo: true,
+    alt: '평가 — 서류를 검토하는 손과 돋보기',
+    prompt:
+      'Close-up of hands reviewing printed financial documents with a pen and a magnifying glass on a desk, ' +
+      'a laptop blurred in the background, focused auditing mood, soft natural light',
+  },
+  'banner-report': {
+    aspect: 'landscape',
+    photo: true,
+    alt: '보고 — 이사회 회의실',
+    prompt:
+      'An empty modern boardroom with a long dark wooden table, leather chairs, a large blank screen on the wall and ' +
+      'bound reports placed neatly on the table, evening city view through windows, formal and trustworthy mood',
+  },
   'login-hero': {
     aspect: 'portrait',
     dark: true,
