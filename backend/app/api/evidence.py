@@ -163,8 +163,15 @@ def _assert_can_edit_file(db: Session, user: User, obj: EvidenceFile) -> None:
 # ── Evidence Files ─────────────────────────────────────────
 
 @router.get("/files")
-def list_files(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+def list_files(skip: int = 0, limit: int = 100, cycle_id: UUID | None = None,
+               control_id: UUID | None = None, user: CurrentUser = None,
+               db: Session = Depends(get_db)) -> dict:
+    """증빙 목록. `cycle_id`·`control_id` 는 선택 필터(AND) — 화면 목록 필터(13.9-74 ②)."""
     q = db.query(EvidenceFile).filter(EvidenceFile.is_deleted == False)  # noqa: E712
+    if cycle_id is not None:
+        q = q.filter(EvidenceFile.cycle_id == cycle_id)
+    if control_id is not None:
+        q = q.filter(EvidenceFile.control_id == control_id)
     total = q.count()
     items = q.offset(skip).limit(limit).all()
     return {"items": [EvidenceFileRead.model_validate(i) for i in items], "total": total, "skip": skip, "limit": limit}

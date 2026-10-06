@@ -471,3 +471,43 @@ def test_delete_still_keeps_file(client: TestClient, storage) -> None:
     assert key in storage                                     # 파일이 남는다
     hist = client.get(f"/api/evidence/files/{created['id']}/history", headers=mh).json()
     assert hist["is_deleted"] is True and hist["delete_reason"] == "중복 등록"
+
+
+# ── 13.9-74 ② 목록 회차·통제 필터 ─────────────────────────
+
+def test_list_files_filters_by_cycle_and_control(client: TestClient, storage) -> None:
+    """`GET /files?cycle_id=&control_id=` — 각각 좁히고, 함께 주면 AND 다."""
+    db, tok = _ctx()
+    try:
+        owner = _user(db, "ev-filter@acme.example", "필터책임자")
+        c1 = _control(db, "F1")
+        c2 = _control(db, "F2")
+        cy_a = _cycle(db, "F1a", c1)
+        cy_b = _cycle(db, "F1b", c1)
+        db.add(CycleTarget(cycle_id=cy_a, control_id=c2, control_code="EVF2-C"))
+        for c in (c1, c2):
+            db.add(RoleAssignment(scope="control", target_id=c,
+                                  role_name="control_owner", user_id=owner))
+        db.commit()
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+    oh = _login(client, "ev-filter@acme.example", "pw123456")
+    a1 = _upload(client, oh, cy_a, c1, "a1.pdf").json()["id"]
+    a2 = _upload(client, oh, cy_a, c2, "a2.pdf").json()["id"]
+    b1 = _upload(client, oh, cy_b, c1, "b1.pdf").json()["id"]
+
+    def ids(**params) -> set[str]:
+        resp = client.get("/api/evidence/files", headers=oh,
+                          params={k: str(v) for k, v in params.items()})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["total"] == len(body["items"])
+        return {i["id"] for i in body["items"]}
+
+    assert ids(cycle_id=cy_a) == {a1, a2}
+    assert ids(control_id=c1) == {a1, b1}
+    assert ids(cycle_id=cy_a, control_id=c1) == {a1}
+    assert ids(cycle_id=uuid4()) == set()
+    assert {a1, a2, b1} <= ids()                    # 필터 없으면 기존 동작 그대로
