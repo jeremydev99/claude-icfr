@@ -50,6 +50,7 @@ import {
 import type { Control } from '@/features/rcm/types'
 import TestRunEditDialog from './TestRunEditDialog'
 import { useCanWrite } from '@/features/auth/useCanWrite'
+import { extractHierarchyErrorMessage } from '@/features/rcm/api/errors'
 
 // ── StepInlineForm ────────────────────────────────────────────
 
@@ -173,7 +174,8 @@ export default function TestRunDetailSheet({ runId, open, onOpenChange, controlM
       { id: run.id, payload: { to_status: nextTrans.to_status } },
       {
         onSuccess: () => toast.success(`상태가 '${STATUS_LABELS[nextTrans.to_status]}'로 변경되었습니다`),
-        onError: () => toast.error('상태 변경에 실패했습니다'),
+        // 409 자기 승인 금지 등 서버 사유를 그대로 보인다(13.9-94)
+        onError: (err) => toast.error(extractHierarchyErrorMessage(err)),
       },
     )
   }

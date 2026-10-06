@@ -35,6 +35,32 @@ ALLOWED_TRANSITIONS: dict = {
 }
 
 
+# ── 승인 후 잠금·본인 승인 금지 (13.9-94, ADR-0038 2단계 선행 조치) ──
+# 승인된 테스트는 결론이 확정된 감사 증거다 — 그 뒤 수정·삭제가 되면 승인이 무의미하다.
+# 결재선(검토 요청→검토→승인)은 ADR-0038 2단계에서 붙인다. 여기서는 최소한의 두 규칙만 둔다.
+APPROVED_LOCKED = "승인된 테스트는 수정·삭제할 수 없습니다"
+
+
+def _assert_run_not_approved(run: TestRun | None) -> None:
+    if run is not None and run.status == "approved":
+        raise HTTPException(status_code=409, detail=APPROVED_LOCKED)
+
+
+def _completed_by(db: Session, run_id: UUID) -> UUID | None:
+    """마지막으로 '완료'로 전이한 사람 — 이력에서 읽는다."""
+    h = (db.query(TestStatusHistory)
+         .filter(TestStatusHistory.test_run_id == run_id, TestStatusHistory.to_status == "completed")
+         .order_by(TestStatusHistory.changed_at.desc()).first())
+    return h.changed_by_id if h else None
+
+
+def _assert_not_self_approval(db: Session, run: TestRun, user_id: UUID) -> None:
+    """수행자(tester)·완료 처리자는 승인할 수 없다 — 자기 승인 금지(ADR-0038 §2.2)."""
+    if user_id in (run.tester_id, _completed_by(db, run.id)):
+        raise HTTPException(status_code=409,
+                            detail="테스트 수행자·완료 처리자는 승인할 수 없습니다 — 자기 승인 금지")
+
+
 @router.get("/info")
 def get_module_info(user: CurrentUser) -> dict:
     return {
@@ -226,6 +252,8 @@ def transition_test_run(
             status_code=422,
             detail=f"'{current}' → '{target}' 전이는 허용되지 않습니다",
         )
+    if target == "approved":
+        _assert_not_self_approval(db, run, user.id)
 
     history = TestStatusHistory(
         test_run_id=run.id,
@@ -263,6 +291,7 @@ def update_run(run_id: UUID, body: TestRunUpdate, user: User = Depends(require_w
     obj = db.query(TestRun).filter(TestRun.id == run_id, TestRun.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="TestRun not found")
+    _assert_run_not_approved(obj)
     for f, v in body.model_dump(exclude_none=True).items():
         setattr(obj, f, v)
     db.commit()
@@ -275,6 +304,7 @@ def delete_run(run_id: UUID, user: User = Depends(require_write), db: Session = 
     obj = db.query(TestRun).filter(TestRun.id == run_id, TestRun.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="TestRun not found")
+    _assert_run_not_approved(obj)
     obj.is_deleted = True
     db.commit()
 
@@ -293,6 +323,7 @@ def list_steps(run_id: UUID | None = None, skip: int = 0, limit: int = 100, user
 
 @router.post("/steps", status_code=status.HTTP_201_CREATED, response_model=TestStepRead)
 def create_step(body: TestStepCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> TestStep:
+    _assert_run_not_approved(db.get(TestRun, body.test_run_id))
     obj = TestStep(**body.model_dump())
     db.add(obj)
     db.commit()
@@ -313,6 +344,7 @@ def update_step(step_id: UUID, body: TestStepUpdate, user: User = Depends(requir
     obj = db.query(TestStep).filter(TestStep.id == step_id, TestStep.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="TestStep not found")
+    _assert_run_not_approved(db.get(TestRun, obj.test_run_id))
     for f, v in body.model_dump(exclude_none=True).items():
         setattr(obj, f, v)
     db.commit()
@@ -325,5 +357,6 @@ def delete_step(step_id: UUID, user: User = Depends(require_write), db: Session 
     obj = db.query(TestStep).filter(TestStep.id == step_id, TestStep.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="TestStep not found")
+    _assert_run_not_approved(db.get(TestRun, obj.test_run_id))
     obj.is_deleted = True
     db.commit()
