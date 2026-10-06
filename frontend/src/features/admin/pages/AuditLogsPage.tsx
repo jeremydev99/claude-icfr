@@ -21,6 +21,8 @@ interface LogRow {
   route: string
   path: string
   target_id: string | null
+  /** 기록 시점 대상 이름 — '통제 EL-010-10-10 매출 인식', 'EUC 매출 집계표', '처리 12건' */
+  target_label: string | null
   status_code: number
   success: boolean
   ip: string | null
@@ -98,7 +100,7 @@ export default function AuditLogsPage() {
           <form className="grid gap-2 rounded-xl border bg-card p-4 shadow-card sm:grid-cols-2 lg:grid-cols-4" onSubmit={(e) => { e.preventDefault(); apply() }}>
             <label className="relative lg:col-span-2">
               <Search className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
-              <Input value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} placeholder="검색 — 사용자·이메일·경로·대상 ID·IP" className="pl-8" />
+              <Input value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} placeholder="검색 — 사용자·동작·대상(통제 코드·이름)·IP" className="pl-8" />
             </label>
             <Sel value={draft.user_id} onChange={(v) => setDraft({ ...draft, user_id: v })} all="사용자 전체"
               options={(data?.users ?? []).map((u) => ({ value: u.id, label: u.name }))} />
@@ -140,7 +142,7 @@ export default function AuditLogsPage() {
                   <th className="px-3 py-2 font-semibold">모듈</th>
                   <th className="px-3 py-2 font-semibold">동작</th>
                   <th className="px-3 py-2 font-semibold">결과</th>
-                  <th className="px-3 py-2 font-semibold">대상·경로</th>
+                  <th className="px-3 py-2 font-semibold">대상</th>
                   <th className="px-3 py-2 font-semibold">IP</th>
                 </tr>
               </thead>
@@ -189,13 +191,17 @@ function FragmentRow({ r, open, onToggle }: { r: LogRow; open: boolean; onToggle
         <td className="px-3 py-2">{r.user_name ?? <span className="text-muted-foreground">(알 수 없음)</span>}
           {r.user_email && <span className="block text-xs text-muted-foreground">{r.user_email}</span>}</td>
         <td className="px-3 py-2">{r.module}</td>
-        <td className="px-3 py-2">{r.action}</td>
+        <td className="px-3 py-2 font-medium">{r.action}</td>
         <td className="px-3 py-2">
           <Badge variant="outline" className={r.success ? 'border-emerald-300 text-emerald-700 dark:text-emerald-300' : 'border-rose-300 text-rose-700 dark:text-rose-300'}>
             {r.success ? '성공' : '실패'} {r.status_code}
           </Badge>
         </td>
-        <td className="max-w-[340px] truncate px-3 py-2 font-mono text-xs text-muted-foreground" title={r.path}>{r.path}</td>
+        <td className="max-w-[360px] px-3 py-2" title={r.path}>
+          {r.target_label
+            ? <span className="line-clamp-2">{r.target_label}</span>
+            : <span className="block truncate font-mono text-xs text-muted-foreground">{r.path}</span>}
+        </td>
         <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{r.ip ?? '-'}</td>
       </tr>
       {open && (
@@ -203,6 +209,7 @@ function FragmentRow({ r, open, onToggle }: { r: LogRow; open: boolean; onToggle
           <td colSpan={7} className="px-4 py-3 text-xs">
             <dl className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
               <div><dt className="inline text-muted-foreground">요청 </dt><dd className="inline font-mono">{r.method} {r.route}</dd></div>
+              <div><dt className="inline text-muted-foreground">경로 </dt><dd className="inline font-mono">{r.path}</dd></div>
               <div><dt className="inline text-muted-foreground">대상 ID </dt><dd className="inline font-mono">{r.target_id ?? '-'}</dd></div>
               <div><dt className="inline text-muted-foreground">처리 시간 </dt><dd className="inline">{r.duration_ms ?? '-'}ms</dd></div>
               <div className="sm:col-span-2"><dt className="inline text-muted-foreground">기기 </dt><dd className="inline">{r.user_agent ?? '-'}</dd></div>

@@ -31,6 +31,7 @@ class AuditLog(Base, UUIDPrimaryKeyMixin):
     module: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     action: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    target_label: Mapped[str | None] = mapped_column(String(300), nullable=True)   # 기록 시점 대상 이름(코드·명칭)
     status_code: Mapped[int] = mapped_column(Integer, nullable=False)
     success: Mapped[bool] = mapped_column(Boolean, nullable=False, index=True)
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)

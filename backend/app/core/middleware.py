@@ -4,6 +4,7 @@
 ICFR 시스템은 외부감사 추적성이 필수 (ADR 다수).
 콘솔 감사 로그 + DB `audit_logs`(상태 변경 요청·다운로드, 2026-10-06 — services/audit_log.py).
 """
+import json
 import logging
 import time
 import uuid
@@ -67,8 +68,22 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
         )
         # DB 감사 로그(2026-10-06) — 상태를 바꾸는 요청·다운로드. 실패해도 요청 결과는 그대로 돌려준다
         if audit_svc.should_log(request.method, request.url.path):
+            payload = None
+            route_path = getattr(request.scope.get("route"), "path", None) or request.url.path
+            # 등록·일괄 처리는 대상 ID·건수가 응답에만 있다 — 성공한 JSON 응답만 읽고 같은 본문으로 다시 돌려준다
+            if (response.status_code < 400 and audit_svc.needs_response(request.method, route_path)
+                    and "json" in (response.headers.get("content-type") or "")):
+                body = b"".join([c async for c in response.body_iterator])
+                raw_headers = response.raw_headers
+                response = Response(content=body, status_code=response.status_code)
+                response.raw_headers = raw_headers
+                try:
+                    payload = json.loads(body) if len(body) < 1_000_000 else None
+                except ValueError:
+                    payload = None
             try:
-                await run_in_threadpool(self._persist, request, response.status_code, duration_ms, request_id)
+                await run_in_threadpool(self._persist, request, response.status_code, duration_ms, request_id,
+                                        payload)
             except Exception:  # noqa: BLE001 — 감사 로그 저장 실패가 업무 요청을 깨면 안 된다
                 logger.exception("audit log persist failed path=%s", request.url.path)
         return response
@@ -80,7 +95,8 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
             return fwd.split(",")[0].strip()
         return request.headers.get("x-real-ip") or (request.client.host if request.client else None)
 
-    def _persist(self, request: Request, status_code: int, duration_ms: int, request_id: str) -> None:
+    def _persist(self, request: Request, status_code: int, duration_ms: int, request_id: str,
+                 payload=None) -> None:
         """`get_db` 와 같은 경로로 세션을 얻는다 — 테스트의 의존성 교체(테스트 DB)도 그대로 따른다."""
         from app.core.database import get_db
         route = request.scope.get("route")
@@ -95,6 +111,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
                             method=request.method, route=route_path, path=request.url.path,
                             status_code=status_code, ip=self._client_ip(request),
                             user_agent=request.headers.get("user-agent"), duration_ms=duration_ms,
-                            request_id=request_id)
+                            request_id=request_id, params=dict(request.scope.get("path_params") or {}),
+                            payload=payload)
         finally:
             gen.close()

@@ -4,6 +4,8 @@ from __future__ import annotations
 import re
 from uuid import UUID
 
+from app.services import audit_routes, audit_target
+
 # 경로 접두 → 모듈 이름(화면 표시). 긴 접두부터 본다
 MODULES: list[tuple[str, str]] = [
     ("/api/control-links", "통제↔계정 연결"),
@@ -14,6 +16,7 @@ MODULES: list[tuple[str, str]] = [
     ("/api/org", "조직·역할·정책"),
     ("/api/scoping", "스코핑"),
     ("/api/fs", "재무제표"),
+    ("/api/rcm-changes", "RCM 변경 결재"),
     ("/api/rcm", "RCM"),
     ("/api/euc", "EUC"),
     ("/api/iuc", "IUC"),
@@ -84,8 +87,37 @@ def user_from_auth(header: str | None) -> UUID | None:
         return None
 
 
+def needs_response(method: str, route: str) -> bool:
+    """등록(대상 ID 가 응답에만 있음)·일괄 처리(건수) — 미들웨어가 응답 본문을 읽어 넘겨야 하는 경로."""
+    r = audit_routes.lookup(method, route)
+    return method == "POST" and r is not None and r[3] is None and not route.startswith(("/api/auth", "/api/invite"))
+
+
+def describe(db, method: str, route: str, path: str, params: dict | None,
+             payload=None) -> tuple[str, str, str | None, str | None]:
+    """(모듈, 동작, 대상 ID, 대상 이름). 경로 표(audit_routes)에 있으면 그 이름, 없으면 경로 동사·메서드로."""
+    params = params or {}
+    r = audit_routes.lookup(method, route)
+    if r is None:
+        return module_of(path), action_of(method, route), target_of(path), None
+    module, action, kind, param = r
+    value = params.get(param) if param else None
+    if value is None and isinstance(payload, dict) and payload.get("id") is not None:
+        value = payload["id"]
+    tid = str(value) if value is not None and _UUID.fullmatch(str(value)) else target_of(path)
+    name = None
+    try:
+        name = audit_target.label(db, kind, value, params)
+    except Exception:  # noqa: BLE001 — 이름을 못 찾아도 기록은 남긴다
+        db.rollback()
+    if name is None and kind is None and param is None:
+        name = audit_target.summarize(payload)
+    return module, action, tid, name
+
+
 def write(db, *, user_id: UUID | None, tenant_header: str | None, method: str, route: str, path: str,
-          status_code: int, ip: str | None, user_agent: str | None, duration_ms: int, request_id: str | None) -> None:
+          status_code: int, ip: str | None, user_agent: str | None, duration_ms: int, request_id: str | None,
+          params: dict | None = None, payload=None) -> None:
     """한 줄 저장. 실패해도 요청에는 영향을 주지 않는다(호출부가 예외를 삼킨다)."""
     from app.models.audit_log import AuditLog
     from app.models.tenant import UserTenantAccess
@@ -105,9 +137,17 @@ def write(db, *, user_id: UUID | None, tenant_header: str | None, method: str, r
             acc = db.query(UserTenantAccess).filter(UserTenantAccess.user_id == user_id,
                                                     UserTenantAccess.is_deleted == False).first()  # noqa: E712
             tenant = acc.tenant_id if acc else None
+    # 대상 이름은 회사 기준(RCM 회사 수정분 등)으로 — 요청 밖이라 활성 테넌트를 여기서 잡는다
+    from app.core.tenant_context import reset_active_tenant, set_active_tenant
+    tok = set_active_tenant(tenant) if tenant else None
+    try:
+        module, action, target_id, target_label = describe(db, method, route, path, params, payload)
+    finally:
+        if tok is not None:
+            reset_active_tenant(tok)
     db.add(AuditLog(tenant_id=tenant, user_id=user_id, user_email=email, user_name=name, method=method,
-                    route=route[:300], path=path[:500], module=module_of(path), action=action_of(method, route),
-                    target_id=target_of(path), status_code=status_code, success=status_code < 400,
+                    route=route[:300], path=path[:500], module=module, action=action[:40],
+                    target_id=target_id, target_label=target_label, status_code=status_code, success=status_code < 400,
                     ip=(ip or "")[:64] or None, user_agent=(user_agent or "")[:300] or None,
                     duration_ms=duration_ms, request_id=(request_id or "")[:64] or None))
     db.commit()

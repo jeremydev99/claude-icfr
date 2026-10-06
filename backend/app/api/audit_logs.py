@@ -44,6 +44,7 @@ class LogOut(BaseModel):
     route: str
     path: str
     target_id: str | None
+    target_label: str | None = None
     status_code: int
     success: bool
     ip: str | None
@@ -83,7 +84,7 @@ def _query(db: Session, q: str | None, user_id: UUID | None, module: str | None,
         qs = qs.filter(or_(func.lower(AuditLog.user_name).like(like), func.lower(AuditLog.user_email).like(like),
                            func.lower(AuditLog.path).like(like), func.lower(AuditLog.module).like(like),
                            func.lower(AuditLog.action).like(like), func.lower(AuditLog.ip).like(like),
-                           func.lower(AuditLog.target_id).like(like)))
+                           func.lower(AuditLog.target_id).like(like), func.lower(AuditLog.target_label).like(like)))
     return qs
 
 
@@ -122,10 +123,10 @@ def export_logs(viewer: User = Depends(require_audit_viewer), db: Session = Depe
     buf = io.StringIO()
     buf.write("﻿")
     w = csv.writer(buf)
-    w.writerow(["일시", "사용자", "이메일", "모듈", "동작", "결과", "상태코드", "대상", "경로", "IP", "기기", "처리(ms)"])
+    w.writerow(["일시", "사용자", "이메일", "모듈", "동작", "결과", "상태코드", "대상", "대상 ID", "경로", "IP", "기기", "처리(ms)"])
     for r in rows:
         w.writerow([r.occurred_at.isoformat(timespec="seconds"), r.user_name or "", r.user_email or "", r.module,
-                    r.action, "성공" if r.success else "실패", r.status_code, r.target_id or "", r.path, r.ip or "",
+                    r.action, "성공" if r.success else "실패", r.status_code, r.target_label or "", r.target_id or "", r.path, r.ip or "",
                     r.user_agent or "", r.duration_ms or ""])
     name = f"audit-log-{date.today().isoformat()}.csv"
     return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv; charset=utf-8",
