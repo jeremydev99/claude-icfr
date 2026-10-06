@@ -1,6 +1,8 @@
 """Test 모듈 통합 테스트 — Phase 1 작업3 (RAWC + 워크플로 + 이력)."""
 from fastapi.testclient import TestClient
 
+from tests._approver import approver_headers, user_id_of
+
 
 def _token(client: TestClient) -> str:
     resp = client.post("/api/auth/login", data={"username": "admin@acme.example", "password": "admin123"})
@@ -108,8 +110,10 @@ def test_workflow_full_cycle(client: TestClient) -> None:
     run = client.post("/api/test/runs", json={"control_id": control_id, "fiscal_year": 2025}, headers=h)
     run_id = run.json()["id"]
 
+    ah = approver_headers(client)   # 승인은 수행자와 다른 사람(13.9-94)
     for to_status in ("in_progress", "completed", "approved"):
-        resp = client.post(f"/api/test/runs/{run_id}/transition", json={"to_status": to_status}, headers=h)
+        resp = client.post(f"/api/test/runs/{run_id}/transition", json={"to_status": to_status},
+                           headers=ah if to_status == "approved" else h)
         assert resp.status_code == 200
         assert resp.json()["test_run"]["status"] == to_status
 
@@ -239,11 +243,64 @@ def test_approved_records_user(client: TestClient) -> None:
     run = client.post("/api/test/runs", json={"control_id": control_id, "fiscal_year": 2025}, headers=h)
     run_id = run.json()["id"]
 
+    ah = approver_headers(client)
     for ts in ("in_progress", "completed", "approved"):
-        client.post(f"/api/test/runs/{run_id}/transition", json={"to_status": ts}, headers=h)
+        client.post(f"/api/test/runs/{run_id}/transition", json={"to_status": ts},
+                    headers=ah if ts == "approved" else h)
 
     resp = client.get(f"/api/test/runs/{run_id}", headers=h)
     data = resp.json()
     assert data["status"] == "approved"
     assert data["approved_by_id"] is not None
     assert data["approved_at"] is not None
+
+
+# ── 승인 후 잠금·본인 승인 금지 (13.9-94) ─────────────────
+
+def _completed_run(client: TestClient, h: dict, suffix: str) -> str:
+    control_id = _create_control(client, suffix)
+    run_id = client.post("/api/test/runs", json={"control_id": control_id, "fiscal_year": 2025},
+                         headers=h).json()["id"]
+    for ts in ("in_progress", "completed"):
+        assert client.post(f"/api/test/runs/{run_id}/transition", json={"to_status": ts},
+                           headers=h).status_code == 200
+    return run_id
+
+
+def test_completer_cannot_approve_own_run(client: TestClient) -> None:
+    h = _headers(client)
+    run_id = _completed_run(client, h, "SELF1")
+    resp = client.post(f"/api/test/runs/{run_id}/transition", json={"to_status": "approved"}, headers=h)
+    assert resp.status_code == 409
+    assert "자기 승인" in resp.json()["detail"]
+    assert client.get(f"/api/test/runs/{run_id}", headers=h).json()["status"] == "completed"
+
+
+def test_tester_cannot_approve_even_if_other_completed(client: TestClient) -> None:
+    """수행자(tester_id)는 완료 처리를 남이 했어도 승인 불가."""
+    h, ah = _headers(client), approver_headers(client)
+    run_id = _completed_run(client, h, "SELF2")
+    resp = client.patch(f"/api/test/runs/{run_id}", json={"tester_id": user_id_of(client, ah)}, headers=h)
+    assert resp.status_code == 200, resp.text
+    resp = client.post(f"/api/test/runs/{run_id}/transition", json={"to_status": "approved"}, headers=ah)
+    assert resp.status_code == 409
+
+
+def test_approved_run_is_locked(client: TestClient) -> None:
+    h, ah = _headers(client), approver_headers(client)
+    run_id = _completed_run(client, h, "LOCK1")
+    step = client.post("/api/test/steps", json={"test_run_id": run_id, "step_order": 1,
+                                                "description": "s", "result": "pass"}, headers=h)
+    assert step.status_code == 201, step.text
+    sid = step.json()["id"]
+    assert client.post(f"/api/test/runs/{run_id}/transition", json={"to_status": "approved"},
+                       headers=ah).status_code == 200
+
+    assert client.patch(f"/api/test/runs/{run_id}", json={"notes": "x"}, headers=h).status_code == 409
+    assert client.delete(f"/api/test/runs/{run_id}", headers=h).status_code == 409
+    assert client.post("/api/test/steps", json={"test_run_id": run_id, "step_order": 2,
+                                                "description": "s", "result": "pass"},
+                       headers=h).status_code == 409
+    assert client.patch(f"/api/test/steps/{sid}", json={"description": "y"}, headers=h).status_code == 409
+    assert client.delete(f"/api/test/steps/{sid}", headers=h).status_code == 409
+    assert client.get(f"/api/test/runs/{run_id}", headers=h).status_code == 200   # 조회는 그대로

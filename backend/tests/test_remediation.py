@@ -4,6 +4,8 @@ import json
 
 from fastapi.testclient import TestClient
 
+from tests._approver import approver_headers
+
 
 def _token(client: TestClient) -> str:
     resp = client.post("/api/auth/login", data={"username": "admin@acme.example", "password": "admin123"})
@@ -167,8 +169,9 @@ def test_remediation_plan_workflow(client: TestClient) -> None:
     resp = client.post(f"/api/remediation/plans/{plan_id}/transition", json={"to_status": "completed"}, headers=h)
     assert resp.json()["status"] == "completed"
 
-    # completed → approved
-    resp = client.post(f"/api/remediation/plans/{plan_id}/transition", json={"to_status": "approved"}, headers=h)
+    # completed → approved — 책임자·완료 처리자가 아닌 사람이 승인(13.9-94)
+    resp = client.post(f"/api/remediation/plans/{plan_id}/transition", json={"to_status": "approved"},
+                       headers=approver_headers(client))
     assert resp.json()["status"] == "approved"
     assert resp.json()["approved_by_id"] is not None
     assert resp.json()["approved_at"] is not None
@@ -188,8 +191,10 @@ def test_remediation_workflow_approved_immutable(client: TestClient) -> None:
     h = _headers(client)
     _, plan_id = _create_deficiency_and_plan(client, "WF3")
 
+    ah = approver_headers(client)
     for s in ["in_progress", "completed", "approved"]:
-        client.post(f"/api/remediation/plans/{plan_id}/transition", json={"to_status": s}, headers=h)
+        client.post(f"/api/remediation/plans/{plan_id}/transition", json={"to_status": s},
+                    headers=ah if s == "approved" else h)
 
     resp = client.post(f"/api/remediation/plans/{plan_id}/transition", json={"to_status": "in_progress"}, headers=h)
     assert resp.status_code == 422
@@ -252,10 +257,39 @@ def test_approved_records_user(client: TestClient) -> None:
     h = _headers(client)
     _, plan_id = _create_deficiency_and_plan(client, "APR1")
 
+    ah = approver_headers(client)
     for s in ["in_progress", "completed", "approved"]:
-        client.post(f"/api/remediation/plans/{plan_id}/transition", json={"to_status": s}, headers=h)
+        client.post(f"/api/remediation/plans/{plan_id}/transition", json={"to_status": s},
+                    headers=ah if s == "approved" else h)
 
     resp = client.get(f"/api/remediation/plans/{plan_id}", headers=h)
     data = resp.json()
     assert data["approved_by_id"] is not None
     assert data["approved_at"] is not None
+
+
+# ── 승인 후 잠금·본인 승인 금지 (13.9-94) ─────────────────
+
+def test_owner_cannot_approve_own_plan(client: TestClient) -> None:
+    """개선 책임자(=완료 처리자) 본인 승인은 409, 다른 사람은 승인 가능."""
+    h = _headers(client)
+    _, plan_id = _create_deficiency_and_plan(client, "SELF1")
+    for s in ["in_progress", "completed"]:
+        client.post(f"/api/remediation/plans/{plan_id}/transition", json={"to_status": s}, headers=h)
+    resp = client.post(f"/api/remediation/plans/{plan_id}/transition", json={"to_status": "approved"}, headers=h)
+    assert resp.status_code == 409
+    assert "자기 승인" in resp.json()["detail"]
+    resp = client.post(f"/api/remediation/plans/{plan_id}/transition", json={"to_status": "approved"},
+                       headers=approver_headers(client))
+    assert resp.status_code == 200
+
+
+def test_approved_plan_is_locked(client: TestClient) -> None:
+    h, ah = _headers(client), approver_headers(client)
+    _, plan_id = _create_deficiency_and_plan(client, "LOCK1")
+    for s in ["in_progress", "completed", "approved"]:
+        client.post(f"/api/remediation/plans/{plan_id}/transition", json={"to_status": s},
+                    headers=ah if s == "approved" else h)
+    assert client.patch(f"/api/remediation/plans/{plan_id}", json={"action_plan": "x"}, headers=h).status_code == 409
+    assert client.delete(f"/api/remediation/plans/{plan_id}", headers=h).status_code == 409
+    assert client.get(f"/api/remediation/plans/{plan_id}", headers=h).status_code == 200

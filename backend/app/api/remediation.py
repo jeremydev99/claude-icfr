@@ -38,6 +38,24 @@ ALLOWED_TRANSITIONS: dict = {
 }
 
 
+# ── 승인 후 잠금·본인 승인 금지 (13.9-94, ADR-0038 2단계 선행 조치) ──
+# 결재선은 ADR-0038 2단계에서 붙인다. 여기서는 승인 후 수정·삭제와 자기 승인만 막는다.
+def _assert_plan_not_approved(plan: RemediationPlan) -> None:
+    if plan.status == "approved":
+        raise HTTPException(status_code=409, detail="승인된 개선계획은 수정·삭제할 수 없습니다")
+
+
+def _assert_not_self_approval(db: Session, plan: RemediationPlan, user_id: UUID) -> None:
+    """개선 책임자(owner)·완료 처리자는 승인할 수 없다 — 자기 승인 금지(ADR-0038 §2.2)."""
+    h = (db.query(RemediationStatusHistory)
+         .filter(RemediationStatusHistory.remediation_plan_id == plan.id,
+                 RemediationStatusHistory.to_status == "completed")
+         .order_by(RemediationStatusHistory.changed_at.desc()).first())
+    if user_id in (plan.owner_id, h.changed_by_id if h else None):
+        raise HTTPException(status_code=409,
+                            detail="개선 책임자·완료 처리자는 승인할 수 없습니다 — 자기 승인 금지")
+
+
 @router.get("/info")
 def get_module_info(user: CurrentUser) -> dict:
     return {
@@ -156,6 +174,7 @@ def update_plan(plan_id: UUID, body: RemediationPlanUpdate, user: User = Depends
     obj = db.query(RemediationPlan).filter(RemediationPlan.id == plan_id, RemediationPlan.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="RemediationPlan not found")
+    _assert_plan_not_approved(obj)
     for field, val in body.model_dump(exclude_none=True).items():
         setattr(obj, field, val)
     db.commit()
@@ -168,6 +187,7 @@ def delete_plan(plan_id: UUID, user: User = Depends(require_write), db: Session 
     obj = db.query(RemediationPlan).filter(RemediationPlan.id == plan_id, RemediationPlan.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="RemediationPlan not found")
+    _assert_plan_not_approved(obj)
     obj.is_deleted = True
     db.commit()
 
@@ -182,6 +202,8 @@ def transition_plan(plan_id: UUID, body: RemediationTransitionRequest, user: Use
             status_code=422,
             detail=f"전이 불가: {obj.status} → {body.to_status}. 허용: {ALLOWED_TRANSITIONS.get(obj.status, set())}",
         )
+    if body.to_status == "approved":
+        _assert_not_self_approval(db, obj, user.id)
     from_status = obj.status
     obj.status = body.to_status
     if body.to_status == "approved":
