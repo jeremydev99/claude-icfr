@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils'
 import { Outlet } from 'react-router-dom'
 import { ShieldCheck, Layers, FileCheck2 } from 'lucide-react'
 import LogoMark from '@/components/brand/LogoMark'
@@ -22,10 +23,10 @@ export default function AuthLayout() {
         {LOGIN_PHOTO ? (
           <>
             <img src={LOGIN_PHOTO} alt="" aria-hidden draggable={false} fetchPriority="high"
-              className="absolute inset-0 h-full w-full select-none object-cover object-[70%_center]" />
-            {/* 왼쪽 글자 자리를 남색으로 깊게, 오른쪽 인물은 살린다 */}
-            <div className="absolute inset-0 bg-gradient-to-r from-[hsl(224_45%_8%/0.94)] via-[hsl(224_45%_8%/0.62)] to-[hsl(224_45%_8%/0.08)]" />
-            <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-[hsl(224_45%_8%/0.85)] to-transparent" />
+              className="absolute inset-0 h-full w-full select-none object-cover object-[center_top]" />
+            {/* 위쪽 회의 장면(전자칠판·인물)은 살리고, 아래 글자 자리를 남색으로 깊게 */}
+            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[hsl(224_45%_8%/0.7)] to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 h-[62%] bg-gradient-to-t from-[hsl(224_45%_8%/0.97)] via-[hsl(224_45%_8%/0.82)] to-transparent" />
           </>
         ) : (
           <>
@@ -37,7 +38,7 @@ export default function AuthLayout() {
           </>
         )}
 
-        <div className="relative z-10 flex flex-1 flex-col justify-center px-14 xl:px-20">
+        <div className={cn('relative z-10 flex flex-1 flex-col px-14 xl:px-20', LOGIN_PHOTO ? 'pb-10 pt-12' : 'justify-center')}>
           <div className="flex items-center gap-3">
             <LogoMark className="h-11 w-11 rounded-xl shadow-lg" />
             <div className="leading-tight">
@@ -45,6 +46,7 @@ export default function AuthLayout() {
               <p className="text-xs text-white/70">내부회계관리시스템</p>
             </div>
           </div>
+          {LOGIN_PHOTO && <div className="flex-1" />}
           <h1 className="mt-8 max-w-[520px] text-[40px] font-extrabold leading-[1.2] tracking-tight drop-shadow-sm xl:text-[46px]">
             내부회계관리제도를<br />더 정확하고 가볍게.
           </h1>
