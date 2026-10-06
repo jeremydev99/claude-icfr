@@ -23,6 +23,7 @@ import DepartmentsPage from '@/features/admin/pages/DepartmentsPage'
 import RoleAssignmentsPage from '@/features/admin/pages/RoleAssignmentsPage'
 import PoliciesPage from '@/features/admin/pages/PoliciesPage'
 import FiscalYearPage from '@/features/admin/pages/FiscalYearPage'
+import AuditLogsPage from '@/features/admin/pages/AuditLogsPage'
 
 export const router = createBrowserRouter([
   {
@@ -64,6 +65,7 @@ export const router = createBrowserRouter([
       { path: 'admin/role-assignments', element: <RoleAssignmentsPage /> },
       { path: 'admin/policies', element: <PoliciesPage /> },
       { path: 'admin/fiscal-year', element: <FiscalYearPage /> },
+      { path: 'admin/audit-logs', element: <AuditLogsPage /> },
       { path: 'proposals/:id', element: <ProposalPage /> },
       { path: '*', element: <Navigate to="/dashboard" replace /> },
     ],

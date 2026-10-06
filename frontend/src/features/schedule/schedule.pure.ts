@@ -204,3 +204,32 @@ export const FREQ_LABEL: Record<string, string> = {
   semiannual: '반기',
   annual: '연간',
 }
+
+// ── 일정안(2026-10-06) — 날짜 항목을 월 그리드 단계로 ─────────────────
+export interface DatedItem {
+  id: string
+  title: string
+  category: string
+  start_date: string
+  end_date: string
+  description: string | null
+  tasks: string[]
+}
+
+/** 일정안 항목 → 그리드 단계(월 단위). 그리드 밖 항목은 뺀다. 분류를 모르면 'audit' 색(회색)으로 */
+export function itemsToPhases(items: DatedItem[], fy: number, startMonth: number): (SchedulePhase & { itemId: string })[] {
+  const out: (SchedulePhase & { itemId: string })[] = []
+  for (const it of items) {
+    const span = periodToSpan(fy, startMonth, it.start_date, it.end_date)
+    if (!span) continue
+    const category = (['planning', 'design', 'operation', 'remediation', 'reporting', 'audit'].includes(it.category)
+      ? it.category : 'audit') as PhaseCategory
+    out.push({ id: it.id, itemId: it.id, name: it.title, category, start: span.start, end: span.end,
+      description: it.description ?? '', tasks: it.tasks ?? [] })
+  }
+  return out
+}
+
+export const CATEGORY_LABEL: Record<string, string> = {
+  planning: '계획', design: '설계평가', operation: '운영평가', remediation: '개선', reporting: '보고', audit: '외부감사', other: '기타',
+}

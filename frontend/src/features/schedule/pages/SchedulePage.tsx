@@ -21,12 +21,16 @@ import {
   phasesAt,
   phasesStartingAt,
   todayOffset,
+  itemsToPhases,
   type MonthColumn,
+  type SchedulePhase,
 } from '../schedule.pure'
+import { usePlan, useTemplates } from '../api/usePlan'
+import PlanPanel from '../components/PlanPanel'
 
 /**
- * 일정관리 (초안) — 표준 ICFR 연간 일정 템플릿 + 평가 회차 기간 오버레이.
- * 전용 일정 백엔드가 없다. 템플릿은 schedule.pure.ts 의 데이터다.
+ * 일정관리 — 회계연도 일정안(표준·사용자 지정, 전결라인 결재) + 평가 회차 기간 오버레이(2026-10-06).
+ * 일정안이 없으면 표준 일정(회사 표준 → 없으면 시스템 기본 8개)을 보여 준다.
  */
 export default function SchedulePage() {
   const today = useMemo(() => new Date(), [])
@@ -41,8 +45,19 @@ export default function SchedulePage() {
 
   const columns = useMemo(() => buildColumns(fy, startMonth), [fy, startMonth])
   const nowOffset = todayOffset(fy, startMonth, today)
-  const nowPhases = phasesAt(nowOffset)
-  const nextPhases = phasesStartingAt(nowOffset == null ? null : nowOffset + 1)
+  // 일정안이 있으면 그 항목(날짜)으로, 없으면 표준 일정(회사 표준 또는 시스템 기본)으로 그린다
+  const plan = usePlan(fy)
+  const tpl = useTemplates()
+  const phases: SchedulePhase[] = useMemo(() => {
+    if (plan.data?.plan) return itemsToPhases(plan.data.items, fy, startMonth)
+    if (tpl.data) {
+      return tpl.data.items.map((t) => ({ id: t.code, name: t.name, category: (t.category === 'other' ? 'audit' : t.category) as SchedulePhase['category'],
+        start: t.start_offset, end: t.end_offset, description: t.description ?? '', tasks: t.tasks }))
+    }
+    return STANDARD_TEMPLATE
+  }, [plan.data, tpl.data, fy, startMonth])
+  const nowPhases = phasesAt(nowOffset, phases)
+  const nextPhases = phasesStartingAt(nowOffset == null ? null : nowOffset + 1, phases)
 
   const fyCycles = useMemo(
     () =>
@@ -65,8 +80,8 @@ export default function SchedulePage() {
           <p className="mt-1 text-sm text-muted-foreground">
             연간 ICFR 평가 일정 — 회계연도 시작월 {startMonth}월 기준. 익년 3개월(결산·보고)까지 표시합니다.
           </p>
-          <Badge variant="outline" className="mt-2 border-amber-500 text-amber-700 dark:text-amber-400">
-            초안 — 표준 일정 템플릿(운영 일정과 맞춰 조정 예정)
+          <Badge variant="outline" className="mt-2">
+            {plan.data?.plan ? `${fy} 일정안 · ${plan.data.plan.status_label}` : '일정안 없음 — 표준 일정 표시 중'}
           </Badge>
         </div>
         <div className="flex items-center gap-1">
@@ -97,7 +112,7 @@ export default function SchedulePage() {
               <p className="text-muted-foreground">
                 {columns[nowOffset - 1].year}년 {columns[nowOffset - 1].month}월 · 진행 단계 {nowPhases.length}개
               </p>
-              {nowPhases.length === 0 && <p className="text-muted-foreground">표준 템플릿상 진행 단계가 없습니다.</p>}
+              {nowPhases.length === 0 && <p className="text-muted-foreground">이번 달 진행 중인 일정이 없습니다.</p>}
               <ul className="grid gap-3 sm:grid-cols-2">
                 {nowPhases.map((p) => (
                   <li key={p.id} className="rounded-md border p-3">
@@ -129,7 +144,7 @@ export default function SchedulePage() {
           {/* 데스크톱: 월 그리드 */}
           <div className="hidden md:block">
             <GanttGrid columns={columns} nowOffset={nowOffset}>
-              {STANDARD_TEMPLATE.map((p) => (
+              {phases.map((p) => (
                 <GanttRow key={p.id} label={p.name} title={p.description} start={p.start} end={p.end}
                   barClass={CATEGORY_STYLE[p.category]} nowOffset={nowOffset} />
               ))}
@@ -144,7 +159,7 @@ export default function SchedulePage() {
           </div>
           {/* 모바일: 단계별 목록 */}
           <ul className="space-y-2 md:hidden">
-            {STANDARD_TEMPLATE.map((p) => {
+            {phases.map((p) => {
               const active = nowOffset != null && p.start <= nowOffset && nowOffset <= p.end
               return (
                 <li key={p.id} className={`rounded-md border p-3 text-sm ${active ? 'border-primary bg-primary/5' : ''}`}>
@@ -161,6 +176,8 @@ export default function SchedulePage() {
           </ul>
         </CardContent>
       </Card>
+
+      {plan.data && <PlanPanel fy={fy} data={plan.data} />}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

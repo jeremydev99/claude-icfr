@@ -29,6 +29,7 @@ from app.models.role_assignment import (
     TenantPolicy,
     conflict_policy_key,
 )
+from app.models.schedule import APPROVAL_LINES, POLICY_SCHEDULE_APPROVAL_LINE
 from app.models.scoping import (
     POLICY_SCOPING_QUAL_COMPARISON,
     POLICY_SCOPING_QUAL_THRESHOLD,
@@ -282,6 +283,11 @@ def _assert_policy_value_valid(body: TenantPolicyUpsert) -> None:
             raise HTTPException(status_code=422, detail="질적 판정 기준값은 숫자여야 합니다") from None
         if not (Decimal(1) <= v <= Decimal(3)):
             raise HTTPException(status_code=422, detail="질적 판정 기준값은 1 이상 3 이하여야 합니다")
+        return
+    if body.policy_key == POLICY_SCHEDULE_APPROVAL_LINE:
+        # 일정안 결재선(2026-10-06) — 목록 밖 값이면 결재가 조용히 기본값으로 돈다. 저장 시 막는다
+        if body.policy_value not in APPROVAL_LINES:
+            raise HTTPException(status_code=422, detail=f"일정 결재선은 {', '.join(APPROVAL_LINES)} 중 하나여야 합니다")
         return
     if body.policy_key == POLICY_EUC_IDENTIFICATION_THRESHOLD:
         # 목록 밖 값이 저장되면 판정이 조용히 기본값으로 떨어진다 — 저장 시점에 막는다(5-1)

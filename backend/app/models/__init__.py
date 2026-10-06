@@ -4,6 +4,7 @@ from app.models.assessment import (  # noqa: F401
     AssessmentCycle,
     CycleTarget,
 )
+from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.base import AuditedBase, Base, IdentityBase, TenantMixin  # noqa: F401
 from app.models.control_link import ControlAccountLink  # noqa: F401
 from app.models.euc import EucFile  # noqa: F401
@@ -60,6 +61,7 @@ from app.models.role_assignment import (  # noqa: F401
     RoleAssignment,
     TenantPolicy,
 )
+from app.models.schedule import ScheduleItem, SchedulePlan, ScheduleTemplate  # noqa: F401
 from app.models.scoping import (  # noqa: F401
     Scoping,
     ScopingAccount,
