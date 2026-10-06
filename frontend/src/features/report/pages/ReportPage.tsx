@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import HelpButton from '@/features/help/HelpButton'
+import ReportPackage from '../components/ReportPackage'
 import { useScopingMeta, useScopingSummary } from '@/features/scoping/api/useScoping'
 import { useRcmSummary } from '@/features/dashboard/api/useRcmSummary'
 import { useTestRuns } from '@/features/test/api/useTestRuns'
@@ -102,57 +103,66 @@ export default function ReportPage() {
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-bold tracking-tight">Report</h1>
         <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
-          초안 — 보고서 양식(운영 양식과 맞춰 조정 예정)
+          문단을 눌러 고칠 수 있습니다 — 고친 부분만 저장
         </Badge>
       </div>
       <p className="text-sm text-muted-foreground">
-        외부감사법 제8조에 따른 법정 보고서 2종과 보조 산출물의 준비 상태를 현재 데이터로 점검하고, 보고서 초안을 미리 봅니다.
+        외부감사법 제8조에 따른 법정 보고서 2종, 이사회 보고 자료, 감사위원회·이사회 의사록(안)을 한 패키지로 만듭니다. 별첨 탭에는 평가 결과 데이터(실무 양식)가 있습니다.
         모든 수치는 각 메뉴의 실제 데이터이며, 데이터가 없으면 "{DASH}"로 표시합니다.
         {loading && ' 데이터를 불러오는 중…'}
         {failed > 0 && ` (일부 데이터 ${failed}건을 불러오지 못했습니다 — 권한 또는 연결 확인)`}
       </p>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {cards.map((c) => (
-          <Card key={c.id} className="min-w-0">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-start justify-between gap-2 text-base">
-                <span>{c.title}</span>
-                <Badge variant="outline" className={`shrink-0 ${READINESS_STYLE[c.readiness]}`}>
-                  {READINESS_LABEL[c.readiness]}
-                </Badge>
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                {c.statutory ? '법정 보고서 · ' : '보조 산출물 · '}{c.audience}
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div><span className="font-medium">구성: </span>{c.contents.join(' · ')}</div>
-              <div><span className="font-medium">데이터 출처: </span>{c.sources.join(', ')}</div>
-              <div className="text-muted-foreground">{c.note}</div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Tabs defaultValue="ops" className="space-y-3">
+      <Tabs defaultValue="package" className="space-y-4">
         <TabsList className="flex h-auto w-full flex-wrap justify-start sm:w-auto">
-          <TabsTrigger value="ops">운영실태 보고서</TabsTrigger>
-          <TabsTrigger value="audit">감사(위원회) 평가보고서</TabsTrigger>
+          <TabsTrigger value="package">이사회 보고 패키지</TabsTrigger>
+          <TabsTrigger value="appendix">별첨 · 평가 결과 데이터</TabsTrigger>
         </TabsList>
-        <span className="ml-1 inline-flex gap-1 align-middle">
-          <HelpButton k="screen.report.operation-report" />
-          <HelpButton k="screen.report.audit-committee-report" />
-        </span>
-        <TabsContent value="ops">
-          <PreviewCard heading="내부회계관리제도 운영실태 보고서 — 초안 미리보기" docTitle={`${facts.fiscalYear ?? ''} 내부회계관리제도 운영실태 보고서(초안)`}>
-            <OpsReport f={facts} scopingStatusLabel={scopingStatusLabel} />
-          </PreviewCard>
-        </TabsContent>
-        <TabsContent value="audit">
-          <PreviewCard heading="감사(위원회)의 내부회계관리제도 평가보고서 — 초안 미리보기" docTitle={`${facts.fiscalYear ?? ''} 감사(위원회)의 내부회계관리제도 평가보고서(초안)`}>
-            <AuditCommitteeReport f={facts} />
-          </PreviewCard>
+        <TabsContent value="package"><ReportPackage facts={facts} /></TabsContent>
+        <TabsContent value="appendix" className="space-y-6">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {cards.map((c) => (
+              <Card key={c.id} className="min-w-0">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-start justify-between gap-2 text-base">
+                    <span>{c.title}</span>
+                    <Badge variant="outline" className={`shrink-0 ${READINESS_STYLE[c.readiness]}`}>
+                      {READINESS_LABEL[c.readiness]}
+                    </Badge>
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    {c.statutory ? '법정 보고서 · ' : '보조 산출물 · '}{c.audience}
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div><span className="font-medium">구성: </span>{c.contents.join(' · ')}</div>
+                  <div><span className="font-medium">데이터 출처: </span>{c.sources.join(', ')}</div>
+                  <div className="text-muted-foreground">{c.note}</div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <Tabs defaultValue="ops" className="space-y-3">
+            <TabsList className="flex h-auto w-full flex-wrap justify-start sm:w-auto">
+              <TabsTrigger value="ops">운영실태 보고서</TabsTrigger>
+              <TabsTrigger value="audit">감사(위원회) 평가보고서</TabsTrigger>
+            </TabsList>
+            <span className="ml-1 inline-flex gap-1 align-middle">
+              <HelpButton k="screen.report.operation-report" />
+              <HelpButton k="screen.report.audit-committee-report" />
+            </span>
+            <TabsContent value="ops">
+              <PreviewCard heading="내부회계관리제도 운영실태 보고서 — 초안 미리보기" docTitle={`${facts.fiscalYear ?? ''} 내부회계관리제도 운영실태 보고서(초안)`}>
+                <OpsReport f={facts} scopingStatusLabel={scopingStatusLabel} />
+              </PreviewCard>
+            </TabsContent>
+            <TabsContent value="audit">
+              <PreviewCard heading="감사(위원회)의 내부회계관리제도 평가보고서 — 초안 미리보기" docTitle={`${facts.fiscalYear ?? ''} 감사(위원회)의 내부회계관리제도 평가보고서(초안)`}>
+                <AuditCommitteeReport f={facts} />
+              </PreviewCard>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
       </Tabs>
     </div>

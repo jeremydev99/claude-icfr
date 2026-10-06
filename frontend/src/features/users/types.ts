@@ -79,7 +79,7 @@ export const ROLE_ASSIGN_OPTIONS = [
   { value: 'icfr_staff', label: '일반관리자 (내부회계 담당 직원)' },
   { value: 'icfr_lead', label: '책임관리자 (담당 조직장)' },
   { value: 'icfr_manager', label: '마스터관리자 (내부회계관리자)' },
-  { value: 'ceo', label: '대표자' },
+  { value: 'ceo', label: '대표이사' },
   { value: 'auditor', label: '감사 (상근감사·감사위원회 위원) — 조회 전용' },
   { value: 'external_auditor', label: '외부감사인 — 조회 전용' },
   { value: 'sys_admin', label: '시스템관리자' },

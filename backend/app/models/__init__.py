@@ -54,6 +54,7 @@ from app.models.remediation import (  # noqa: F401
     RemediationPlan,
     RemediationStatusHistory,
 )
+from app.models.report_document import ReportDocument  # noqa: F401
 from app.models.role_assignment import (  # noqa: F401
     ConflictAcknowledgement,
     RoleAssignment,
