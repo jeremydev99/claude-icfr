@@ -146,9 +146,16 @@ def _build(model):
 
 # ── ① 전 모델 순회 ────────────────────────────────────────
 
+# 감사 컬럼 믹스인을 **일부러** 쓰지 않는 표 — 이름으로 못 박는다(새 예외는 여기 추가해야 통과한다).
+# audit_logs: 요청 처리 밖(미들웨어)에서 쓰는 추가 전용 기록. 행 자체가 "누가·언제"다(models/audit_log.py)
+APPEND_ONLY_TABLES = {"audit_logs"}
+
+
 def test_audited_models_cover_every_mapped_table():
-    """대상은 매핑 전부다. 새 모델이 믹스인을 빼고 들어오면 여기서 드러난다."""
-    assert len(AUDITED_MODELS) == len(Base.registry.mappers) >= 52
+    """대상은 매핑 전부다(추가 전용 예외만 뺀다). 새 모델이 믹스인을 빼고 들어오면 여기서 드러난다."""
+    unaudited = {m.class_.__tablename__ for m in Base.registry.mappers} - {m.__tablename__ for m in AUDITED_MODELS}
+    assert unaudited == APPEND_ONLY_TABLES
+    assert len(AUDITED_MODELS) == len(Base.registry.mappers) - len(APPEND_ONLY_TABLES) >= 52
 
 
 @pytest.mark.parametrize("model", AUDITED_MODELS, ids=lambda c: c.__tablename__)

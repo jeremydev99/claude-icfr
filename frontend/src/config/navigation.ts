@@ -16,6 +16,7 @@ import {
   Users,
   Mail,
   Table2,
+  ScrollText,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -195,6 +196,14 @@ export const navigation: NavGroup[] = [
         icon: CalendarRange,
         description: '회계연도가 시작하는 달 (tenant_policies)',
         status: 'ready',
+      },
+      {
+        label: '감사 로그',
+        path: '/admin/audit-logs',
+        icon: ScrollText,
+        description: '사용자 활동 기록 — 등록·수정·삭제·승인·로그인·다운로드 (검색·CSV)',
+        status: 'live',
+        requiresIcfrManager: true,
       },
     ],
   },
