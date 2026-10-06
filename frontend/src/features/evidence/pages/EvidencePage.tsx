@@ -2,12 +2,15 @@ import EmptyState from '@/components/illustration/EmptyState'
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useCanWrite } from '@/features/auth/useCanWrite'
 import { useEvidenceFiles } from '../api/useEvidence'
 import EvidenceTable from '../components/EvidenceTable'
 import EvidenceUploadDialog from '../components/EvidenceUploadDialog'
 
 export default function EvidencePage() {
   const [uploadOpen, setUploadOpen] = useState(false)
+  // 조회 전용 사용자(external_auditor)에게는 업로드·삭제 버튼을 숨긴다 — 최종 강제는 서버 403(13.9-74 ③)
+  const canWrite = useCanWrite()
   const { data, isLoading, isError } = useEvidenceFiles()
 
   const files = data?.items ?? []
@@ -16,7 +19,7 @@ export default function EvidencePage() {
     <div className="mx-auto max-w-[1400px] space-y-6 p-6 md:p-8">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">증빙 관리</h1>
-        <Button onClick={() => setUploadOpen(true)}>파일 업로드</Button>
+        {canWrite && <Button onClick={() => setUploadOpen(true)}>파일 업로드</Button>}
       </div>
 
       {isLoading && (
@@ -34,14 +37,14 @@ export default function EvidencePage() {
         <EmptyState
           slot="empty-upload"
           title="업로드된 증빙 파일이 없습니다"
-          description="파일 업로드 버튼을 눌러 추가하세요."
-          action={<Button size="sm" onClick={() => setUploadOpen(true)}>파일 업로드</Button>}
+          description={canWrite ? '파일 업로드 버튼을 눌러 추가하세요.' : undefined}
+          action={canWrite ? <Button size="sm" onClick={() => setUploadOpen(true)}>파일 업로드</Button> : undefined}
         />
       )}
 
-      {files.length > 0 && <EvidenceTable files={files} />}
+      {files.length > 0 && <EvidenceTable files={files} canDelete={canWrite} />}
 
-      <EvidenceUploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
+      {canWrite && <EvidenceUploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />}
     </div>
   )
 }

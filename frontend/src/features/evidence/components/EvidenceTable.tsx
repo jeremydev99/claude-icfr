@@ -30,6 +30,8 @@ import { resolveEvidenceError } from '../evidence.pure'
 
 interface Props {
   files: EvidenceFile[]
+  /** false 면 삭제 버튼을 숨긴다(조회 전용 사용자) */
+  canDelete?: boolean
 }
 
 function formatSize(bytes: number): string {
@@ -39,7 +41,7 @@ function formatSize(bytes: number): string {
 }
 
 
-export default function EvidenceTable({ files }: Props) {
+export default function EvidenceTable({ files, canDelete = false }: Props) {
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<EvidenceFile | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -127,13 +129,15 @@ export default function EvidenceTable({ files }: Props) {
                 >
                   {downloadingId === file.id ? '다운로드 중...' : '다운로드'}
                 </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => setDeleteTarget(file)}
-                >
-                  삭제
-                </Button>
+                {canDelete && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setDeleteTarget(file)}
+                  >
+                    삭제
+                  </Button>
+                )}
               </TableCell>
             </TableRow>
           ))}
