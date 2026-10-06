@@ -1,4 +1,5 @@
 import EmptyState from '@/components/illustration/EmptyState'
+import { useFiscal } from '@/lib/useFiscal'
 import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useScopingMeta, useScopingSummary } from '@/features/scoping/api/useScoping'
@@ -13,6 +14,7 @@ const won = (v: number | null) => (v === null ? '—' : v.toLocaleString('ko-KR'
  * N 과 섞으면 평가하지 않은 계정이 범위 밖으로 빠진 것처럼 읽힌다.
  */
 export default function ScopingSummaryCard() {
+  const { short } = useFiscal()
   const { data } = useScopingSummary()
   const { data: meta } = useScopingMeta()
   const label = (s: string | null) => meta?.statuses.find((x) => x.value === s)?.label ?? s ?? '—'
@@ -25,7 +27,7 @@ export default function ScopingSummaryCard() {
           <HelpButton k="screen.dashboard.scoping-summary" className="self-center" />
           {data?.exists && (
             <span className="text-sm font-normal text-muted-foreground">
-              {data.fiscal_year} 회계연도 · {label(data.status)} · 검토 안 한 템플릿 값 {data.badge_count}개
+              {data.fiscal_year != null ? short(data.fiscal_year) : "회계연도 미정"} · {label(data.status)} · 검토 안 한 템플릿 값 {data.badge_count}개
             </span>
           )}
         </CardTitle>

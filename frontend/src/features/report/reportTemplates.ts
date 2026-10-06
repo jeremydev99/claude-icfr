@@ -1,6 +1,7 @@
 // 이사회 보고 패키지 템플릿 (2026-10-06) — 기본 문구는 데이터(평가 결과)와 기본 정보로 만들고, 사람이 고친 부분만 저장한다.
 // 순수 함수(`reportTemplates.test.ts`). 샘플(회사 실제 양식)은 참고만 — 법정 기재사항을 빠짐없이 넣고, 수치는 데이터에서 가져온다.
 import { selectConclusion, type ReportFacts } from './reportModel'
+import { fiscalEndKo, fyLabel } from '@/lib/fiscalYear'
 
 export type DocKey = 'meta' | 'ops_report' | 'ac_report' | 'board_ops' | 'ac_eval' | 'ac_minutes' | 'board_minutes'
 
@@ -64,7 +65,14 @@ export interface Ctx {
   contents: Contents
   /** 기본 정보가 비었을 때 쓰는 값 — 역할 배정의 대표이사·내부회계관리자 지정자 */
   defaults?: Record<string, string>
+  /** 회계연도 시작월(회사 설정) — 기준일·기간 표기. 없으면 1월(12월 결산) */
+  startMonth?: number
 }
+
+/** 회계연도 말일(기준일) "2026년 12월 31일" — 결산월 반영(lib/fiscalYear) */
+export const fyEnd = (c: Ctx) => fiscalEndKo(c.fy, c.startMonth ?? 1)
+/** "2026 회계연도 (2026.01.01 ~ 2026.12.31)" */
+export const fyText = (c: Ctx, fy = c.fy) => fyLabel(fy, c.startMonth ?? 1)
 
 const P = (v: string | undefined, ph: string) => (v && v.trim() ? v.trim() : `(${ph})`)
 export function field(c: Ctx, key: string, ph?: string): string {
@@ -112,7 +120,7 @@ const fwText = (c: Ctx) => (rawField(c, 'framework') === 'general'
   : { design: '내부회계관리제도운영위원회에서 발표한 ‘내부회계관리제도 설계 및 운영 개념체계’의 제4장 중소기업에 대한 적용',
       eval: '「외부감사 및 회계 등에 관한 규정 시행세칙」 별표6 ‘내부회계관리제도 평가 및 보고 기준’(내부회계관리제도 평가 및 보고 모범규준 제4장 중소기업에 대한 적용)' })
 
-const asOf = (c: Ctx) => `${c.fy}년 12월 31일 현재`
+const asOf = (c: Ctx) => `${fyEnd(c)} 현재`
 const mwOpen = (c: Ctx) => c.facts.byClass.material_weakness.open
 const sdOpen = (c: Ctx) => c.facts.byClass.significant.open
 
@@ -178,7 +186,7 @@ export const DOCS: DocDef[] = [
     blocks: (c) => [
       { kind: 'title', text: '내부회계관리제도 운영실태보고서' },
       { kind: 'addressee', text: `${field(c, 'company')} 주주, 이사회 및 감사위원회 귀중` },
-      { kind: 'para', key: 'scope', label: '평가 대상', text: (x) => `본 대표이사 및 내부회계관리자는 ${x.fy}년 12월 31일 현재 동일자로 종료하는 회계연도에 대한 당사의 내부회계관리제도의 설계 및 운영실태를 평가하였습니다.` },
+      { kind: 'para', key: 'scope', label: '평가 대상', text: (x) => `본 대표이사 및 내부회계관리자는 ${fyEnd(x)} 현재 동일자로 종료하는 회계연도에 대한 당사의 내부회계관리제도의 설계 및 운영실태를 평가하였습니다.` },
       { kind: 'para', key: 'responsibility', label: '책임', text: () => '내부회계관리제도의 설계 및 운영에 대한 책임은 본 대표이사 및 내부회계관리자를 포함한 회사의 경영진에 있습니다.' },
       { kind: 'para', key: 'objective', label: '평가 목적', text: () => '본 대표이사 및 내부회계관리자는 회사의 내부회계관리제도가 신뢰할 수 있는 재무제표의 작성 및 공시를 위하여 재무제표의 왜곡을 초래할 수 있는 오류나 부정행위를 예방하고 적발할 수 있도록 효과적으로 설계 및 운영되고 있는지의 여부에 대하여 평가하였습니다.' },
       { kind: 'para', key: 'criteria', label: '준거·평가 기준', text: (x) => `본 대표이사 및 내부회계관리자는 내부회계관리제도의 설계 및 운영을 위해 ${fwText(x).design}을 준거기준으로 사용하였습니다. 또한 내부회계관리제도의 설계 및 운영실태를 평가함에 있어 ${fwText(x).eval}을 평가기준으로 사용하였습니다.` },
@@ -203,7 +211,7 @@ export const DOCS: DocDef[] = [
       return [
         { kind: 'title', text: '감사위원회의 내부회계관리제도 평가보고서' },
         { kind: 'addressee', text: `${field(c, 'company')} 주주, 이사회 귀중` },
-        { kind: 'para', key: 'scope', label: '평가 대상', text: (x) => `본 감사위원회는 ${x.fy}년 12월 31일 현재 동일자로 종료하는 회계연도에 대한 당사의 내부회계관리제도의 설계 및 운영실태를 평가하였습니다.` },
+        { kind: 'para', key: 'scope', label: '평가 대상', text: (x) => `본 감사위원회는 ${fyEnd(x)} 현재 동일자로 종료하는 회계연도에 대한 당사의 내부회계관리제도의 설계 및 운영실태를 평가하였습니다.` },
         { kind: 'para', key: 'responsibility', label: '책임', text: () => '내부회계관리제도의 설계 및 운영에 대한 책임은 대표이사 및 내부회계관리자를 포함한 회사의 경영진에 있으며, 본 감사위원회는 관리감독 책임이 있습니다.' },
         { kind: 'para', key: 'basis', label: '평가 방법', text: () => '본 감사위원회는 대표이사 및 내부회계관리자가 본 감사위원회에게 제출한 내부회계관리제도 운영실태보고서를 참고로, 회사의 내부회계관리제도가 신뢰할 수 있는 재무제표의 작성 및 공시를 위하여 재무제표의 왜곡을 초래할 수 있는 오류나 부정행위를 예방하고 적발할 수 있도록 효과적으로 설계 및 운영되고 있는지의 여부에 대하여 평가하였으며, 내부회계관리제도가 신뢰성 있는 회계정보의 작성 및 공시에 실질적으로 기여하는지를 평가하였습니다.' },
         { kind: 'para', key: 'review', label: '운영실태보고서 점검', text: () => '또한 본 감사위원회는 내부회계관리제도 운영실태보고서에 거짓으로 기재되거나 표시된 사항이 있거나, 기재하거나 표시하여야 할 사항을 빠뜨리고 있는지를 점검하였으며, 내부회계관리제도 운영실태보고서의 시정 계획이 해당 회사의 내부회계관리제도 개선에 실질적으로 기여할 수 있는지를 검토하였습니다.' },
@@ -226,7 +234,7 @@ export const DOCS: DocDef[] = [
       { kind: 'para', key: 'basis', label: '근거 규정', text: () => '「주식회사 등의 외부감사에 관한 법률」 제8조④ — 회사의 대표자는 사업연도마다 주주총회, 이사회 및 감사(감사위원회)에게 해당 회사의 내부회계관리제도의 운영실태를 보고하여야 합니다.' },
       { kind: 'heading', text: '2. 평가 개요' },
       { kind: 'rows', key: 'overview', label: '평가 개요', cols: ['구분', '내용'], defaults: (x) => [
-        ['평가 대상 연도', `${x.fy}년(${field(x, 'term', '기수')})`],
+        ['평가 대상 회계연도', `${fyText(x)} · ${field(x, 'term', '기수')}`],
         ['회사 구분', field(x, 'size_note')],
         ['평가 기간', field(x, 'ops_period')],
         ['평가 수행자', field(x, 'ops_performers')],
@@ -247,7 +255,7 @@ export const DOCS: DocDef[] = [
       { kind: 'heading', text: '4. 개선 항목 및 계획' },
       { kind: 'rows', key: 'improvements', label: '개선 항목', cols: ['항목', '내용', '조치 계획·시기'], defaults: improvementDefaults },
       { kind: 'heading', text: '5. 차기 연도 계획' },
-      { kind: 'para', key: 'next_plan', label: '차기 계획', text: (x) => `${x.fy + 1}년 내부회계관리제도 연간 기본계획(스코핑 → RCM 갱신 → 설계·운영평가 → 미비점 개선 → 운영실태 보고)에 따라 진행합니다.` },
+      { kind: 'para', key: 'next_plan', label: '차기 계획', text: (x) => `${fyText(x, x.fy + 1)} 내부회계관리제도 연간 기본계획(스코핑 → RCM 갱신 → 설계·운영평가 → 미비점 개선 → 운영실태 보고)에 따라 진행합니다.` },
       { kind: 'hint', text: '첨부: 운영실태보고서(대표이사·내부회계관리자), 평가 결과 데이터(별첨)' },
     ],
   },
@@ -260,7 +268,7 @@ export const DOCS: DocDef[] = [
       { kind: 'heading', text: '1. 근거' },
       { kind: 'para', key: 'basis', label: '근거 규정', text: () => '「주식회사 등의 외부감사에 관한 법률」 제8조⑤ — 회사의 감사(감사위원회)는 내부회계관리제도의 운영실태를 평가하여 이사회에 사업연도마다 보고하고 그 평가보고서를 해당 회사의 본점에 5년간 비치하여야 하며, 관리·운영에 대하여 시정 의견이 있으면 그 의견을 포함하여 보고하여야 합니다.' },
       { kind: 'heading', text: '2. 평가 개요' },
-      { kind: 'para', key: 'overview', label: '평가 개요', text: (x) => `본 감사위원회는 ${x.fy}년(${field(x, 'term', '기수')}) 회계연도 내부회계관리제도의 설계 및 운영실태를 회사가 보고한 운영실태보고서를 바탕으로, 통제환경·위험평가·통제활동·정보 및 의사소통·모니터링 활동의 5가지 구성요소가 체계적으로 작동하고 있는지 검토하였습니다.` },
+      { kind: 'para', key: 'overview', label: '평가 개요', text: (x) => `본 감사위원회는 ${fyText(x)}(${field(x, 'term', '기수')}) 내부회계관리제도의 설계 및 운영실태를 회사가 보고한 운영실태보고서를 바탕으로, 통제환경·위험평가·통제활동·정보 및 의사소통·모니터링 활동의 5가지 구성요소가 체계적으로 작동하고 있는지 검토하였습니다.` },
       { kind: 'rows', key: 'detail', label: '평가 세부 내역', cols: ['구분', '내용'], defaults: (x) => [
         ['평가 기간', field(x, 'ac_period')],
         ['평가 수행자', field(x, 'ac_performers')],
@@ -279,11 +287,11 @@ export const DOCS: DocDef[] = [
       { kind: 'heading', text: '5. 종합 결론' },
       { kind: 'para', key: 'conclusion', label: '종합 결론', text: (x) => (selectConclusion(x.facts).kind === 'ineffective'
         ? '회사의 내부회계관리제도는 중요한 취약점으로 인하여 효과적으로 설계 및 운영되고 있지 않다고 판단합니다. 시정 계획의 조속한 이행을 요구합니다.'
-        : `회사의 내부회계관리제도는 관련 법규에 따라 적절하게 설계 및 운영되고 있는 것으로 판단됩니다. 상기 권고 사항을 반영하여 ${x.fy + 1}년에도 제도 운영의 내실을 기할 것을 당부합니다.`) },
+        : `회사의 내부회계관리제도는 관련 법규에 따라 적절하게 설계 및 운영되고 있는 것으로 판단됩니다. 상기 권고 사항을 반영하여 ${x.fy + 1} 회계연도에도 제도 운영의 내실을 기할 것을 당부합니다.`) },
       { kind: 'heading', text: '6. 감사위원회 활동 내역' },
       { kind: 'rows', key: 'decisions', label: '주요 결정 사항', cols: ['회차(일자)', '결정 사항'], defaults: () => [['(예: 2025년 1차(02.07))', '(예: 외부감사인 선정 기준 승인, 감사인 선임)']] },
       { kind: 'rows', key: 'activities', label: '활동 내역', cols: ['일자', '활동', '내용'], defaults: (x) => [
-        ['', `${x.fy}년 내부회계관리제도 운영실태 보고 검토 및 평가`, '회사의 운영실태 보고 검토 및 감사위원회 별도 평가 수행'],
+        ['', `${x.fy} 회계연도 내부회계관리제도 운영실태 보고 검토 및 평가`, '회사의 운영실태 보고 검토 및 감사위원회 별도 평가 수행'],
         ['', '대표이사 및 내부회계관리자 평가', '외부감사법 시행령 제9조에 따라 대표이사·내부회계관리자의 운영 결과 평가'],
         ['', '외부감사인과의 커뮤니케이션', `${field(x, 'auditor_firm')}와 중간·기말 감사 결과, 핵심감사사항 논의`],
         ['', '내부회계관리제도 평가보고서 작성', '평가 결과를 토대로 평가보고서 작성'],

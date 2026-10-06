@@ -26,6 +26,7 @@ import {
   type SchedulePhase,
 } from '../schedule.pure'
 import { usePlan, useTemplates } from '../api/usePlan'
+import { endMonthOf, fiscalRangeText } from '@/lib/fiscalYear'
 import PlanPanel from '../components/PlanPanel'
 
 /**
@@ -78,7 +79,7 @@ export default function SchedulePage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">일정관리</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            연간 ICFR 평가 일정 — 회계연도 시작월 {startMonth}월 기준. 익년 3개월(결산·보고)까지 표시합니다.
+            연간 ICFR 평가 일정 — {endMonthOf(startMonth)}월 결산({fiscalRangeText(fy, startMonth)}). 결산 후 3개월(결산·보고)까지 표시합니다.
           </p>
           <Badge variant="outline" className="mt-2">
             {plan.data?.plan ? `${fy} 일정안 · ${plan.data.plan.status_label}` : '일정안 없음 — 표준 일정 표시 중'}
@@ -88,7 +89,8 @@ export default function SchedulePage() {
           <Button variant="outline" size="icon" aria-label="이전 회계연도" onClick={() => setFy(fy - 1)}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="min-w-24 text-center text-sm font-medium">{fy} 회계연도</span>
+          <span className="min-w-24 text-center text-sm font-medium leading-tight">{fy} 회계연도<br />
+            <span className="text-xs font-normal text-muted-foreground">{fiscalRangeText(fy, startMonth)}</span></span>
           <Button variant="outline" size="icon" aria-label="다음 회계연도" onClick={() => setFy(fy + 1)}>
             <ChevronRight className="h-4 w-4" />
           </Button>

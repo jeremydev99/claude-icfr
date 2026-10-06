@@ -56,7 +56,9 @@ from app.schemas.financial_statement import (
 from app.services import financial_statement as svc
 from app.services import fs_suspense, fs_upload
 from app.services import fs_template_match as match_svc
+from app.services.assessment_period import fiscal_year_start_month
 from app.services.fs_upload import attach, importer
+from app.services.fs_upload.fiscal import fiscal_start
 from app.services.fs_upload.parsed import KIND_DISCLOSURE, KIND_HORIZONTAL, ParsedRow, ParsedSheet
 
 router = APIRouter(prefix="/api/fs", tags=["financial-statements"])
@@ -344,7 +346,8 @@ def upload(file: UploadFile = File(...), mode: str = Form(default="preview"),
     resp["sheet"] = ws.title
 
     try:
-        parsed = fs_upload.parse_sheet(ws, None if kind == "auto" else kind, statement_type)
+        with fiscal_start(fiscal_year_start_month(db)):   # 기간 → 회계연도(결산월 반영)
+            parsed = fs_upload.parse_sheet(ws, None if kind == "auto" else kind, statement_type)
     except ValueError as e:
         resp["errors"].append(str(e))
         return done(fail)
@@ -444,7 +447,8 @@ def upload_attach(file: UploadFile = File(...), mode: str = Form(default="previe
         return done(fail)
     resp["sheet"] = ws.title
     try:
-        parsed = fs_upload.parse_sheet(ws, None, statement_type)
+        with fiscal_start(fiscal_year_start_month(db)):
+            parsed = fs_upload.parse_sheet(ws, None, statement_type)
     except ValueError as e:
         resp["errors"].append(str(e))
         return done(fail)

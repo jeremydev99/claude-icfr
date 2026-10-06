@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { useFiscal } from '@/lib/useFiscal'
 import OpenProposalsCard from '@/features/proposals/OpenProposalsCard'
 import EmptyState from '@/components/illustration/EmptyState'
 import { useEffect, useMemo, useState } from 'react'
@@ -35,6 +36,7 @@ import type { StatementDetail, ValidationResult } from '../types'
  * 허용 오차·임시계정 해소를 한다. 쓰기는 `icfr_manager` 만(서버도 막는다) — 프론트 판정은 `tenant_roles`.
  */
 export default function FinancialStatementsPage() {
+  const fiscal = useFiscal()
   const { user } = useAuthStore()
   const isManager = isIcfrManagerForUser(user)
   const { data: meta } = useFsMeta()
@@ -95,7 +97,7 @@ export default function FinancialStatementsPage() {
         <h1 className="text-2xl font-bold tracking-tight">재무제표</h1>
         <select value={year ?? ''} onChange={(e) => setYear(Number(e.target.value))}
           className="h-9 rounded border bg-background px-2 py-1 text-sm leading-normal" aria-label="회계연도">
-          {years.map((y) => <option key={y} value={y}>{y} 회계연도</option>)}
+          {years.map((y) => <option key={y} value={y}>{fiscal.short(y)}</option>)}
         </select>
         {bases.size > 1 && (
           <select value={basis} onChange={(e) => setBasis(e.target.value)}

@@ -43,6 +43,14 @@ describe('reportTemplates', () => {
     const signers = doc('ac_minutes').blocks(c).find((b) => b.kind === 'signers')
     expect(signers && signers.kind === 'signers' && signers.lines(c).join('\n')).toContain('홍길동')
   })
+  it('결산월이 12월이 아니면 기준일·기간이 회계연도 말일로 바뀐다', () => {
+    const dec = ctx(withTests(0))
+    expect(paraText(dec, 'ops_report', 'scope')).toContain('2025년 12월 31일 현재')
+    const mar = { ...ctx(withTests(0)), startMonth: 4 }   // 3월 결산 — 2025 회계연도 = 2025.04.01 ~ 2026.03.31
+    expect(paraText(mar, 'ops_report', 'scope')).toContain('2026년 3월 31일 현재')
+    expect(paraText(mar, 'ops_report', 'conclusion')).toContain('2026년 3월 31일 현재')
+    expect(paraText(mar, 'ac_report', 'scope')).toContain('2026년 3월 31일 현재')
+  })
   it('표 기본값과 고친 값, 자리표시 찾기, 날짜', () => {
     const c = ctx(withTests(0))
     expect(rowsOf(c, 'board_ops', 'improvements', [['a']])).toEqual([['a']])

@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import HelpButton from '@/features/help/HelpButton'
 import ReportPackage from '../components/ReportPackage'
+import { useFiscal } from '@/lib/useFiscal'
+import { fyLabel } from '@/lib/fiscalYear'
 import { useScopingMeta, useScopingSummary } from '@/features/scoping/api/useScoping'
 import { useRcmSummary } from '@/features/dashboard/api/useRcmSummary'
 import { useTestRuns } from '@/features/test/api/useTestRuns'
@@ -253,7 +255,8 @@ function SignBlock({ signers }: { signers: string[] }) {
 
 function OpsReport({ f, scopingStatusLabel }: { f: ReportFacts; scopingStatusLabel: string | null }) {
   const fy = f.fiscalYear
-  const date = evaluationDate(fy)
+  const { startMonth } = useFiscal()
+  const date = evaluationDate(fy, startMonth)
   const conclusion = selectConclusion(f)
   const classTotal = f.deficiencies.total
 
@@ -265,7 +268,7 @@ function OpsReport({ f, scopingStatusLabel }: { f: ReportFacts; scopingStatusLab
       <h3>Ⅰ. 개요</h3>
       <div className="tbl"><table><tbody>
         <tr><th>보고 목적</th><td>「주식회사 등의 외부감사에 관한 법률」 제8조에 따라 대표이사가 당해 회계연도 내부회계관리제도의 운영실태를 평가하여 이사회 및 감사(위원회)에 보고함</td></tr>
-        <tr><th>평가 대상 연도</th><td>{fy ? `${fy} 회계연도` : <Num v={null} hint={MISSING_HINT.fiscalYear} />}</td></tr>
+        <tr><th>평가 대상 회계연도</th><td>{fy ? fyLabel(fy, startMonth) : <Num v={null} hint={MISSING_HINT.fiscalYear} />}</td></tr>
         <tr><th>평가 기준일</th><td>{date ? `${koDate(date)} (회계연도 말)` : <Num v={null} hint={MISSING_HINT.fiscalYear} />}</td></tr>
         <tr><th>평가 기준</th><td>내부회계관리제도 설계 및 운영 개념체계, 내부회계관리제도 평가 및 보고 기준(모범규준)</td></tr>
         <tr><th>평가 수행</th><td>내부회계관리자 주관, 설계 평가(업무 흐름 검토) 및 운영 평가(표본 테스트)</td></tr>
@@ -337,6 +340,7 @@ function OpsReport({ f, scopingStatusLabel }: { f: ReportFacts; scopingStatusLab
 
 function AuditCommitteeReport({ f }: { f: ReportFacts }) {
   const fy = f.fiscalYear
+  const { startMonth } = useFiscal()
   const conclusion = selectAuditCommitteeConclusion(f)
   return (
     <>
@@ -344,7 +348,7 @@ function AuditCommitteeReport({ f }: { f: ReportFacts }) {
       <p className="sub">감사(위원회) → 이사회 · <Draft /> 자동 집계 {new Date().toLocaleDateString('ko-KR')} 기준</p>
 
       <h3>1. 평가 대상 기간</h3>
-      <p>{fy ? `${koDate(`${fy}-01-01`)} ~ ${koDate(evaluationDate(fy))} (${fy} 회계연도)` : <Num v={null} hint={MISSING_HINT.fiscalYear} />}</p>
+      <p>{fy ? fyLabel(fy, startMonth) : <Num v={null} hint={MISSING_HINT.fiscalYear} />}</p>
 
       <h3>2. 평가 방법 요약</h3>
       <ul>

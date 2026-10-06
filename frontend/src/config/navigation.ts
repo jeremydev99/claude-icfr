@@ -191,7 +191,7 @@ export const navigation: NavGroup[] = [
         requiresIcfrManager: true,
       },
       {
-        label: '회계연도 시작월',
+        label: '회계연도·결산월',
         path: '/admin/fiscal-year',
         icon: CalendarRange,
         description: '회계연도가 시작하는 달 (tenant_policies)',

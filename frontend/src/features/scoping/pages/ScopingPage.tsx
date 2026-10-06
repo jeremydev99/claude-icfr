@@ -1,4 +1,5 @@
 import EmptyState from '@/components/illustration/EmptyState'
+import { useFiscal } from '@/lib/useFiscal'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, Loader2, Lock, RefreshCw } from 'lucide-react'
@@ -217,11 +218,12 @@ export default function ScopingPage() {
 }
 
 function StatusBar({ d, meta }: { d: ScopingDetail; meta: ScopingMeta }) {
+  const fiscal = useFiscal()
   const label = (s: string) => meta.statuses.find((x) => x.value === s)?.label ?? s
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border p-3">
       <span className="text-sm">
-        <strong>{d.fiscal_year} 회계연도</strong> · 상태 <Badge variant={d.status === 'confirmed' ? 'default' : 'secondary'}>{label(d.status)}</Badge>
+        <strong>{fiscal.label(d.fiscal_year)}</strong> · 상태 <Badge variant={d.status === 'confirmed' ? 'default' : 'secondary'}>{label(d.status)}</Badge>
       </span>
       <span className="text-xs text-muted-foreground">
         템플릿 {d.template_code} v{d.template_version} · 기준 FY{d.base_fiscal_year} 결산 ·

@@ -14,6 +14,7 @@ import { useActiveTenantId, useAuthStore } from '@/features/auth/store'
 import { isIcfrManagerForUser, isIcfrStaffForUser } from '@/features/auth/permissions.pure'
 import type { ReportFacts } from '../reportModel'
 import { useOfficerNames } from '@/features/admin/components/OfficerRoles'
+import { useFiscal } from '@/lib/useFiscal'
 import {
   DOCS, META_FIELDS, META_ROWS, metaRows, placeholders, rowsOf, sectionText, timeline,
   type Block, type Contents, type Ctx, type DocContent, type DocDef, type DocKey,
@@ -87,7 +88,9 @@ export default function ReportPackage({ facts }: { facts: ReportFacts }) {
   const byKey = useMemo(() => Object.fromEntries(rows.map((r) => [r.doc_key, r])) as Partial<Record<DocKey, DocRow>>, [rows])
   const contents: Contents = useMemo(() => Object.fromEntries(rows.map((r) => [r.doc_key, r.content])), [rows])
   const officers = useOfficerNames()
-  const ctx: Ctx = { fy, facts, contents, defaults: { ceo: officers.ceo ?? '', icfr_manager: officers.icfr_manager ?? '' } }
+  const fiscal = useFiscal()
+  const ctx: Ctx = { fy, facts, contents, startMonth: fiscal.startMonth,
+    defaults: { ceo: officers.ceo ?? '', icfr_manager: officers.icfr_manager ?? '' } }
   const { data: years = [] } = useQuery({
     queryKey: ['report-years', tid],
     queryFn: async () => (await apiClient.get<YearRow[]>('/api/report/years')).data,
@@ -125,7 +128,7 @@ export default function ReportPackage({ facts }: { facts: ReportFacts }) {
       {/* 보고 순서 */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4 shadow-card">
         <div className="w-full space-y-1.5">
-          <p className="text-sm font-medium">평가 대상 연도(회계연도) <span className="font-normal text-muted-foreground">— 연도마다 보고 패키지가 따로 있습니다</span></p>
+          <p className="text-sm font-medium">평가 대상 회계연도 <span className="font-normal text-muted-foreground">— 회계연도마다 보고 패키지가 따로 있습니다 · {fiscal.endMonth}월 결산</span></p>
           <div className="flex flex-wrap gap-2" role="tablist" aria-label="평가 대상 연도">
             {yearList.map((y) => {
               const info = yearInfo.get(y)
@@ -133,7 +136,8 @@ export default function ReportPackage({ facts }: { facts: ReportFacts }) {
                 <button key={y} type="button" role="tab" aria-selected={fy === y} onClick={() => { setFy(y); setActive('meta') }}
                   className={cn('rounded-lg border px-3 py-1.5 text-left text-sm transition-colors',
                     fy === y ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted')}>
-                  <span className="font-semibold">{y}년</span>
+                  <span className="font-semibold">{y} 회계연도</span>
+                  <span className={cn('ml-1.5 text-xs', fy === y ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{fiscal.rangeText(y)}</span>
                   <span className={cn('ml-2 text-xs', fy === y ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
                     {info ? `작성 ${info.documents}/${DOCS.length} · 확정 ${info.final}` : '미작성'}
                   </span>

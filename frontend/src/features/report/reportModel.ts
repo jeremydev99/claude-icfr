@@ -3,6 +3,7 @@
 //
 // 보고서 구조 근거(요약·인용 아님): 주식회사 등의 외부감사에 관한 법률 제8조(대표이사의 운영실태
 // 보고, 감사(위원회)의 평가·보고), 내부회계관리제도 평가 및 보고 기준·모범규준.
+import { fiscalRange } from '@/lib/fiscalYear'
 import type { ScopingSummary } from '@/features/scoping/types'
 import type { RcmSummary } from '@/features/dashboard/api/types'
 import type { TestRun } from '@/features/test/types'
@@ -98,9 +99,9 @@ export function pickFiscalYear(i: ReportInputs): number | null {
   return years.length ? Math.max(...years) : null
 }
 
-/** 평가 기준일(회계연도 말). 12월 결산 가정 — 결산월 설정이 생기면 바꾼다. */
-export function evaluationDate(fy: number | null): string | null {
-  return fy ? `${fy}-12-31` : null
+/** 평가 기준일(회계연도 말) — 회사 결산월 반영(시작월 1 = 12월 결산, lib/fiscalYear). */
+export function evaluationDate(fy: number | null, startMonth = 1): string | null {
+  return fy ? fiscalRange(fy, startMonth).end : null
 }
 
 const emptyClasses = (): Record<DeficiencyClass, ClassCount> => ({

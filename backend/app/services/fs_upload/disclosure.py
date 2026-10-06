@@ -23,6 +23,7 @@ from app.services.fs_upload.cells import (
     raw_text,
     split_prefix,
 )
+from app.services.fs_upload.fiscal import fiscal_year_from_text
 from app.services.fs_upload.parsed import KIND_DISCLOSURE, ParsedRow, ParsedSheet
 
 HEAD_SCAN_ROWS = 12
@@ -87,7 +88,9 @@ def read(ws: Worksheet) -> ParsedSheet:
             unit_word, unit = u
         m = _TERM_YEAR_RE.search(n)
         if m:
-            term_years.setdefault(int(m.group(1)), int(m.group(2)))
+            # 기수 줄("제26기 2025년 12월 31일 현재")의 날짜 → 회계연도(결산월 반영, fs_upload/fiscal.py)
+            fy = fiscal_year_from_text(n[m.start():])
+            term_years.setdefault(int(m.group(1)), fy if fy is not None else int(m.group(2)))
 
     # 기간 열
     notes_col = None
@@ -112,7 +115,9 @@ def read(ws: Worksheet) -> ParsedSheet:
         year = None
         m = _YEAR_RE.search(n)
         if m:
-            year = int(m.group(1))
+            # 기간 머리의 **마지막 날짜**(끝나는 날)로 회계연도를 정한다 — 첫 연도를 쓰면 손익(시작일)과
+            # 재무상태표(기준일)가 결산월이 12월이 아닐 때 서로 다른 연도가 된다(2026-10-06)
+            year = fiscal_year_from_text(n)
         else:
             term = int(_TERM_RE.search(n).group(1))
             year = term_years.get(term)
