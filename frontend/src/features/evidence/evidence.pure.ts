@@ -2,6 +2,7 @@
 import { KIND_LABEL, STATUS_LABEL } from '@/features/schedule/schedule.pure'
 import type { CycleItem } from '@/features/schedule/api/useSchedule'
 import { ALLOWED_EXTENSIONS, ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES } from './types'
+import type { EvidenceFileSearchParams } from './types'
 
 export function validateFile(file: { name: string; size: number; type: string }): string | null {
   if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -49,4 +50,13 @@ export function resolveEvidenceError(error: unknown, fallback = '업로드 중 �
   const detail = res?.data?.detail
   if (typeof detail === 'string' && detail) return detail
   return fallback
+}
+
+/** 목록 필터 선택값(`ALL` = 전체) → 조회 파라미터. 통제 필터는 회차를 고른 뒤에만 유효하다(13.9-74 ②). */
+export const FILTER_ALL = 'all'
+
+export function buildFileFilterParams(cycleId: string, controlId: string): EvidenceFileSearchParams {
+  if (cycleId === FILTER_ALL) return {}
+  if (controlId === FILTER_ALL) return { cycle_id: cycleId }
+  return { cycle_id: cycleId, control_id: controlId }
 }

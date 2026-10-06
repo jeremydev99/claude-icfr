@@ -31,6 +31,8 @@ export interface EvidenceFileListResponse {
 export interface EvidenceFileSearchParams {
   skip?: number
   limit?: number
+  cycle_id?: string
+  control_id?: string
 }
 
 export interface EvidenceLinkSearchParams {

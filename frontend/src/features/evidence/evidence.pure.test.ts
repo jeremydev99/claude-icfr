@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildFileFilterParams,
   closedCycleNotice,
+  FILTER_ALL,
   cycleLabel,
   resolveEvidenceError,
   sortCyclesForUpload,
@@ -70,5 +72,18 @@ describe('resolveEvidenceError', () => {
   it('응답 없음(네트워크)·지정 기본 문구', () => {
     expect(resolveEvidenceError(new Error('net'), '삭제 실패')).toBe('삭제 실패')
     expect(resolveEvidenceError(null)).toBe('업로드 중 오류가 발생했습니다.')
+  })
+})
+
+describe('buildFileFilterParams', () => {
+  it('회차 전체면 통제 선택과 무관하게 필터 없음', () => {
+    expect(buildFileFilterParams(FILTER_ALL, FILTER_ALL)).toEqual({})
+    expect(buildFileFilterParams(FILTER_ALL, 'ctrl-1')).toEqual({})
+  })
+  it('회차만 고르면 cycle_id 만', () => {
+    expect(buildFileFilterParams('cy-1', FILTER_ALL)).toEqual({ cycle_id: 'cy-1' })
+  })
+  it('회차·통제 모두 고르면 AND', () => {
+    expect(buildFileFilterParams('cy-1', 'ctrl-1')).toEqual({ cycle_id: 'cy-1', control_id: 'ctrl-1' })
   })
 })
