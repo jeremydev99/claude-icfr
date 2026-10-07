@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.scoping import GovernanceInfo
 from app.schemas.user import UserBrief  # 공통 사용자 간략 스키마 (test_module과 일관화)
 
 # ── Deficiency ─────────────────────────────────────────────
@@ -17,7 +18,7 @@ class DeficiencyBase(BaseModel):
     control_id: UUID | None = None
 
 class DeficiencyCreate(DeficiencyBase):
-    pass
+    final_conclusion: str | None = None   # 작성 중 결론 — 확정은 결재 승인으로만(ADR-0038 2-3)
 
 class DeficiencyUpdate(BaseModel):
     severity: str | None = Field(None, pattern="^(low|medium|high)$")
@@ -26,8 +27,7 @@ class DeficiencyUpdate(BaseModel):
     fiscal_year: int | None = None
     control_id: UUID | None = None
     final_conclusion: str | None = None
-    confirmed_at: datetime | None = None
-    confirmed_by_id: UUID | None = None
+    # confirmed_at·confirmed_by_id 는 받지 않는다 — 확정은 결재 승인으로만 서버가 적는다(ADR-0038 2-3)
 
 class DeficiencyRead(DeficiencyBase):
     id: UUID
@@ -36,7 +36,16 @@ class DeficiencyRead(DeficiencyBase):
     confirmed_by_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
+    # 결재 상태(ADR-0038 2-3) — draft | review | confirmed
+    approval_status: str = "draft"
     model_config = ConfigDict(from_attributes=True)
+
+
+class DeficiencyApproval(BaseModel):
+    """미비점 평가 결재 정보 — 화면의 결재 패널이 그대로 쓴다."""
+    deficiency: DeficiencyRead
+    legacy_confirmed: bool          # 확정인데 결재 기록 없음 = 이전 방식 확정
+    governance: GovernanceInfo
 
 
 # ── RemediationStatusHistory ────────────────────────────────

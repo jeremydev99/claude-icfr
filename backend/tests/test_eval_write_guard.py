@@ -55,6 +55,13 @@ WRITE_ROUTES = [
     ("DELETE", f"/api/remediation/design-assessments/{_ID}"),
 ]
 
+# 결재 엔드포인트(ADR-0038 2-3) — `require_icfr_staff`(일반관리자 이상). 외부감사인은 단계가 없어 403(문구는 다르다)
+GOVERNANCE_ROUTES = [
+    ("POST", f"/api/remediation/deficiencies/{_ID}/transition"),
+    ("POST", f"/api/remediation/deficiencies/{_ID}/review"),
+    ("POST", f"/api/remediation/deficiencies/{_ID}/external-approval"),
+]
+
 
 def _external_auditor_headers(client: TestClient) -> dict:
     db = TestingSessionLocal()
@@ -91,6 +98,12 @@ def test_external_auditor_cannot_write(client: TestClient, method: str, path: st
     assert "외부감사인" in resp.json()["detail"]
 
 
+@pytest.mark.parametrize(("method", "path"), GOVERNANCE_ROUTES)
+def test_external_auditor_cannot_use_approval_routes(client: TestClient, method: str, path: str) -> None:
+    resp = client.request(method, path, headers=_external_auditor_headers(client), json={})
+    assert resp.status_code == 403, f"{method} {path} → {resp.status_code} {resp.text}"
+
+
 def test_external_auditor_can_still_read(client: TestClient) -> None:
     h = _external_auditor_headers(client)
     for path in ("/api/test/runs", "/api/test/rawc", "/api/remediation/deficiencies",
@@ -102,7 +115,7 @@ def test_every_write_route_is_listed() -> None:
     """test·remediation 라우터의 쓰기 엔드포인트가 전부 WRITE_ROUTES 에 있다."""
     from app.api import remediation, test_module
 
-    listed = {(m, p.replace(_ID, "{id}")) for m, p in WRITE_ROUTES}
+    listed = {(m, p.replace(_ID, "{id}")) for m, p in WRITE_ROUTES + GOVERNANCE_ROUTES}
     actual = set()
     for router in (test_module.router, remediation.router):
         for r in router.routes:

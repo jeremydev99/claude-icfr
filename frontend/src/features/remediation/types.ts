@@ -1,3 +1,5 @@
+import type { GovernanceInfo } from '@/features/governance/types'
+
 // ── Deficiency ─────────────────────────────────────────────
 
 export type DeficiencySeverity = 'low' | 'medium' | 'high'
@@ -17,6 +19,23 @@ export interface Deficiency {
   confirmed_by_id: string | null
   created_at: string
   updated_at: string
+  /** 평가 결론 결재 상태(ADR-0038 2-3) — 확정은 결재 승인으로만 */
+  approval_status: ApprovalStatus
+}
+
+export type ApprovalStatus = 'draft' | 'review' | 'confirmed'
+
+export const APPROVAL_STATUS_LABELS: Record<ApprovalStatus, string> = {
+  draft: '작성 중',
+  review: '검토 중',
+  confirmed: '확정',
+}
+
+export interface DeficiencyApproval {
+  deficiency: Deficiency
+  /** 확정인데 결재 기록 없음 = 결재선 도입 전 확정 */
+  legacy_confirmed: boolean
+  governance: GovernanceInfo
 }
 
 export interface DeficiencyCreatePayload {
@@ -27,6 +46,7 @@ export interface DeficiencyCreatePayload {
   fiscal_year?: number
   test_run_id?: string | null
   control_id?: string | null
+  final_conclusion?: string | null
 }
 
 export interface DeficiencyUpdatePayload {
@@ -36,8 +56,7 @@ export interface DeficiencyUpdatePayload {
   fiscal_year?: number
   control_id?: string | null
   final_conclusion?: string | null
-  confirmed_at?: string | null
-  confirmed_by_id?: string | null
+  // confirmed_at·confirmed_by_id 는 보낼 수 없다 — 서버가 결재 승인 때 적는다
 }
 
 export interface DeficiencyListResponse {
@@ -115,9 +134,10 @@ export interface RemediationStatusHistory {
 // ── Label / Badge 상수 ──────────────────────────────────────
 
 export const SEVERITY_LABELS: Record<DeficiencySeverity, string> = {
-  low: '낮음',
-  medium: '중간',
-  high: '높음',
+  // 코드는 그대로, 표시는 내부회계 용어(보고서 classifyDeficiency 와 같은 대응)
+  low: '단순 미비점',
+  medium: '유의적 미비점',
+  high: '중요한 취약점',
 }
 
 export const SEVERITY_BADGE_CLASS: Record<DeficiencySeverity, string> = {

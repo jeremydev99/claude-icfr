@@ -103,6 +103,12 @@ ROUTES: dict[str, R] = {
     "POST /api/remediation/deficiencies": (REM, "미비점 등록", "deficiency", None),
     "PATCH /api/remediation/deficiencies/{deficiency_id}": (REM, "미비점 수정 저장", "deficiency", "deficiency_id"),
     "DELETE /api/remediation/deficiencies/{deficiency_id}": (REM, "미비점 삭제", "deficiency", "deficiency_id"),
+    # 미비점 평가 결재(ADR-0038 2-3)
+    "POST /api/remediation/deficiencies/{deficiency_id}/transition":
+        (REM, "미비점 평가 상태 변경", "deficiency", "deficiency_id"),
+    "POST /api/remediation/deficiencies/{deficiency_id}/review": (REM, "미비점 평가 검토", "deficiency", "deficiency_id"),
+    "POST /api/remediation/deficiencies/{deficiency_id}/external-approval":
+        (REM, "외부 승인 등록", "deficiency", "deficiency_id"),
     "POST /api/remediation/plans": (REM, "개선계획 등록", "plan", None),
     "PATCH /api/remediation/plans/{plan_id}": (REM, "개선계획 수정 저장", "plan", "plan_id"),
     "DELETE /api/remediation/plans/{plan_id}": (REM, "개선계획 삭제", "plan", "plan_id"),

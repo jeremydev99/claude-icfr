@@ -121,7 +121,9 @@ export default function DeficiencyFormDialog({ open, onOpenChange, editTarget }:
   const onSubmit = async (values: FormValues) => {
     try {
       if (isEdit && editTarget) {
-        await updateMutation.mutateAsync({ id: editTarget.id, payload: values })
+        // 검토 중·확정이면 평가 내용은 잠겨 있다 — 개선 진행 상태만 보낸다(ADR-0038 2-3)
+        const payload = editTarget.approval_status === 'draft' ? values : { status: values.status }
+        await updateMutation.mutateAsync({ id: editTarget.id, payload })
         toast.success('미비점이 수정되었습니다')
       } else {
         await createMutation.mutateAsync(values)
@@ -145,6 +147,8 @@ export default function DeficiencyFormDialog({ open, onOpenChange, editTarget }:
           <DialogTitle>{isEdit ? '미비점 편집' : '미비점 등록'}</DialogTitle>
           <DialogDescription>
             {isEdit ? '미비점 정보를 수정합니다.' : '새 미비점을 등록합니다.'} 필수 항목을 모두 입력해 주세요.
+            {isEdit && editTarget && editTarget.approval_status !== 'draft' &&
+              ' 평가 결론이 검토 중이거나 확정돼 진행 상태만 저장됩니다.'}
           </DialogDescription>
         </DialogHeader>
 

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -18,6 +19,7 @@ import DeficiencyTable from '../components/DeficiencyTable'
 import DeficiencyFormDialog from '../components/DeficiencyFormDialog'
 import RemediationPlanCreateDialog from '../components/RemediationPlanCreateDialog'
 import RemediationPlanDetailSheet from '../components/RemediationPlanDetailSheet'
+import DeficiencyApprovalSheet from '../components/DeficiencyApprovalSheet'
 import type { Deficiency } from '../types'
 import { useCanWrite } from '@/features/auth/useCanWrite'
 
@@ -32,6 +34,13 @@ export default function RemediationPage() {
   const [defFormOpen, setDefFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Deficiency | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Deficiency | null>(null)
+  // 평가 결론·결재 — 결재 대기함에서 오면 `?deficiency=` 로 바로 연다
+  const [searchParams] = useSearchParams()
+  const [conclusionId, setConclusionId] = useState<string | null>(null)
+  useEffect(() => {
+    const id = searchParams.get('deficiency')
+    if (id) setConclusionId(id)
+  }, [searchParams])
 
   const handleEditClick = (item: Deficiency) => {
     setEditTarget(item)
@@ -93,6 +102,7 @@ export default function RemediationPage() {
         plans={planData?.items ?? []}
         onAddClick={() => { setEditTarget(null); setDefFormOpen(true) }}
         onEditClick={handleEditClick}
+        onConclusionClick={(item) => setConclusionId(item.id)}
         onDeleteClick={(item) => setDeleteTarget(item)}
         onPlanClick={handlePlanClick}
         onCreatePlanClick={handleCreatePlanClick}
@@ -102,6 +112,7 @@ export default function RemediationPage() {
       />
 
       {/* Dialogs / Sheets */}
+      <DeficiencyApprovalSheet deficiencyId={conclusionId} onOpenChange={(o) => { if (!o) setConclusionId(null) }} />
       <DeficiencyFormDialog
         open={defFormOpen}
         onOpenChange={(o) => { setDefFormOpen(o); if (!o) setEditTarget(null) }}

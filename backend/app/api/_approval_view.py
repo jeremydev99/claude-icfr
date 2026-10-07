@@ -42,9 +42,14 @@ def _reopen_read(db: Session, r: ReopenRequest) -> ReopenRead:
                       decided_at=r.decided_at, decision_reason=r.decision_reason, created_at=r.created_at)
 
 
-def governance_info(db: Session, st: ApprovalState, user_id: UUID, *, legacy_confirmed_by=None) -> GovernanceInfo:
-    """`st` 는 저장된 행이거나 `approval_flow.view_state` 의 임시 객체. 이전 방식 확정분은 확정자를 따로 받는다."""
+def governance_info(db: Session, st: ApprovalState, user_id: UUID, *, legacy_confirmed_by=None,
+                    no_reopen: str | None = None) -> GovernanceInfo:
+    """`st` 는 저장된 행이거나 `approval_flow.view_state` 의 임시 객체. 이전 방식 확정분은 확정자를 따로 받는다.
+    `no_reopen` 을 주면 재오픈 없는 문서 — 재오픈 버튼을 끄고 그 사유를 보여 준다(미비점 평가 등, ADR-0038 §3.1)."""
     c = approval.can(db, st, user_id)
+    if no_reopen and c.reopen_request:
+        c.reopen_request = False
+        c.why["reopen"] = no_reopen
     t = approval.user_tier(db, user_id)
     pend = approval.pending_reopen(db, st.entity_id)
     exts = db.query(ExternalApproval).filter(ExternalApproval.entity_type == st.entity_type,

@@ -17,11 +17,13 @@ from app.models.financial_statement import FS_BASIS_LABELS, FS_STATEMENT_LABELS,
 from app.models.governance import (
     AS_CONFIRMED,
     AS_REVIEW,
+    ENTITY_DEFICIENCY,
     ENTITY_FS_STATEMENT,
     ApprovalState,
     GovernanceFile,
 )
 from app.models.proposal import P_PENDING_REVIEW, P_REVIEWED, Proposal
+from app.models.remediation import Deficiency
 from app.models.scoping import STATUS_CONFIRMED, STATUS_REVIEW, Scoping
 from app.services import approval
 from app.services import proposals as proposal_svc
@@ -60,15 +62,22 @@ def inbox(user: CurrentUser, db: Session = Depends(get_db)) -> list[InboxItem]:
                 out.append(InboxItem(entity_type="scoping", entity_id=s.id, title=title, action=action,
                                      label=label, path="/scoping"))
     # 공통 결재 상태(2-1)를 쓰는 문서 — 재무제표(2-2)
-    for st in db.query(ApprovalState).filter(ApprovalState.entity_type == ENTITY_FS_STATEMENT,
+    for st in db.query(ApprovalState).filter(ApprovalState.entity_type.in_([ENTITY_FS_STATEMENT, ENTITY_DEFICIENCY]),
                                              ApprovalState.is_deleted == False,  # noqa: E712
                                              ApprovalState.status.in_([AS_REVIEW, AS_CONFIRMED])).all():
-        fs = db.get(FsStatement, st.entity_id)
-        if fs is None or fs.is_deleted:
-            continue
+        if st.entity_type == ENTITY_FS_STATEMENT:
+            fs = db.get(FsStatement, st.entity_id)
+            if fs is None or fs.is_deleted:
+                continue
+            title = (f"{fs.fiscal_year} 회계연도 {FS_STATEMENT_LABELS.get(fs.statement_type, fs.statement_type)}"
+                     f"({FS_BASIS_LABELS.get(fs.basis, fs.basis)})")
+            path = f"/financial-statements?statement={fs.id}"
+        else:
+            d = db.get(Deficiency, st.entity_id)
+            if d is None or d.is_deleted:
+                continue
+            title, path = f"미비점 {d.code} 평가 결론", f"/remediation?deficiency={d.id}"
         c = approval.can(db, st, user.id)
-        title = (f"{fs.fiscal_year} 회계연도 {FS_STATEMENT_LABELS.get(fs.statement_type, fs.statement_type)}"
-                 f"({FS_BASIS_LABELS.get(fs.basis, fs.basis)})")
         for flag, action, label in [
             (c.review, "review", "책임관리자 검토"),
             (c.approve, "approve", "승인(확정)"),
@@ -77,8 +86,8 @@ def inbox(user: CurrentUser, db: Session = Depends(get_db)) -> list[InboxItem]:
             (c.reopen_external, "reopen_external", "재오픈 외부 승인 증빙 등록"),
         ]:
             if flag:
-                out.append(InboxItem(entity_type=ENTITY_FS_STATEMENT, entity_id=fs.id, title=title, action=action,
-                                     label=label, path=f"/financial-statements?statement={fs.id}"))
+                out.append(InboxItem(entity_type=st.entity_type, entity_id=st.entity_id, title=title, action=action,
+                                     label=label, path=path))
     for p in db.query(Proposal).filter(Proposal.is_deleted == False,  # noqa: E712
                                        Proposal.status.in_([P_PENDING_REVIEW, P_REVIEWED])).all():
         c = proposal_svc.can(db, p, user.id)

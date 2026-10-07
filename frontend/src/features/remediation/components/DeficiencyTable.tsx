@@ -16,6 +16,7 @@ import {
   SEVERITY_BADGE_CLASS,
   DEFICIENCY_STATUS_LABELS,
   DEFICIENCY_STATUS_BADGE_CLASS,
+  APPROVAL_STATUS_LABELS,
   REMEDIATION_STATUS_LABELS,
   REMEDIATION_STATUS_BADGE_CLASS,
 } from '../types'
@@ -26,6 +27,8 @@ interface Props {
   plans: RemediationPlan[]
   onAddClick: () => void
   onEditClick: (item: Deficiency) => void
+  /** 평가 결론·결재 열기 */
+  onConclusionClick: (item: Deficiency) => void
   onDeleteClick: (item: Deficiency) => void
   onPlanClick: (planId: string) => void
   onCreatePlanClick: (deficiencyId: string) => void
@@ -39,6 +42,7 @@ export default function DeficiencyTable({
   plans,
   onAddClick,
   onEditClick,
+  onConclusionClick,
   onDeleteClick,
   onPlanClick,
   onCreatePlanClick,
@@ -90,6 +94,7 @@ export default function DeficiencyTable({
               <TableHead>심각도</TableHead>
               <TableHead>설명</TableHead>
               <TableHead>상태</TableHead>
+              <TableHead>평가 결론</TableHead>
               <TableHead>회계연도</TableHead>
               <TableHead>개선계획</TableHead>
               <TableHead className="w-20"></TableHead>
@@ -108,6 +113,12 @@ export default function DeficiencyTable({
                 <TableCell>
                   <Badge variant="outline" className={DEFICIENCY_STATUS_BADGE_CLASS[item.status]}>
                     {DEFICIENCY_STATUS_LABELS[item.status]}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={item.approval_status === 'confirmed' ? 'default' : 'outline'}
+                    className="cursor-pointer" onClick={() => onConclusionClick(item)}>
+                    {APPROVAL_STATUS_LABELS[item.approval_status]}
                   </Badge>
                 </TableCell>
                 <TableCell>{item.fiscal_year}</TableCell>
@@ -145,6 +156,8 @@ export default function DeficiencyTable({
                       <Button
                         variant="ghost"
                         size="icon"
+                        disabled={item.approval_status !== 'draft'}
+                        title={item.approval_status !== 'draft' ? '검토 중·확정된 미비점은 삭제할 수 없습니다' : undefined}
                         className="h-7 w-7 hover:bg-red-50 hover:text-red-600"
                         onClick={() => onDeleteClick(item)}
                       >
