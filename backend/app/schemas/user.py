@@ -63,6 +63,8 @@ class UserRead(BaseModel):
     # MFA(ADR-0039) — 등록 여부와 의무 여부. 화면의 등록 안내·사이드바 표시용
     mfa_enabled: bool = False
     mfa_required: bool = False
+    # 비상용 비밀번호로 들어왔으면 본인 변경 전까지 다른 API 가 막힌다(ADR-0041) — 화면은 변경 창을 띄운다
+    must_change_password: bool = False
     # 외부 사용자면 유형·소속·허용 모듈·기간 — 메뉴 제한과 상단 안내에 쓴다(최종 판정은 서버)
     external: dict | None = None
 
@@ -70,15 +72,17 @@ class UserRead(BaseModel):
 
 
 class UserCreate(BaseModel):
+    """직원 계정 생성(ADR-0041). 비밀번호를 비우면 초대 대기 + 설정 링크(기본).
+    비밀번호를 넣는 것은 시스템관리자 비상용 — 다음 로그인 때 본인이 바꿔야 한다."""
     email: EmailStr
-    password: str
+    password: str | None = None
     display_name: str
     role: str = "user"
 
     @field_validator("password")
     @classmethod
-    def _strong(cls, v: str) -> str:
-        return validate_password(v)
+    def _strong(cls, v: str | None) -> str | None:
+        return None if v in (None, "") else validate_password(v)
 
 
 class UserUpdate(BaseModel):

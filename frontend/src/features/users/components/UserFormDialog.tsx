@@ -20,7 +20,8 @@ import {
 } from '@/components/ui/select'
 import { Loader2 } from 'lucide-react'
 import { useCreateUser, useUpdateUser } from '../api/useUsers'
-import type { User } from '../types'
+import type { User, UserCreated } from '../types'
+import SetupLinkView from './SetupLinkView'
 
 interface Props {
   open: boolean
@@ -48,6 +49,9 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
   const [role, setRole] = useState('user')
   const [isActive, setIsActive] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // 기본은 초대(설정 링크). 비상용으로만 관리자가 비밀번호를 정한다 — 다음 로그인 때 본인이 바꿔야 한다(ADR-0041)
+  const [emergency, setEmergency] = useState(false)
+  const [created, setCreated] = useState<UserCreated | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -57,6 +61,8 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
       setRole(editTarget?.role ?? 'user')
       setIsActive(editTarget?.is_active ?? true)
       setError(null)
+      setEmergency(false)
+      setCreated(null)
     }
   }, [open, editTarget])
 
@@ -66,7 +72,7 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
     e.preventDefault()
     setError(null)
 
-    const policy = isEdit ? null : passwordPolicyError(password)
+    const policy = isEdit || !emergency ? null : passwordPolicyError(password)
     if (policy) {
       setError(policy)
       return
@@ -79,7 +85,16 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
           body: { display_name: displayName, role, is_active: isActive },
         })
       } else {
-        await createUser.mutateAsync({ email, password, display_name: displayName, role })
+        const u = await createUser.mutateAsync({
+          email, display_name: displayName, role, ...(emergency ? { password } : {}),
+        })
+        onSuccess?.()
+        if (u.setup_url) {
+          setCreated(u)   // 링크를 보여 주고 창은 관리자가 닫는다
+          return
+        }
+        onOpenChange(false)
+        return
       }
       onOpenChange(false)
       onSuccess?.()
@@ -94,9 +109,17 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
         <DialogHeader>
           <DialogTitle>{isEdit ? '사용자 편집' : '사용자 등록'}</DialogTitle>
           <DialogDescription>
-            {isEdit ? '사용자 정보를 수정합니다.' : '새 사용자를 등록합니다.'} 필수 항목을 모두 입력해 주세요.
+            {isEdit ? '사용자 정보를 수정합니다. 필수 항목을 모두 입력해 주세요.'
+              : '이메일·이름·역할만 입력하면 계정 시작 링크가 만들어집니다. 비밀번호는 직원 본인이 정하고, 관리자는 알 수 없습니다.'}
           </DialogDescription>
         </DialogHeader>
+        {created?.setup_url ? (
+          <div className="space-y-4">
+            <SetupLinkView url={created.setup_url} expiresAt={created.setup_expires_at ?? ''} purpose="invite"
+              name={created.display_name} />
+            <DialogFooter><Button onClick={() => onOpenChange(false)}>닫기</Button></DialogFooter>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           {!isEdit && (
             <>
@@ -111,17 +134,22 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
                   placeholder="user@example.com"
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="password">비밀번호 * ({PASSWORD_RULE_TEXT})</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  placeholder="••••••••"
-                />
-              </div>
+              {emergency && (
+                <div className="space-y-1.5 rounded-lg border border-amber-300 bg-amber-50/60 p-3 dark:bg-amber-950/20">
+                  <Label htmlFor="password">비상용 비밀번호 * ({PASSWORD_RULE_TEXT})</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    placeholder="••••••••"
+                  />
+                  <p className="text-xs text-amber-800 dark:text-amber-300">
+                    링크를 전달할 수 없을 때만 쓰세요. 직원은 처음 로그인하면 본인 비밀번호로 바꿔야 다른 기능을 쓸 수 있습니다.
+                  </p>
+                </div>
+              )}
             </>
           )}
           {isEdit && (
@@ -166,16 +194,23 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
             </div>
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <DialogFooter>
+          <DialogFooter className="sm:items-center">
+            {!isEdit && (
+              <button type="button" onClick={() => setEmergency(!emergency)}
+                className="mr-auto text-xs text-muted-foreground underline-offset-2 hover:underline">
+                {emergency ? '링크로 시작하기(권장)' : '비상용: 비밀번호 직접 정하기'}
+              </button>
+            )}
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               취소
             </Button>
             <Button type="submit" disabled={isPending}>
               {isPending && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
-              {isEdit ? '저장' : '등록'}
+              {isEdit ? '저장' : emergency ? '등록' : '등록하고 링크 만들기'}
             </Button>
           </DialogFooter>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   )

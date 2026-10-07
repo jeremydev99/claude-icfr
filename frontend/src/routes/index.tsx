@@ -5,6 +5,7 @@ import AuthLayout from '@/layouts/AuthLayout'
 import AppLayout from '@/layouts/AppLayout'
 import PrivateRoute from './PrivateRoute'
 import LoginPage from '@/pages/LoginPage'
+import AccountSetupPage from '@/features/auth/pages/AccountSetupPage'
 import InvitePage from '@/features/auth/pages/InvitePage'
 import DashboardPage from '@/pages/DashboardPage'
 import SchedulePage from '@/features/schedule/pages/SchedulePage'
@@ -36,6 +37,12 @@ export const router = createBrowserRouter([
     path: '/invite/:token',
     element: <AuthLayout />,
     children: [{ index: true, element: <InvitePage /> }],
+  },
+  // 직원 계정 설정 링크(ADR-0041) — 관리자가 비밀번호를 모르게, 본인이 정한다
+  {
+    path: '/setup/:token',
+    element: <AuthLayout />,
+    children: [{ index: true, element: <AccountSetupPage /> }],
   },
   {
     path: '/',

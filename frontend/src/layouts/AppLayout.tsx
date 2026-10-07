@@ -286,7 +286,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             </button>
           </div>
         )}
-        <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
+        <ChangePasswordDialog open={passwordOpen || !!user?.must_change_password} onOpenChange={setPasswordOpen}
+          forced={!!user?.must_change_password} />
         <MfaDialog open={mfaOpen} onOpenChange={setMfaOpen} />
       </div>
     </>
@@ -299,6 +300,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
  */
 export default function AppLayout() {
   useMe()
+  const mustChange = !!useAuthStore((s) => s.user?.must_change_password)
   const { theme } = useSidebarTheme()
   const scrollRef = useRef<HTMLElement | null>(null)
   const [drawer, setDrawer] = useState(false)
@@ -398,7 +400,8 @@ export default function AppLayout() {
           </div>
         </header>
         <main className="min-w-0 flex-1 overflow-x-hidden bg-background">
-          <Outlet />
+          {/* 비상용 비밀번호로 들어왔으면 본인 변경 전까지 화면을 열지 않는다 — 서버도 막는다(ADR-0041) */}
+          {mustChange ? null : <Outlet />}
         </main>
       </div>
 

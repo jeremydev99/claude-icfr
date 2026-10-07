@@ -224,7 +224,7 @@ export default function UsersPage() {
         open={resetPwdOpen}
         onOpenChange={setResetPwdOpen}
         targetUser={resetPwdTarget}
-        onSuccess={() => toast.success('비밀번호가 재설정되었습니다')}
+        onSuccess={() => toast.success('비상용 비밀번호를 지정했습니다 — 다음 로그인 때 본인이 바꿔야 합니다')}
       />
 
       {/* 사용자 삭제 확인 */}

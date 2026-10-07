@@ -310,6 +310,7 @@ def me(
     result.can_write = can_write(roles)
     result.mfa_enabled = current_user.mfa_enabled_at is not None
     result.mfa_required = _mfa_required(db, current_user)
+    result.must_change_password = bool(current_user.must_change_password)
     from app.models.external import TYPE_LABELS, ExternalProfile
     p = db.query(ExternalProfile).filter(ExternalProfile.user_id == current_user.id,
                                          ExternalProfile.is_deleted == False).first()  # noqa: E712
@@ -335,8 +336,12 @@ def change_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="현재 비밀번호가 올바르지 않습니다",
         )
+    if current_user.must_change_password and verify_password(body.new_password, current_user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="관리자가 정한 비밀번호와 다른 비밀번호를 정하세요")
     current_user.hashed_password = hash_password(body.new_password)
     current_user.password_changed_at = datetime.now(UTC)
+    current_user.must_change_password = False
     db.commit()
     return ChangePasswordResponse(
         detail="비밀번호가 변경되었습니다",

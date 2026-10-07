@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchUsers, fetchUserDetail, createUser, updateUser, deleteUser, resetUserPassword, unlockUser } from './usersApi'
+import { fetchUsers, fetchUserDetail, createUser, updateUser, deleteUser, resetUserPassword, unlockUser, issueSetupLink } from './usersApi'
 import type { UserCreatePayload, UserUpdatePayload, ResetPasswordPayload } from '../types'
 import { queryKeys } from '@/lib/queryKeys'
 import { useActiveTenantId } from '@/features/auth/store'
@@ -46,6 +46,15 @@ export function useDeleteUser() {
   const tenantId = useActiveTenantId()
   return useMutation({
     mutationFn: (id: string) => deleteUser(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users.all(tenantId) }),
+  })
+}
+
+export function useIssueSetupLink() {
+  const qc = useQueryClient()
+  const tenantId = useActiveTenantId()
+  return useMutation({
+    mutationFn: (id: string) => issueSetupLink(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users.all(tenantId) }),
   })
 }

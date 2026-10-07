@@ -1,3 +1,4 @@
+from app.models.account_setup import AccountSetupToken  # noqa: F401
 from app.models.assessment import (  # noqa: F401
     ActivityApproval,
     AssessmentActivity,

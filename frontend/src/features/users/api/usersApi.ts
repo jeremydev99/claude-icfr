@@ -1,5 +1,5 @@
 import apiClient from '@/lib/axios'
-import type { LoginEvent, User, UserListResponse, UserCreatePayload, UserUpdatePayload, ResetPasswordPayload } from '../types'
+import type { LoginEvent, User, UserListResponse, UserCreatePayload, UserUpdatePayload, ResetPasswordPayload, SetupLink, UserCreated } from '../types'
 
 export async function fetchUsers(
   params: { skip?: number; limit?: number } = {}
@@ -13,9 +13,14 @@ export async function fetchUserDetail(id: string): Promise<User> {
   return res.data
 }
 
-export async function createUser(body: UserCreatePayload): Promise<User> {
-  const res = await apiClient.post<User>('/api/users/', body)
+export async function createUser(body: UserCreatePayload): Promise<UserCreated> {
+  const res = await apiClient.post<UserCreated>('/api/users/', body)
   return res.data
+}
+
+/** 설정 링크 (재)발급 — 초대 대기면 초대, 아니면 재설정. 이전 링크는 취소된다(ADR-0041) */
+export async function issueSetupLink(id: string): Promise<SetupLink> {
+  return (await apiClient.post<SetupLink>(`/api/users/${id}/setup-link`)).data
 }
 
 export async function updateUser(id: string, body: UserUpdatePayload): Promise<User> {

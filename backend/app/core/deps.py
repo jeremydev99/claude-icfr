@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -76,7 +76,12 @@ def _check_external_window(db: Session, user: User) -> None:
                             detail=f"외부 사용자 접근 기간이 아닙니다({p.valid_from}~{p.valid_until}) — 담당자에게 연장을 요청하세요")
 
 
+# 비상용 비밀번호로 들어온 사용자(must_change_password)가 변경 전에도 쓸 수 있는 경로 — 본인 정보·변경·로그아웃만(ADR-0041)
+PASSWORD_CHANGE_ALLOWED = ("/api/auth/me", "/api/auth/change-password", "/api/auth/logout", "/api/auth/refresh")
+
+
 async def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
@@ -107,6 +112,9 @@ async def get_current_user(
         raise credentials_exception
     if issued_before_password_change(payload, user.password_changed_at):
         raise credentials_exception
+    if user.must_change_password and not request.url.path.startswith(PASSWORD_CHANGE_ALLOWED):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="관리자가 정한 임시 비밀번호입니다 — 비밀번호를 먼저 변경하세요")
 
     # 활성 tenant 검증·설정 (전 비즈니스 쿼리의 자동 격리 기준)
     tenant_id = _resolve_active_tenant(db, user, x_tenant_id)

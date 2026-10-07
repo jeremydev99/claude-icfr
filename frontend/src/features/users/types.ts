@@ -8,6 +8,21 @@ export interface User {
   /** 보안 1단계 — 연속 실패 횟수·잠금 해제 시각 */
   failed_login_count?: number
   locked_until?: string | null
+  /** 직원 초대(ADR-0041) — 아직 본인이 비밀번호를 정하지 않음 / 관리자가 정한 비밀번호라 변경 필요 */
+  invite_pending?: boolean
+  must_change_password?: boolean
+}
+
+/** 생성 결과 — 초대면 설정 링크 원문이 이 응답에서 한 번만 온다 */
+export interface UserCreated extends User {
+  setup_url?: string | null
+  setup_expires_at?: string | null
+}
+
+export interface SetupLink {
+  setup_url: string
+  expires_at: string
+  purpose: 'invite' | 'reset'
 }
 
 export interface LoginEvent {
@@ -46,7 +61,8 @@ export interface UserRoleListResponse {
 
 export interface UserCreatePayload {
   email: string
-  password: string
+  /** 비우면 초대(설정 링크). 넣으면 시스템관리자 비상용 — 다음 로그인 때 변경 강제 */
+  password?: string
   display_name: string
   role: string
 }
