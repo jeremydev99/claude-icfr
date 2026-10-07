@@ -83,7 +83,8 @@ def get_module_info(user: CurrentUser) -> dict:
 def list_deficiencies(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
     q = db.query(Deficiency).filter(Deficiency.is_deleted == False)  # noqa: E712
     total = q.count()
-    items = q.offset(skip).limit(limit).all()
+    # 순서 고정 — 정렬이 없으면 수정할 때마다 행 순서가 바뀐다(2026-10-07 브라우저 점검에서 발견)
+    items = q.order_by(Deficiency.fiscal_year.desc(), Deficiency.code).offset(skip).limit(limit).all()
     return {"items": [_read(db, i) for i in items], "total": total, "skip": skip, "limit": limit}
 
 
