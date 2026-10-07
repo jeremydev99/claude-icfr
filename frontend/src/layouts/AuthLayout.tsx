@@ -19,14 +19,17 @@ const LOGIN_PHOTO = illustrationUrl('login-photo')
 export default function AuthLayout() {
   return (
     <div className="grid min-h-screen bg-background lg:grid-cols-[1.25fr_1fr]">
-      <aside className="relative hidden overflow-hidden bg-[hsl(224_45%_9%)] text-white lg:flex lg:flex-col">
+      <aside className="relative hidden overflow-hidden bg-[hsl(224_45%_9%)] text-white [container-type:inline-size] lg:flex lg:flex-col">
         {LOGIN_PHOTO ? (
           <>
             <img src={LOGIN_PHOTO} alt="" aria-hidden draggable={false} fetchPriority="high"
-              className="absolute inset-0 h-full w-full select-none object-cover object-[center_top]" />
-            {/* 위쪽 회의 장면(전자칠판·인물)은 살리고, 아래 글자 자리를 남색으로 깊게 */}
+              style={{ top: 'min(0px, calc(50% - 50.4cqw))' }}
+              className="absolute inset-x-0 min-h-full w-full select-none object-cover brightness-110" />
+            {/* 설명하는 여성의 머리끝(사진 높이 40.6%)을 패널 세로 50%에 맞춘다 — 사진 높이 = 너비×1152/928 이라
+                머리끝 위치 = 0.504×너비(cqw). 넓은 화면에서 천장·하늘이 커지지 않게. 좁아서 위가 비면 0 에 붙인다 */}
             <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[hsl(224_45%_8%/0.7)] to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 h-[62%] bg-gradient-to-t from-[hsl(224_45%_8%/0.97)] via-[hsl(224_45%_8%/0.82)] to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 h-[58%] bg-gradient-to-t from-[hsl(224_45%_8%/0.95)] via-[hsl(224_45%_8%/0.55)] to-transparent" />
+            <div className="absolute inset-y-0 left-0 w-3/5 bg-gradient-to-r from-[hsl(224_45%_8%/0.45)] to-transparent" />
           </>
         ) : (
           <>
