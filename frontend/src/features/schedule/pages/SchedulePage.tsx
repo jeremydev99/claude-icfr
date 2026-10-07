@@ -13,7 +13,6 @@ import {
   KIND_LABEL,
   STANDARD_TEMPLATE,
   STATUS_LABEL,
-  TOTAL_COLUMNS,
   buildColumns,
   currentFiscalYear,
   formatOffsetRange,
@@ -22,16 +21,21 @@ import {
   phasesStartingAt,
   todayOffset,
   itemsToPhases,
-  type MonthColumn,
+  offsetsToDates,
+  planChanges,
   type SchedulePhase,
 } from '../schedule.pure'
-import { usePlan, useTemplates } from '../api/usePlan'
+import { errDetail, usePlan, usePlanAction, useTemplates } from '../api/usePlan'
+import PlanGantt, { type GanttBar } from '../components/PlanGantt'
+import { toast } from 'sonner'
+import { Pencil, Eye } from 'lucide-react'
 import { endMonthOf, fiscalRangeText } from '@/lib/fiscalYear'
 import PlanPanel from '../components/PlanPanel'
 
 /**
  * 일정관리 — 회계연도 일정안(표준·사용자 지정, 전결라인 결재) + 평가 회차 기간 오버레이(2026-10-06).
- * 일정안이 없으면 표준 일정(회사 표준 → 없으면 시스템 기본 8개)을 보여 준다.
+ * 화면(간트·이번 달 할 일)은 **마지막 승인본**만 보여 준다. 승인본이 없으면 표준 일정(회사 표준 → 시스템 기본 8개).
+ * [일정 편집]을 켜면 작성 중 판을 막대로 끌어 고친다 — 결재 승인 때 화면에 반영된다(13.9-100).
  */
 export default function SchedulePage() {
   const today = useMemo(() => new Date(), [])
@@ -49,14 +53,48 @@ export default function SchedulePage() {
   // 일정안이 있으면 그 항목(날짜)으로, 없으면 표준 일정(회사 표준 또는 시스템 기본)으로 그린다
   const plan = usePlan(fy)
   const tpl = useTemplates()
+  const approvedItems = plan.data?.approved_items ?? null
   const phases: SchedulePhase[] = useMemo(() => {
-    if (plan.data?.plan) return itemsToPhases(plan.data.items, fy, startMonth)
+    if (approvedItems) return itemsToPhases(approvedItems, fy, startMonth)
     if (tpl.data) {
       return tpl.data.items.map((t) => ({ id: t.code, name: t.name, category: (t.category === 'other' ? 'audit' : t.category) as SchedulePhase['category'],
         start: t.start_offset, end: t.end_offset, description: t.description ?? '', tasks: t.tasks }))
     }
     return STANDARD_TEMPLATE
-  }, [plan.data, tpl.data, fy, startMonth])
+  }, [approvedItems, tpl.data, fy, startMonth])
+
+  // 간트 — 보기(승인본/표준) 또는 편집(작성 중 판, 끌어서 고침)
+  const [editing, setEditing] = useState(false)
+  const action = usePlanAction(fy)
+  const p = plan.data?.plan ?? null
+  const canEdit = !!plan.data?.can.edit
+  const locked = p?.status === 'in_review'
+  const viewBars: GanttBar[] = useMemo(() => {
+    if (approvedItems) return approvedItems.map((it) => ({ id: it.id, label: it.title, start: it.start_date, end: it.end_date,
+      barClass: CATEGORY_STYLE[(it.category in CATEGORY_STYLE ? it.category : 'audit') as SchedulePhase['category']], title: it.description ?? undefined }))
+    return phases.map((ph) => ({ id: ph.id, label: ph.name, ...offsetsToDates(fy, startMonth, ph.start, ph.end),
+      barClass: CATEGORY_STYLE[ph.category], title: ph.description }))
+  }, [approvedItems, phases, fy, startMonth])
+  const editBars: GanttBar[] = useMemo(() => {
+    if (!plan.data?.plan) return []
+    const ch = planChanges(plan.data.items, approvedItems)
+    return plan.data.items.map((it) => ({ id: it.id, label: it.title, start: it.start_date, end: it.end_date,
+      barClass: CATEGORY_STYLE[(it.category in CATEGORY_STYLE ? it.category : 'audit') as SchedulePhase['category']],
+      title: it.description ?? undefined, editable: canEdit && !locked,
+      mark: ch.added.has(it.id) ? 'added' as const : ch.changed.has(it.id) ? 'changed' as const : undefined }))
+  }, [plan.data, approvedItems, canEdit, locked])
+  const pendingChanges = useMemo(() => {
+    if (!plan.data?.plan || !approvedItems) return null
+    const ch = planChanges(plan.data.items, approvedItems)
+    return ch.changed.size + ch.added.size + ch.removed.length
+  }, [plan.data, approvedItems])
+  const commit = (id: string, start: string, end: string) => {
+    action.mutate({ method: 'patch', path: `/items/${id}/dates`, body: { start_date: start, end_date: end } }, {
+      onSuccess: () => toast.success(`작성 중 판에 저장했습니다 (${start} ~ ${end}) — 결재 승인 후 화면에 반영됩니다`),
+      onError: (e) => toast.error(errDetail(e, '기간을 바꾸지 못했습니다')),
+    })
+  }
+  const cycleBars: GanttBar[] = fyCyclesBars(cycles, fy, startMonth)
   const nowPhases = phasesAt(nowOffset, phases)
   const nextPhases = phasesStartingAt(nowOffset == null ? null : nowOffset + 1, phases)
 
@@ -81,9 +119,16 @@ export default function SchedulePage() {
           <p className="mt-1 text-sm text-muted-foreground">
             연간 ICFR 평가 일정 — {endMonthOf(startMonth)}월 결산({fiscalRangeText(fy, startMonth)}). 결산 후 3개월(결산·보고)까지 표시합니다.
           </p>
-          <Badge variant="outline" className="mt-2">
-            {plan.data?.plan ? `${fy} 일정안 · ${plan.data.plan.status_label}` : '일정안 없음 — 표준 일정 표시 중'}
-          </Badge>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <Badge variant="outline">
+              {p?.approved_version ? `승인본 ${p.approved_version}판 표시 중` : '승인된 일정안 없음 — 표준 일정 표시 중'}
+            </Badge>
+            {p && (p.status !== 'approved' || p.version !== p.approved_version) && (
+              <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                작성 중 {p.version}판 · {p.status_label}{pendingChanges ? ` · 승인본 대비 변경 ${pendingChanges}건` : ''}
+              </Badge>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <Button variant="outline" size="icon" aria-label="이전 회계연도" onClick={() => setFy(fy - 1)}>
@@ -139,25 +184,43 @@ export default function SchedulePage() {
       </Card>
 
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">연간 일정</CardTitle>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-2">
+          <div>
+            <CardTitle className="text-base">연간 일정 {editing && <span className="text-sm font-normal text-amber-700 dark:text-amber-300">· 편집 중({p ? `${p.version}판` : '일정안 없음'})</span>}</CardTitle>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {editing
+                ? locked ? '결재 중에는 고칠 수 없습니다 — 반려되거나 승인된 뒤 고치세요.'
+                  : '막대 가운데를 끌어 옮기고, 양 끝을 끌어 늘이거나 줄입니다. 놓으면 작성 중 판에 저장되고, 결재 승인 때 화면에 반영됩니다.'
+                : p?.approved_version ? '승인된 일정입니다.' : '표준 일정입니다 — 일정안을 만들어 결재받으면 그 일정으로 바뀝니다.'}
+            </p>
+          </div>
+          {canEdit && (
+            <div className="hidden gap-1 md:flex">
+              <Button size="sm" variant={editing ? 'ghost' : 'outline'} onClick={() => setEditing(false)} aria-pressed={!editing}>
+                <Eye className="mr-1 h-3.5 w-3.5" />승인본 보기
+              </Button>
+              <Button size="sm" variant={editing ? 'default' : 'outline'} onClick={() => setEditing(true)} aria-pressed={editing}>
+                <Pencil className="mr-1 h-3.5 w-3.5" />일정 편집
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
-          {/* 데스크톱: 월 그리드 */}
+          {/* 데스크톱: 일 단위 간트(편집 모드면 끌어서 고침) */}
           <div className="hidden md:block">
-            <GanttGrid columns={columns} nowOffset={nowOffset}>
-              {phases.map((p) => (
-                <GanttRow key={p.id} label={p.name} title={p.description} start={p.start} end={p.end}
-                  barClass={CATEGORY_STYLE[p.category]} nowOffset={nowOffset} />
-              ))}
-              {fyCycles.length > 0 && (
-                <div className="col-span-full mt-2 border-t pt-2 text-xs font-medium text-muted-foreground">평가 회차 (실제 기간)</div>
-              )}
-              {fyCycles.map(({ c, span }) => (
-                <GanttRow key={c.id} label={c.name} title={`${c.period_start} ~ ${c.period_end}`} start={span.start} end={span.end}
-                  barClass={c.status === 'open' ? 'bg-primary/80' : 'bg-muted-foreground/50'} nowOffset={nowOffset} />
-              ))}
-            </GanttGrid>
+            {editing && !p ? (
+              <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                아직 {fy} 회계연도 일정안이 없습니다.
+                <Button size="sm" disabled={action.isPending}
+                  onClick={() => action.mutate({ method: 'post', path: '/init' }, { onError: (e) => toast.error(errDetail(e, '만들지 못했습니다')) })}>
+                  표준 일정으로 일정안 만들기
+                </Button>
+              </div>
+            ) : (
+              <PlanGantt fy={fy} startMonth={startMonth} columns={columns} nowOffset={nowOffset}
+                rows={editing ? editBars : viewBars} onCommit={editing ? commit : undefined}
+                section={{ title: '평가 회차 (실제 기간)', rows: cycleBars }} />
+            )}
           </div>
           {/* 모바일: 단계별 목록 */}
           <ul className="space-y-2 md:hidden">
@@ -226,43 +289,10 @@ export default function SchedulePage() {
   )
 }
 
-const GRID_STYLE = { gridTemplateColumns: `minmax(10rem, 14rem) repeat(${TOTAL_COLUMNS}, minmax(0, 1fr))` }
-
-function GanttGrid({ columns, nowOffset, children }: { columns: MonthColumn[]; nowOffset: number | null; children: React.ReactNode }) {
-  return (
-    <div className="grid gap-y-1 text-xs" style={GRID_STYLE}>
-      <div />
-      {columns.map((col) => (
-        <div
-          key={col.offset}
-          className={`py-1 text-center ${col.nextYear ? 'bg-muted/60' : ''} ${col.offset === nowOffset ? 'rounded-t bg-primary/15 font-semibold text-primary' : 'text-muted-foreground'}`}
-          title={`${col.year}년 ${col.month}월${col.nextYear ? ' (익년)' : ''}`}
-        >
-          {col.month === 1 || col.offset === 1 ? <div className="text-[10px]">{col.year}</div> : <div className="text-[10px]">&nbsp;</div>}
-          {col.label}
-        </div>
-      ))}
-      {children}
-    </div>
-  )
-}
-
-function GanttRow({ label, title, start, end, barClass, nowOffset }: {
-  label: string; title: string; start: number; end: number; barClass: string; nowOffset: number | null
-}) {
-  return (
-    <>
-      <div className="truncate pr-2 leading-6" title={label}>{label}</div>
-      <div className="relative grid" style={{ gridColumn: `2 / span ${TOTAL_COLUMNS}`, gridTemplateColumns: `repeat(${TOTAL_COLUMNS}, minmax(0, 1fr))` }}>
-        {nowOffset != null && (
-          <div className="pointer-events-none bg-primary/10" style={{ gridColumn: `${nowOffset} / span 1`, gridRow: 1 }} />
-        )}
-        <div
-          className={`my-1 h-4 rounded ${barClass}`}
-          style={{ gridColumn: `${start} / ${end + 1}`, gridRow: 1 }}
-          title={title}
-        />
-      </div>
-    </>
-  )
+/** 평가 회차(실제 기간) — 이 회계연도 그리드에 걸치는 것만 */
+function fyCyclesBars(cycles: CycleItem[], fy: number, startMonth: number): GanttBar[] {
+  return cycles
+    .filter((c) => periodToSpan(fy, startMonth, c.period_start, c.period_end) !== null)
+    .map((c) => ({ id: `cycle-${c.id}`, label: c.name, start: c.period_start, end: c.period_end,
+      barClass: c.status === 'open' ? 'bg-primary/80' : 'bg-muted-foreground/50', title: `${c.period_start} ~ ${c.period_end}` }))
 }

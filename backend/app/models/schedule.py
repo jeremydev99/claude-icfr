@@ -84,6 +84,10 @@ class SchedulePlan(AuditedBase):
     request_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     returned_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 마지막 승인본(2026-10-07, 13.9-100) — 화면(간트·이번 달 할 일)은 이것만 본다. 수정은 작성 중 판에만 쌓이고
+    # 최종 승인 때 이 사본을 바꾼다. 반려돼도 승인본은 그대로. 한 번도 승인되지 않았으면 None(화면은 표준 일정)
+    approved_items: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    approved_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class ScheduleItem(AuditedBase):

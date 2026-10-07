@@ -19,6 +19,8 @@ export interface UserProfile {
   /** MFA(ADR-0039) — 등록 여부·의무 여부 */
   mfa_enabled?: boolean
   mfa_required?: boolean
+  /** 관리자가 비상용으로 정한 비밀번호로 들어옴 — 본인이 바꾸기 전까지 다른 기능은 서버가 막는다(ADR-0041) */
+  must_change_password?: boolean
   /** 외부 사용자면 유형·소속·허용 모듈·기간. 내부 사용자는 null */
   external?: ExternalInfo | null
 }

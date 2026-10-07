@@ -14,7 +14,7 @@ apiClient.interceptors.request.use((config) => {
 })
 
 // tenant 확정 전(로그인/토큰갱신/최초 /me) 요청은 제외 — 헤더가 붙어도 무해하지만 명시적으로 뺀다.
-const TENANT_HEADER_EXCLUDED_PATHS = ['/auth/login', '/auth/refresh', '/auth/me', '/auth/mfa/', '/api/invite/']
+const TENANT_HEADER_EXCLUDED_PATHS = ['/auth/login', '/auth/refresh', '/auth/me', '/auth/mfa/', '/api/invite/', '/api/account-setup/']
 
 apiClient.interceptors.request.use((config) => {
   const url = config.url ?? ''
@@ -28,7 +28,7 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
-const NO_REFRESH_PATHS = ['/auth/login', '/auth/mfa/', '/api/invite/']
+const NO_REFRESH_PATHS = ['/auth/login', '/auth/mfa/', '/api/invite/', '/api/account-setup/']
 
 let isRefreshing = false
 let failedQueue: Array<{

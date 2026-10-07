@@ -41,8 +41,13 @@ export interface PlanResp {
     request_note: string | null
     approved_at: string | null
     returned_reason: string | null
+    /** 마지막 승인본의 판 — 없으면 한 번도 승인되지 않음 */
+    approved_version: number | null
   }
+  /** 작성 중인 판(수정 대상) */
   items: PlanItem[]
+  /** 마지막 승인본 — 일정관리 화면(간트·이번 달 할 일)은 이것만 본다. 없으면 표준 일정 */
+  approved_items: PlanItem[] | null
   can: { edit: boolean; submit: boolean; approve: boolean; return: boolean; why: Record<string, string> }
   policy_line: string[]
   start_month: number
@@ -77,7 +82,7 @@ export function usePlanAction(fy: number) {
   const tid = useActiveTenantId()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ method, path, body }: { method: 'post' | 'put' | 'delete'; path: string; body?: unknown }) =>
+    mutationFn: async ({ method, path, body }: { method: 'post' | 'put' | 'patch' | 'delete'; path: string; body?: unknown }) =>
       (await apiClient.request<PlanResp>({ method, url: `/api/schedule/plans/${fy}${path}`, data: body })).data,
     onSuccess: (d) => {
       qc.setQueryData(key(tid, 'plan', fy), d)

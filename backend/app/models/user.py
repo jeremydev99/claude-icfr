@@ -28,3 +28,7 @@ class User(IdentityBase):
     mfa_pending_enc: Mapped[str | None] = mapped_column(String(500), nullable=True)
     mfa_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     mfa_recovery: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # 직원 초대(2026-10-07, ADR-0041): 초대 대기 = 아직 본인이 비밀번호를 정하지 않음(설정 링크로만 시작).
+    # must_change_password = 시스템관리자가 비상용으로 비밀번호를 직접 정함 → 다음 로그인 때 본인이 바꿔야 다른 기능을 쓴다
+    invite_pending: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)

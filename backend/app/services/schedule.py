@@ -100,6 +100,20 @@ def items_of(db: Session, p: SchedulePlan) -> list[ScheduleItem]:
         ScheduleItem.start_date, ScheduleItem.sort_order).all()
 
 
+def item_dict(i: ScheduleItem) -> dict:
+    """항목 한 줄 — API 응답과 승인본 사본이 같은 모양을 쓴다(날짜는 ISO 문자열)."""
+    return {"id": str(i.id), "kind": i.kind, "template_code": i.template_code, "title": i.title,
+            "category": i.category, "start_date": i.start_date.isoformat(), "end_date": i.end_date.isoformat(),
+            "description": i.description, "tasks": i.tasks or []}
+
+
+def _mark_approved(db: Session, p: SchedulePlan) -> None:
+    """최종 승인 — 지금 항목을 승인본으로 찍어 둔다. 이때부터 화면에 반영된다."""
+    p.status, p.approved_at = PLAN_APPROVED, datetime.now(UTC)
+    p.approved_items = [item_dict(i) for i in items_of(db, p)]
+    p.approved_version = p.version
+
+
 def init_plan(db: Session, fy: int) -> SchedulePlan:
     """표준 일정으로 일정안 초안을 만든다."""
     if get_plan(db, fy) is not None:
@@ -120,7 +134,8 @@ def init_plan(db: Session, fy: int) -> SchedulePlan:
 
 
 def ensure_editable(db: Session, p: SchedulePlan) -> None:
-    """결재 중이면 막고, 승인된 일정안을 고치면 새 판(작성 중)으로 돌린다 — 변경도 결재를 받는다."""
+    """결재 중이면 막고, 승인된 일정안을 고치면 새 판(작성 중)으로 돌린다 — 변경도 결재를 받는다.
+    승인본(approved_items)은 그대로 두므로 화면은 다음 승인 전까지 바뀌지 않는다."""
     if p.status == PLAN_REVIEW:
         raise ScheduleError("결재 중인 일정안은 고칠 수 없습니다 — 반려되거나 승인된 뒤 고치세요")
     if p.status == PLAN_APPROVED:
@@ -179,7 +194,7 @@ def submit(db: Session, p: SchedulePlan, user_id: UUID, note: str | None) -> Non
     p.requested_by_id, p.requested_at, p.request_note = user_id, datetime.now(UTC), (note or "").strip() or None
     p.approval_line, p.current_step, p.approvals, p.returned_reason = line, 0, [], None
     if not line:   # 정책상 결재 없음 — 요청과 동시에 승인
-        p.status, p.approved_at = PLAN_APPROVED, datetime.now(UTC)
+        _mark_approved(db, p)
     else:
         p.status = PLAN_REVIEW
     glog.record(db, p.id, "schedule_submit", version=p.version, entity_type=ENTITY_SCHEDULE,
@@ -196,7 +211,7 @@ def approve(db: Session, p: SchedulePlan, user: User, note: str | None) -> None:
                                   "at": datetime.now(UTC).isoformat(), "note": (note or "").strip() or None}]
     p.current_step += 1
     if p.current_step >= len(p.approval_line):
-        p.status, p.approved_at = PLAN_APPROVED, datetime.now(UTC)
+        _mark_approved(db, p)
     glog.record(db, p.id, "schedule_approve", version=p.version, entity_type=ENTITY_SCHEDULE,
                 target=f"{p.fiscal_year} 일정안 · {STEP_LABELS.get(step, step)}", reason=(note or "").strip() or None)
 

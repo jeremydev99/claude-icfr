@@ -233,3 +233,79 @@ export function itemsToPhases(items: DatedItem[], fy: number, startMonth: number
 export const CATEGORY_LABEL: Record<string, string> = {
   planning: '계획', design: '설계평가', operation: '운영평가', remediation: '개선', reporting: '보고', audit: '외부감사', other: '기타',
 }
+
+// ── 간트 일 단위 위치(2026-10-07, 13.9-100) — 막대 끌기·양 끝 늘이기 ─────────────
+// 머리의 월 칸은 폭이 같으므로 x 는 "몇 번째 달 + 그 달 안의 몇 번째 날" 비율이다(달마다 날 수가 달라도 칸과 맞는다).
+const dim = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate()
+const iso = (y: number, m: number, d: number) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+
+/** 날짜(그날 시작) → 0..1 (그리드 왼쪽 끝 = 0, 15번째 달 끝 = 1). 범위 밖은 0·1 로 자른다 */
+export function dateToX(fy: number, startMonth: number, date: string): number {
+  const [y, m, d] = date.split('-').map((x) => parseInt(x, 10))
+  const off = calendarToOffset(fy, startMonth, y, m) - 1
+  const x = (off + (d - 1) / dim(y, m)) / TOTAL_COLUMNS
+  return Math.min(1, Math.max(0, x))
+}
+
+/** 날짜 끝(그날 마지막) → 0..1 — 막대 오른쪽 끝 */
+export function dateEndX(fy: number, startMonth: number, date: string): number {
+  const [y, m, d] = date.split('-').map((x) => parseInt(x, 10))
+  const off = calendarToOffset(fy, startMonth, y, m) - 1
+  return Math.min(1, Math.max(0, (off + d / dim(y, m)) / TOTAL_COLUMNS))
+}
+
+/** 0..1 → 그 위치의 날짜(일 단위로 맞춘다) */
+export function xToDate(fy: number, startMonth: number, x: number): string {
+  const c = Math.min(TOTAL_COLUMNS - 1e-9, Math.max(0, x * TOTAL_COLUMNS))
+  const off = Math.floor(c)
+  const { year, month } = offsetToCalendar(fy, startMonth, off + 1)
+  const n = dim(year, month)
+  return iso(year, month, Math.min(n, Math.floor((c - off) * n) + 1))
+}
+
+/** 날짜 + n일 */
+export function addDays(date: string, n: number): string {
+  const [y, m, d] = date.split('-').map((x) => parseInt(x, 10))
+  const t = new Date(Date.UTC(y, m - 1, d + n))
+  return iso(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate())
+}
+
+/** 두 날짜 사이 일수(b - a) */
+export function daysBetween(a: string, b: string): number {
+  const p = (s: string) => { const [y, m, d] = s.split('-').map((x) => parseInt(x, 10)); return Date.UTC(y, m - 1, d) }
+  return Math.round((p(b) - p(a)) / 86400000)
+}
+
+export type DragMode = 'move' | 'start' | 'end'
+
+/** 끌기 결과 — 옮기기는 기간 길이 유지, 양 끝은 반대쪽을 넘지 못한다 */
+export function dragDates(mode: DragMode, start: string, end: string, grab: string, now: string): { start: string; end: string } {
+  if (mode === 'move') {
+    const n = daysBetween(grab, now)
+    return { start: addDays(start, n), end: addDays(end, n) }
+  }
+  if (mode === 'start') return { start: daysBetween(now, end) < 0 ? end : now, end }
+  return { start, end: daysBetween(start, now) < 0 ? start : now }
+}
+
+/** 표준 일정(월 오프셋) → 날짜 기간 — 승인본·일정안이 없을 때 같은 막대로 그리기 위함 */
+export function offsetsToDates(fy: number, startMonth: number, s: number, e: number): { start: string; end: string } {
+  const a = offsetToCalendar(fy, startMonth, s)
+  const b = offsetToCalendar(fy, startMonth, e)
+  return { start: iso(a.year, a.month, 1), end: iso(b.year, b.month, dim(b.year, b.month)) }
+}
+
+/** 작성 중 판과 승인본 비교 — 항목 id 기준. 화면 표시(바뀜·추가)와 '승인 대기 변경 n건' 안내용 */
+export function planChanges(items: DatedItem[], approved: DatedItem[] | null): { changed: Set<string>; added: Set<string>; removed: DatedItem[] } {
+  const changed = new Set<string>()
+  const added = new Set<string>()
+  if (!approved) return { changed, added, removed: [] }
+  const byId = new Map(approved.map((a) => [a.id, a]))
+  for (const it of items) {
+    const a = byId.get(it.id)
+    if (!a) added.add(it.id)
+    else if (a.start_date !== it.start_date || a.end_date !== it.end_date || a.title !== it.title) changed.add(it.id)
+  }
+  const ids = new Set(items.map((i) => i.id))
+  return { changed, added, removed: approved.filter((a) => !ids.has(a.id)) }
+}

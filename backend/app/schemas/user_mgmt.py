@@ -16,6 +16,9 @@ class UserRead(BaseModel):
     # 보안 1단계 — 관리자 화면의 잠금 표시·해제용
     failed_login_count: int = 0
     locked_until: datetime | None = None
+    # 직원 초대(ADR-0041) — 초대 대기·비밀번호 변경 필요 표시
+    invite_pending: bool = False
+    must_change_password: bool = False
     model_config = ConfigDict(from_attributes=True)
 
 

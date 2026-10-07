@@ -94,6 +94,18 @@ class ItemIn(BaseModel):
         return self
 
 
+class DatesIn(BaseModel):
+    """간트에서 막대를 끌어 옮기거나 양 끝을 늘이고 줄일 때 — 기간만 바꾼다(제목·분류는 그대로)."""
+    start_date: date
+    end_date: date
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.end_date < self.start_date:
+            raise ValueError("종료일이 시작일보다 빠릅니다")
+        return self
+
+
 class Note(BaseModel):
     note: str | None = None
 
@@ -110,7 +122,7 @@ def _plan_out(db: Session, fy: int, user: User) -> dict:
     c = svc.can(db, p, user.id)
     can = {"edit": c.edit, "submit": c.submit, "approve": c.approve, "return": c.return_, "why": c.why}
     if p is None:
-        return {"fiscal_year": fy, "plan": None, "items": [], "can": can, "policy_line": svc.approval_line(db),
+        return {"fiscal_year": fy, "plan": None, "items": [], "approved_items": None, "can": can, "policy_line": svc.approval_line(db),
                 "start_month": svc.fiscal_start_month(db)}
     items = svc.items_of(db, p)
     return {
@@ -119,10 +131,10 @@ def _plan_out(db: Session, fy: int, user: User) -> dict:
                  "version": p.version, "approval_line": [{"step": s, "label": STEP_LABELS.get(s, s)} for s in p.approval_line],
                  "current_step": p.current_step, "approvals": p.approvals, "requested_by": _name(db, p.requested_by_id),
                  "requested_at": p.requested_at, "request_note": p.request_note, "approved_at": p.approved_at,
-                 "returned_reason": p.returned_reason},
-        "items": [{"id": i.id, "kind": i.kind, "template_code": i.template_code, "title": i.title, "category": i.category,
-                   "start_date": i.start_date, "end_date": i.end_date, "description": i.description, "tasks": i.tasks or []}
-                  for i in items],
+                 "returned_reason": p.returned_reason, "approved_version": p.approved_version},
+        # items = 작성 중인 판(수정 대상), approved_items = 마지막 승인본(화면 표시 대상, 없으면 None → 표준 일정)
+        "items": [svc.item_dict(i) for i in items],
+        "approved_items": p.approved_items,
         "can": can, "policy_line": svc.approval_line(db), "start_month": svc.fiscal_start_month(db),
     }
 
@@ -158,6 +170,23 @@ def _apply_item(db: Session, it: ScheduleItem, body: ItemIn) -> None:
     else:
         it.template_code, it.title = None, (body.title or "").strip()
         it.category = it.category if it.category else "other"
+
+
+@router.patch("/plans/{fiscal_year}/items/{iid}/dates")
+def move_item(fiscal_year: int, iid: UUID, body: DatesIn, user: User = Depends(require_icfr_staff),
+              db: Session = Depends(get_db)) -> dict:
+    """간트 끌기(13.9-100) — 작성 중 판의 기간만 바꾼다. 승인된 판이면 새 판이 되고 화면(승인본)은 다음 승인 때 바뀐다."""
+    p = _plan_or_404(db, fiscal_year)
+    it = _item_or_404(db, p, iid)
+
+    def go():
+        svc.ensure_editable(db, p)
+        before = f"{it.start_date} ~ {it.end_date}"
+        it.start_date, it.end_date = body.start_date, body.end_date
+        glog.record(db, p.id, "schedule_item_update", version=p.version, entity_type=ENTITY_SCHEDULE, target=it.title,
+                    before={"기간": before}, after={"기간": f"{it.start_date} ~ {it.end_date}"})
+    _run(db, go)
+    return _plan_out(db, fiscal_year, user)
 
 
 @router.post("/plans/{fiscal_year}/items")

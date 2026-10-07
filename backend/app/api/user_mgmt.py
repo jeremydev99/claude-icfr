@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.deps import CurrentUser, get_db, require_admin
@@ -21,6 +22,7 @@ from app.schemas.user_mgmt import (
     UserRoleRead,
     UserRoleUpdate,
 )
+from app.services import account_setup as setup_svc
 
 router = APIRouter(prefix="/api/users", tags=["user_mgmt"])
 
@@ -72,24 +74,68 @@ def get_user(user_id: UUID, user: CurrentUser = None, db: Session = Depends(get_
 # ── Users (CRUD, 관리자 전용) ──────────────────────────────
 # 감사 대상 시스템이므로 사용자 생성/수정/삭제·비번 리셋은 관리자만 가능.
 
-@router.post("/", status_code=status.HTTP_201_CREATED, response_model=UserRead)
-def create_user(body: UserCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> User:
+class UserCreated(UserRead):
+    """생성 결과 — 초대(기본)면 설정 링크 원문을 **이 응답에서 한 번만** 준다(저장은 해시만, ADR-0041)."""
+    setup_url: str | None = None
+    setup_expires_at: datetime | None = None
+
+
+class SetupLinkOut(BaseModel):
+    setup_url: str
+    expires_at: datetime
+    purpose: str
+
+
+def _origin(request: Request) -> str:
+    return request.headers.get("origin") or f"{request.url.scheme}://{request.headers.get('host', '')}"
+
+
+@router.post("/", status_code=status.HTTP_201_CREATED, response_model=UserCreated)
+def create_user(body: UserCreate, request: Request, admin: User = Depends(require_admin),
+                db: Session = Depends(get_db)) -> UserCreated:
+    """직원 계정 생성(ADR-0041). 기본은 비밀번호 없이 초대 대기 + 72시간 설정 링크 — 관리자는 비밀번호를 모른다.
+    비밀번호를 넣으면 비상용: 다음 로그인 때 본인이 바꿔야 다른 기능을 쓸 수 있다."""
     existing = db.query(User).filter(User.email == body.email, User.is_deleted == False).first()  # noqa: E712
     if existing:
         raise HTTPException(status_code=409, detail="이미 사용 중인 이메일입니다")
+    invite = not body.password
     obj = User(
         email=body.email,
-        hashed_password=hash_password(body.password),
+        hashed_password=setup_svc.unusable_password() if invite else hash_password(body.password),
         display_name=body.display_name,  # 실명
         role=body.role,
+        invite_pending=invite,
+        must_change_password=not invite,
     )
     db.add(obj)
     db.flush()  # obj.id 확보
     # 신규 사용자에게 현재 활성 회사(tenant) 접근 권한 부여 — 없으면 로그인 불가
     db.add(UserTenantAccess(user_id=obj.id, tenant_id=get_active_tenant(), role=body.role))
+    raw = row = None
+    if invite:
+        raw, row = setup_svc.issue(db, obj, admin.id)
     db.commit()
     db.refresh(obj)
-    return obj
+    out = UserCreated.model_validate(obj)
+    if raw:
+        out.setup_url, out.setup_expires_at = setup_svc.setup_url(_origin(request), raw), row.expires_at
+    return out
+
+
+@router.post("/{user_id}/setup-link", response_model=SetupLinkOut)
+def issue_setup_link(user_id: UUID, request: Request, admin: User = Depends(require_admin),
+                     db: Session = Depends(get_db)) -> SetupLinkOut:
+    """설정 링크 (재)발급 — 초대 대기면 초대 링크, 아니면 비밀번호 재설정 링크. 이전 링크는 취소.
+    재설정 링크는 쓰기 전까지 기존 비밀번호가 그대로 유효하다(마스터 결정 2026-10-07)."""
+    obj = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()  # noqa: E712
+    if not obj:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not obj.is_active:
+        raise HTTPException(status_code=409, detail="비활성 계정에는 링크를 발급할 수 없습니다 — 먼저 활성화하세요")
+    raw, row = setup_svc.issue(db, obj, admin.id)
+    db.commit()
+    return SetupLinkOut(setup_url=setup_svc.setup_url(_origin(request), raw), expires_at=row.expires_at,
+                        purpose=row.purpose)
 
 
 @router.patch("/{user_id}", response_model=UserRead)
@@ -124,11 +170,14 @@ def delete_user(user_id: UUID, admin: User = Depends(require_admin), db: Session
 
 @router.post("/{user_id}/reset-password", status_code=status.HTTP_200_OK)
 def reset_password(user_id: UUID, body: PasswordResetRequest, admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
-    """관리자 비밀번호 리셋 — old 검증 없이 재설정 (관리자 전용)."""
+    """비상용 비밀번호 직접 지정 — 시스템관리자 전용(ADR-0041). 기본은 설정 링크(`/setup-link`).
+    관리자가 아는 비밀번호이므로 다음 로그인 때 본인이 바꿔야 다른 기능을 쓸 수 있다."""
     obj = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="User not found")
     obj.hashed_password = hash_password(body.new_password)
+    obj.must_change_password = True
+    obj.invite_pending = False
     # 재설정은 잠금도 푼다. 이전에 발급된 그 사용자의 토큰은 무효(보안 1단계)
     obj.password_changed_at = datetime.now(UTC)
     obj.failed_login_count = 0

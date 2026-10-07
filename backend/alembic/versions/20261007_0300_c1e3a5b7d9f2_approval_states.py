@@ -1,8 +1,8 @@
 """검토·승인 거버넌스 2-1 — 공통 결재 상태 `approval_states` (ADR-0038 §3)
 
 Revision ID: c1e3a5b7d9f2
-Revises: b8d0f2a4c6e9
-Create Date: 2026-10-07 01:00:00.000000+00:00
+Revises: d1f3b5c7e9a2
+Create Date: 2026-10-07 03:00:00.000000+00:00
 
 **추가만 한다 — 기존 데이터를 바꾸지 않는다.** 새 테이블 1개. 스코핑은 자기 칸(`scopings.review_*`)을 그대로 쓴다.
 재무제표(2-2)부터 이 표를 쓴다. 행이 없는 확정 재무제표 = 2단계 이전 방식 확정(그대로 인정, Q3).
@@ -14,7 +14,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 revision: str = 'c1e3a5b7d9f2'
-down_revision: Union[str, None] = 'b8d0f2a4c6e9'
+down_revision: Union[str, None] = 'd1f3b5c7e9a2'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

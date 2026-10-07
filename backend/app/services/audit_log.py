@@ -11,6 +11,7 @@ MODULES: list[tuple[str, str]] = [
     ("/api/control-links", "통제↔계정 연결"),
     ("/api/auth", "인증"),
     ("/api/users", "사용자·권한"),
+    ("/api/account-setup", "사용자·권한"),
     ("/api/external", "외부 사용자"),
     ("/api/invite", "외부 사용자"),
     ("/api/org", "조직·역할·정책"),
@@ -90,7 +91,8 @@ def user_from_auth(header: str | None) -> UUID | None:
 def needs_response(method: str, route: str) -> bool:
     """등록(대상 ID 가 응답에만 있음)·일괄 처리(건수) — 미들웨어가 응답 본문을 읽어 넘겨야 하는 경로."""
     r = audit_routes.lookup(method, route)
-    return method == "POST" and r is not None and r[3] is None and not route.startswith(("/api/auth", "/api/invite"))
+    return method == "POST" and r is not None and r[3] is None and not route.startswith(
+        ("/api/auth", "/api/invite", "/api/account-setup"))
 
 
 def describe(db, method: str, route: str, path: str, params: dict | None,
@@ -145,6 +147,10 @@ def write(db, *, user_id: UUID | None, tenant_header: str | None, method: str, r
     finally:
         if tok is not None:
             reset_active_tenant(tok)
+    # 일회용 링크 토큰(초대·계정 설정)은 경로에 원문이 있다 — 로그를 본 사람이 쓰지 못하게 가린다(ADR-0041)
+    secret = (params or {}).get("token")
+    if secret:
+        path = path.replace(str(secret), "***")
     db.add(AuditLog(tenant_id=tenant, user_id=user_id, user_email=email, user_name=name, method=method,
                     route=route[:300], path=path[:500], module=module, action=action[:40],
                     target_id=target_id, target_label=target_label, status_code=status_code, success=status_code < 400,

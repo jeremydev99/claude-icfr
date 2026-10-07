@@ -102,6 +102,16 @@ export default function UserTable({
                   >
                     {user.is_active ? '활성' : '비활성'}
                   </Badge>
+                  {user.invite_pending && (
+                    <Badge variant="outline" className="ml-1 border-amber-200 bg-amber-50 text-amber-700" title="아직 본인이 비밀번호를 정하지 않았습니다 — 링크 재발급은 열쇠 버튼">
+                      초대 대기
+                    </Badge>
+                  )}
+                  {user.must_change_password && (
+                    <Badge variant="outline" className="ml-1 border-amber-200 bg-amber-50 text-amber-700" title="관리자가 정한 비밀번호 — 다음 로그인 때 본인이 바꿔야 합니다">
+                      비밀번호 변경 필요
+                    </Badge>
+                  )}
                   {isLocked(user.locked_until) && (
                     <Badge variant="outline" className="ml-1 bg-red-50 text-red-700 border-red-200" title={`해제 예정 ${new Date(user.locked_until!).toLocaleString('ko-KR')}`}>
                       잠김
@@ -137,7 +147,7 @@ export default function UserTable({
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7"
-                      title="비밀번호 재설정"
+                      title={user.invite_pending ? '계정 시작 링크 재발급' : '비밀번호 재설정 링크'}
                       onClick={() => onResetPasswordClick(user)}
                     >
                       <KeyRound className="h-3.5 w-3.5" />

@@ -44,9 +44,29 @@ def test_plan_items_and_two_step_approval(client: TestClient) -> None:
     assert client.post(f"{base}/approve", headers=t.h["lead"], json={}).json()["plan"]["current_step"] == 1
     d = client.post(f"{base}/approve", headers=t.h["master"], json={"note": "승인"}).json()
     assert d["plan"]["status"] == "approved" and len(d["plan"]["approvals"]) == 2
-    # 승인된 일정안을 고치면 새 판(작성 중)
+    assert d["plan"]["approved_version"] == 1 and len(d["approved_items"]) == 9
+    # 승인된 일정안을 고치면 새 판(작성 중) — 승인본은 그대로(화면은 다음 승인 때 바뀐다)
     d = client.delete(f"{base}/items/{first['id']}", headers=t.h["staff"]).json()
     assert d["plan"]["status"] == "draft" and d["plan"]["version"] == 2
+    assert len(d["items"]) == 8 and len(d["approved_items"]) == 9 and d["plan"]["approved_version"] == 1
+    # 반려돼도 승인본 유지, 다시 승인되면 그때 반영
+    client.post(f"{base}/submit", headers=t.h["staff"], json={})
+    d = client.post(f"{base}/return", headers=t.h["lead"], json={"note": "삭제 사유 보완"}).json()
+    assert d["plan"]["status"] == "draft" and len(d["approved_items"]) == 9
+    client.post(f"{base}/submit", headers=t.h["staff"], json={})
+    client.post(f"{base}/approve", headers=t.h["lead"], json={})
+    d = client.post(f"{base}/approve", headers=t.h["master"], json={}).json()
+    assert d["plan"]["approved_version"] == 2 and len(d["approved_items"]) == 8
+    # 간트 끌기 — 기간만 바꾸고 새 판, 승인본은 그대로
+    it = d["items"][0]
+    r = client.patch(f"{base}/items/{it['id']}/dates", headers=t.h["staff"],
+                     json={"start_date": "2026-03-02", "end_date": "2026-03-20"})
+    d = r.json()
+    moved = next(i for i in d["items"] if i["id"] == it["id"])
+    assert r.status_code == 200 and moved["start_date"] == "2026-03-02" and moved["title"] == it["title"]
+    assert d["plan"]["version"] == 3 and d["approved_items"][0]["start_date"] == it["start_date"]
+    assert client.patch(f"{base}/items/{it['id']}/dates", headers=t.h["staff"],
+                        json={"start_date": "2026-03-20", "end_date": "2026-03-02"}).status_code == 422
 
 
 def test_requester_cannot_approve_and_policy_line(client: TestClient) -> None:
