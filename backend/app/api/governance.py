@@ -21,10 +21,12 @@ from app.models.governance import (
     ENTITY_ASSESSMENT_CYCLE,
     ENTITY_DEFICIENCY,
     ENTITY_FS_STATEMENT,
+    ENTITY_RCM_YEAR,
     ApprovalState,
     GovernanceFile,
 )
 from app.models.proposal import P_PENDING_REVIEW, P_REVIEWED, Proposal
+from app.models.rcm_governance import RcmFiscalYear
 from app.models.remediation import Deficiency
 from app.models.scoping import STATUS_CONFIRMED, STATUS_REVIEW, Scoping
 from app.services import approval, cycle_approval
@@ -90,6 +92,23 @@ def inbox(user: CurrentUser, db: Session = Depends(get_db)) -> list[InboxItem]:
             if flag:
                 out.append(InboxItem(entity_type=st.entity_type, entity_id=st.entity_id, title=title, action=action,
                                      label=label, path=path))
+    # 회계연도 RCM(ADR-0038 2-5)
+    for st in db.query(ApprovalState).filter(ApprovalState.entity_type == ENTITY_RCM_YEAR,
+                                             ApprovalState.is_deleted == False,  # noqa: E712
+                                             ApprovalState.status.in_([AS_REVIEW, AS_CONFIRMED])).all():
+        y = db.get(RcmFiscalYear, st.entity_id)
+        if y is None or y.is_deleted:
+            continue
+        c = approval.can(db, st, user.id)
+        for flag, action, label in [
+            (c.review, "review", "책임관리자 검토"), (c.approve, "approve", "승인(확정)"),
+            (c.external_approve, "external_approve", "대표이사·이사회 승인 증빙 등록"),
+            (c.reopen_decide, "reopen_decide", "재오픈 승인 여부 결정"),
+            (c.reopen_external, "reopen_external", "재오픈 외부 승인 증빙 등록"),
+        ]:
+            if flag:
+                out.append(InboxItem(entity_type=ENTITY_RCM_YEAR, entity_id=y.id, title=f"{y.fiscal_year} 회계연도 RCM",
+                                     action=action, label=label, path="/rcm?tab=year"))
     # 평가 회차 최종승인(ADR-0038 2-4) — 마감된 회차
     for cy in db.query(AssessmentCycle).filter(AssessmentCycle.status == CYCLE_CLOSED,
                                                AssessmentCycle.is_deleted == False).all():  # noqa: E712

@@ -108,6 +108,7 @@ class GovernanceFile(AuditedBase):
 ENTITY_FS_STATEMENT = "fs_statement"
 ENTITY_DEFICIENCY = "deficiency"
 ENTITY_ASSESSMENT_CYCLE = "assessment_cycle"
+ENTITY_RCM_YEAR = "rcm_fiscal_year"
 EV_CYCLE_CLOSE = "cycle_close"   # 평가 회차 마감(ADR-0038 2-4)
 
 # 결재 상태(공통) — 스코핑의 STATUS_* 와 같은 값이라 `approval.can` 이 두 문서를 같은 규칙으로 판정한다

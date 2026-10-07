@@ -208,5 +208,8 @@ def decide_batch(bid: UUID, body: DecideBody, user: User = Depends(require_write
     if b is None:
         raise HTTPException(status_code=404, detail="묶음을 찾을 수 없습니다")
     decisions = {d.id: (d.approve, d.note) for d in body.decisions}
+    if any(a for a, _ in decisions.values()):
+        from app.api.rcm import require_rcm_editable
+        require_rcm_editable(user, db)   # 승인 = 라이브 RCM 반영 — 회계연도 RCM 이 확정·검토 중이면 409(ADR-0038 2-5)
     return _run(db, lambda: svc.decide_batch(db, b, user.id, decisions, body.note, _apply_control_update))
 

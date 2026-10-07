@@ -52,6 +52,7 @@ from app.models.rcm_baseline import (  # noqa: F401
     RiskInstance,
     SubProcessInstance,
 )
+from app.models.rcm_governance import RcmFiscalYear, RcmSnapshot  # noqa: F401
 from app.models.remediation import (  # noqa: F401
     Deficiency,
     DesignAssessment,

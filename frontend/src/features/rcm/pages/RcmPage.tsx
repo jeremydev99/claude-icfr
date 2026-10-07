@@ -19,6 +19,7 @@ import HelpButton from '@/features/help/HelpButton'
 import RoleMatrix from '@/features/admin/roleMatrix/RoleMatrix'
 import ChangeInbox from '../changes/ChangeInbox'
 import BulkChangeBar from '../changes/BulkChangeBar'
+import RcmYearView, { RcmLockBanner } from '../year/RcmYearView'
 
 function extractErrorMessage(err: unknown): string {
   if (isAxiosError(err)) {
@@ -37,13 +38,14 @@ const DEFAULT_PARAMS: ControlSearchParams = {
   sort_order: 'asc',
 }
 
-type RcmTab = 'controls' | 'hierarchy' | 'roles' | 'changes'
+type RcmTab = 'controls' | 'hierarchy' | 'roles' | 'changes' | 'year'
 
 export default function RcmPage() {
-  const [rcmTab, setRcmTab] = useState<RcmTab>('controls')
+  const [searchParams] = useSearchParams()
+  // 결재 대기함에서 오면 `?tab=year` — 회계연도 확정 탭으로 연다(ADR-0038 2-5)
+  const [rcmTab, setRcmTab] = useState<RcmTab>(() => (searchParams.get('tab') === 'year' ? 'year' : 'controls'))
   // 일괄 변경 선택 — 페이지를 넘겨도 유지된다(2026-10-06)
   const [bulkSel, setBulkSel] = useState<Set<string>>(new Set())
-  const [searchParams] = useSearchParams()
   // 초기값 계산은 최초 렌더에서만 — 이후 URL 이 바뀌어도 화면 상태를 덮지 않는다(단방향).
   const [params, setParams] = useState<ControlSearchParams>(() =>
     paramsFromUrl(searchParams, DEFAULT_PARAMS),
@@ -129,10 +131,15 @@ export default function RcmPage() {
         <Button variant={rcmTab === 'hierarchy' ? 'default' : 'ghost'} size="sm" onClick={() => setRcmTab('hierarchy')}>
           계층 관리
         </Button>
+        <Button variant={rcmTab === 'year' ? 'default' : 'ghost'} size="sm" onClick={() => setRcmTab('year')}>
+          회계연도 확정
+        </Button>
         <HelpButton k={rcmTab === 'controls' ? 'screen.rcm.controls' : 'screen.rcm.hierarchy'} className="mx-1" />
         <Button asChild variant="ghost" size="sm"><Link to="/rcm/links">통제 ↔ 계정 연결 →</Link></Button>
       </div>
 
+      <RcmLockBanner />
+      {rcmTab === 'year' && <RcmYearView />}
       {rcmTab === 'roles' && <RoleMatrix />}
       {rcmTab === 'changes' && <ChangeInbox />}
 

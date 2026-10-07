@@ -118,6 +118,18 @@ UNSET_FILTER = "__none__"
 router = APIRouter(prefix="/api/rcm", tags=["rcm"])
 
 
+def require_rcm_editable(user: CurrentUser, db: Session = Depends(get_db)) -> None:
+    """라이브 RCM 잠금(ADR-0038 2-5) — 가장 최근 회계연도 RCM 이 검토 중·확정이면 RCM 쓰기는 409.
+    바꾸려면 재오픈 요청 → 승인. 모든 쓰기 경로에 붙는다(`tests/test_rcm_approval.py` 가 빠진 경로를 잡는다).
+
+    **`user` 를 먼저 받는 이유**: 활성 회사(tenant)는 로그인 사용자 의존성이 정한다. 그 전에 조회하면 회사 필터가
+    걸리지 않아 다른 회사의 확정 RCM 으로 잠긴다(2026-10-07 테스트에서 발견)."""
+    from app.services.rcm_approval import lock_reason
+    why = lock_reason(db)
+    if why:
+        raise HTTPException(status_code=409, detail=why)
+
+
 # ── 모듈 정보 ─────────────────────────────────────────────
 
 @router.get("/info")
@@ -296,7 +308,7 @@ def list_processes(skip: int = 0, limit: int = 100, user: CurrentUser = None, db
     return {"items": [ProcessRead(**r) for r in page], "total": total, "skip": skip, "limit": limit}
 
 
-@router.post("/processes", status_code=status.HTTP_201_CREATED, response_model=ProcessRead)
+@router.post("/processes", status_code=status.HTTP_201_CREATED, response_model=ProcessRead, dependencies=[Depends(require_rcm_editable)])
 def create_process(body: ProcessCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """add instance 생성 (2-A-4-3, ADR-0029). tenant_id 는 before_flush 자동 stamp."""
     _assert_code_available(db, BaselineProcess, ProcessInstance, body.code, "프로세스")
@@ -312,7 +324,7 @@ def get_process(process_id: UUID, user: CurrentUser = None, db: Session = Depend
     return _resolved_process_or_404(db, process_id)
 
 
-@router.patch("/processes/{process_id}", response_model=ProcessRead)
+@router.patch("/processes/{process_id}", response_model=ProcessRead, dependencies=[Depends(require_rcm_editable)])
 def update_process(process_id: UUID, body: ProcessUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """수정 — baseline 유래면 override instance, add 면 instance 직접 (2-A-4-3, ADR-0029).
 
@@ -325,7 +337,7 @@ def update_process(process_id: UUID, body: ProcessUpdate, user: User = Depends(r
     return _resolved_process_or_404(db, process_id)
 
 
-@router.delete("/processes/{process_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/processes/{process_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_rcm_editable)])
 def delete_process(process_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     """삭제 — baseline 유래는 exclude instance, add 는 soft delete (2-A-4-3, ADR-0029).
 
@@ -351,7 +363,7 @@ def list_sub_processes(process_id: UUID | None = None, skip: int = 0, limit: int
     return {"items": [SubProcessRead(**r) for r in page], "total": total, "skip": skip, "limit": limit}
 
 
-@router.post("/sub-processes", status_code=status.HTTP_201_CREATED, response_model=SubProcessRead)
+@router.post("/sub-processes", status_code=status.HTTP_201_CREATED, response_model=SubProcessRead, dependencies=[Depends(require_rcm_editable)])
 def create_sub_process(body: SubProcessCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """add instance 생성 (2-A-4-3, ADR-0029). 상위는 이중 FK 규칙으로 baseline/instance 매핑."""
     _assert_code_available(db, BaselineSubProcess, SubProcessInstance, body.code, "하위프로세스")
@@ -370,7 +382,7 @@ def get_sub_process(sp_id: UUID, user: CurrentUser = None, db: Session = Depends
     return _resolved_sub_process_or_404(db, sp_id)
 
 
-@router.patch("/sub-processes/{sp_id}", response_model=SubProcessRead)
+@router.patch("/sub-processes/{sp_id}", response_model=SubProcessRead, dependencies=[Depends(require_rcm_editable)])
 def update_sub_process(sp_id: UUID, body: SubProcessUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """수정 — baseline 유래면 override instance, add 면 instance 직접 (2-A-4-3, ADR-0029)."""
     if not _apply_layer_update(db, BaselineSubProcess, SubProcessInstance, "baseline_sub_process_id",
@@ -380,7 +392,7 @@ def update_sub_process(sp_id: UUID, body: SubProcessUpdate, user: User = Depends
     return _resolved_sub_process_or_404(db, sp_id)
 
 
-@router.delete("/sub-processes/{sp_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/sub-processes/{sp_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_rcm_editable)])
 def delete_sub_process(sp_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     """삭제 — baseline 유래는 exclude instance, add 는 soft delete (2-A-4-3, ADR-0029)."""
     if not _apply_layer_delete(db, BaselineSubProcess, SubProcessInstance, "baseline_sub_process_id",
@@ -404,7 +416,7 @@ def list_risks(sub_process_id: UUID | None = None, skip: int = 0, limit: int = 1
     return {"items": [RiskRead(**r) for r in page], "total": total, "skip": skip, "limit": limit}
 
 
-@router.post("/risks", status_code=status.HTTP_201_CREATED, response_model=RiskRead)
+@router.post("/risks", status_code=status.HTTP_201_CREATED, response_model=RiskRead, dependencies=[Depends(require_rcm_editable)])
 def create_risk(body: RiskCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """add instance 생성 (2-A-4-3, ADR-0029). 상위는 이중 FK 규칙으로 baseline/instance 매핑."""
     _assert_code_available(db, BaselineRisk, RiskInstance, body.code, "위험")
@@ -423,7 +435,7 @@ def get_risk(risk_id: UUID, user: CurrentUser = None, db: Session = Depends(get_
     return _resolved_risk_or_404(db, risk_id)
 
 
-@router.patch("/risks/{risk_id}", response_model=RiskRead)
+@router.patch("/risks/{risk_id}", response_model=RiskRead, dependencies=[Depends(require_rcm_editable)])
 def update_risk(risk_id: UUID, body: RiskUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """수정 — baseline 유래면 override instance, add 면 instance 직접 (2-A-4-3, ADR-0029)."""
     if not _apply_layer_update(db, BaselineRisk, RiskInstance, "baseline_risk_id",
@@ -433,7 +445,7 @@ def update_risk(risk_id: UUID, body: RiskUpdate, user: User = Depends(require_wr
     return _resolved_risk_or_404(db, risk_id)
 
 
-@router.delete("/risks/{risk_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/risks/{risk_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_rcm_editable)])
 def delete_risk(risk_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     """삭제 — baseline 유래는 exclude instance, add 는 soft delete (2-A-4-3, ADR-0029)."""
     if not _apply_layer_delete(db, BaselineRisk, RiskInstance, "baseline_risk_id",
@@ -461,7 +473,7 @@ def list_risk_categories(skip: int = 0, limit: int = 100, user: CurrentUser = No
     return {"items": [RiskCategoryRead.model_validate(i) for i in items], "total": total, "skip": skip, "limit": limit}
 
 
-@router.post("/risk-categories", status_code=status.HTTP_201_CREATED, response_model=RiskCategoryRead)
+@router.post("/risk-categories", status_code=status.HTTP_201_CREATED, response_model=RiskCategoryRead, dependencies=[Depends(require_rcm_editable)])
 def create_risk_category(body: RiskCategoryCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> RiskCategory:
     obj = RiskCategory(**body.model_dump())
     db.add(obj)
@@ -482,7 +494,7 @@ def get_risk_category(rc_id: UUID, user: CurrentUser = None, db: Session = Depen
     return obj
 
 
-@router.patch("/risk-categories/{rc_id}", response_model=RiskCategoryRead)
+@router.patch("/risk-categories/{rc_id}", response_model=RiskCategoryRead, dependencies=[Depends(require_rcm_editable)])
 def update_risk_category(rc_id: UUID, body: RiskCategoryUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> RiskCategory:
     obj = db.query(RiskCategory).filter(RiskCategory.id == rc_id, RiskCategory.is_deleted == False).first()  # noqa: E712
     if not obj:
@@ -494,7 +506,7 @@ def update_risk_category(rc_id: UUID, body: RiskCategoryUpdate, user: User = Dep
     return obj
 
 
-@router.delete("/risk-categories/{rc_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/risk-categories/{rc_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_rcm_editable)])
 def delete_risk_category(rc_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     obj = db.query(RiskCategory).filter(RiskCategory.id == rc_id, RiskCategory.is_deleted == False).first()  # noqa: E712
     if not obj:
@@ -761,7 +773,7 @@ def search_controls(
     }
 
 
-@router.post("/controls/bulk-delete")
+@router.post("/controls/bulk-delete", dependencies=[Depends(require_rcm_editable)])
 def bulk_delete_controls(body: BulkDeleteRequest, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """다건 삭제 — 단건 DELETE 와 동일 분기를 id 마다 적용 (ADR-0027, 2-A-4-2).
 
@@ -787,7 +799,7 @@ def require_direct_control_edit(user: User = Depends(require_write), db: Session
     return user
 
 
-@router.post("/controls/bulk-update")
+@router.post("/controls/bulk-update", dependencies=[Depends(require_rcm_editable)])
 def bulk_update_controls(body: BulkUpdateRequest, user: User = Depends(require_direct_control_edit),
                          db: Session = Depends(get_db)) -> dict:
     """다건 수정 — 단건 PATCH 와 동일 분기를 id 마다 적용 (ADR-0027, 2-A-4-2).
@@ -926,7 +938,7 @@ def _apply_control_delete(db: Session, control_id: UUID) -> bool:
     return True
 
 
-@router.post("/controls", status_code=status.HTTP_201_CREATED, response_model=ControlRead)
+@router.post("/controls", status_code=status.HTTP_201_CREATED, response_model=ControlRead, dependencies=[Depends(require_rcm_editable)])
 def create_control(body: ControlCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
     """add instance 생성 (ADR-0027, 2-A-4-1). 회사 고유 통제 = ControlInstance(action=ACTION_ADD).
 
@@ -965,7 +977,7 @@ def get_control(control_id: UUID, user: CurrentUser = None, db: Session = Depend
     raise HTTPException(status_code=404, detail="Control not found")
 
 
-@router.patch("/controls/{control_id}", response_model=ControlRead)
+@router.patch("/controls/{control_id}", response_model=ControlRead, dependencies=[Depends(require_rcm_editable)])
 def update_control(control_id: UUID, body: ControlUpdate, user: User = Depends(require_direct_control_edit),
                    db: Session = Depends(get_db)) -> dict:
     """단건 수정(바로 반영) — 분기는 `_apply_control_update` 공통 (ADR-0027, 2-A-4-1).
@@ -978,7 +990,7 @@ def update_control(control_id: UUID, body: ControlUpdate, user: User = Depends(r
     return _resolved_or_404(db, control_id)
 
 
-@router.delete("/controls/{control_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/controls/{control_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_rcm_editable)])
 def delete_control(control_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     """단건 삭제 — 분기는 `_apply_control_delete` 공통 (ADR-0027, 2-A-4-1, 2-B-3.5 삭제 규약)."""
     if not _apply_control_delete(db, control_id):
@@ -1018,7 +1030,7 @@ def list_control_assertions(skip: int = 0, limit: int = 100, user: CurrentUser =
     return {"items": [ControlAssertionRead(**r) for r in page], "total": total, "skip": skip, "limit": limit}
 
 
-@router.post("/control-assertions", status_code=status.HTTP_201_CREATED, response_model=ControlAssertionRead)
+@router.post("/control-assertions", status_code=status.HTTP_201_CREATED, response_model=ControlAssertionRead, dependencies=[Depends(require_rcm_editable)])
 def create_control_assertion(body: ControlAssertionCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> ControlAssertionRead:
     """연결 추가 (2-A-4-4, ADR-0029 §2.3). risk_category_id 는 baseline_risk_categories.id.
 
@@ -1073,7 +1085,7 @@ def create_control_assertion(body: ControlAssertionCreate, user: User = Depends(
     )
 
 
-@router.delete("/control-assertions/{ca_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/control-assertions/{ca_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_rcm_editable)])
 def delete_control_assertion(ca_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
     """연결 삭제 (2-A-4-4, ADR-0029 §2.3). ca_id 는 목록이 준 연결 정체성 id.
 
@@ -1331,6 +1343,8 @@ async def upload_excel(
     mode=preview: 파싱 결과 반환. mode=commit: DB 저장.
     expand_to: 헤더 탐색 최대 행 (1차=15, 2차=30, 3차=130).
     """
+    if mode != "preview":
+        require_rcm_editable(user, db)   # 미리보기는 잠금과 무관, 저장만 막는다(ADR-0038 2-5)
     if not file.filename or not file.filename.endswith(".xlsx"):
         raise HTTPException(status_code=400, detail=".xlsx 파일만 허용됩니다")
     if mode not in ("preview", "commit"):

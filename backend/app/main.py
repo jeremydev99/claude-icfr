@@ -27,6 +27,7 @@ from app.api import (
     org,
     proposals,
     rcm,
+    rcm_years,
     remediation,
     report,
     role_assignment,
@@ -132,6 +133,7 @@ def create_app() -> FastAPI:
     # Routers — 11개 모듈
     app.include_router(schedule.router)
     app.include_router(rcm.router)
+    app.include_router(rcm_years.router)
     app.include_router(scoping.router)
     app.include_router(financial_statement.router)
     app.include_router(euc.router)
