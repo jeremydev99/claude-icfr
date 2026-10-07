@@ -41,6 +41,27 @@ class DeficiencyRead(DeficiencyBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class DeficiencyBulkTransition(BaseModel):
+    """미비점 일괄 결재(ADR-0038 2-4) — 각 건을 단건 규칙 그대로 판정한다."""
+    ids: list[UUID] = Field(min_length=1, max_length=200)
+    to_status: str = Field(pattern="^(draft|review|confirmed)$")
+    reason: str | None = None
+
+
+class DeficiencyBulkResultItem(BaseModel):
+    id: UUID
+    code: str | None
+    ok: bool
+    approval_status: str | None
+    detail: str | None = None
+
+
+class DeficiencyBulkResult(BaseModel):
+    succeeded: int
+    failed: int
+    items: list[DeficiencyBulkResultItem]
+
+
 class DeficiencyApproval(BaseModel):
     """미비점 평가 결재 정보 — 화면의 결재 패널이 그대로 쓴다."""
     deficiency: DeficiencyRead

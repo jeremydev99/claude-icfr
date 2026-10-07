@@ -1,5 +1,11 @@
 import EmptyState from '@/components/illustration/EmptyState'
+import { useState } from 'react'
 import { Loader2, Pencil, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
+import apiClient from '@/lib/axios'
+import { queryKeys } from '@/lib/queryKeys'
+import { useActiveTenantId } from '@/features/auth/store'
 import {
   Table,
   TableBody,
@@ -51,6 +57,36 @@ export default function DeficiencyTable({
   error,
 }: Props) {
   const canWrite = useCanWrite()
+  const tenantId = useActiveTenantId()
+  const queryClient = useQueryClient()
+  // 일괄 결재(ADR-0038 2-4) — 건별로 판정되고 실패 건은 이유와 함께 돌아온다
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const toggle = (id: string) => setPicked((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+  const bulk = async (to: 'review' | 'confirmed') => {
+    const reason = to === 'confirmed' ? window.prompt('확정 사유를 입력하세요 (필수)')?.trim() : undefined
+    if (to === 'confirmed' && !reason) return
+    setBulkBusy(true)
+    try {
+      const r = (await apiClient.post<{ succeeded: number; failed: number; items: { code: string | null; ok: boolean; detail: string | null }[] }>(
+        '/api/remediation/deficiencies/bulk-transition', { ids: [...picked], to_status: to, reason: reason ?? null })).data
+      const fails = r.items.filter((i) => !i.ok)
+      if (r.succeeded) toast.success(`${r.succeeded}건 ${to === 'review' ? '검토 요청' : '확정'}했습니다`)
+      if (fails.length) toast.error(`${fails.length}건 실패 — ${fails.slice(0, 3).map((i) => `${i.code ?? ''}: ${i.detail}`).join(' / ')}${fails.length > 3 ? ' …' : ''}`)
+      setPicked(new Set())
+      queryClient.invalidateQueries({ queryKey: queryKeys.remediation.deficienciesAll(tenantId) })
+    } catch (e) {
+      const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+      toast.error(typeof d === 'string' ? d : '일괄 처리하지 못했습니다')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
   const planMap = Object.fromEntries(plans.map((p) => [p.deficiency_id, p]))
   const { items = [], total = 0 } = data ?? {}
 
@@ -85,11 +121,21 @@ export default function DeficiencyTable({
 
   return (
     <div className="space-y-2">
-      <div className="text-sm text-muted-foreground">총 {total}건</div>
+      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+        총 {total}건
+        {canWrite && picked.size > 0 && (
+          <span className="ml-auto flex items-center gap-2">
+            선택 {picked.size}건
+            <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => bulk('review')}>일괄 검토 요청</Button>
+            <Button size="sm" disabled={bulkBusy} onClick={() => bulk('confirmed')}>일괄 승인</Button>
+          </span>
+        )}
+      </div>
       <div className="overflow-hidden rounded-xl border bg-card shadow-card">
         <Table>
           <TableHeader>
             <TableRow>
+              {canWrite && <TableHead className="w-8" />}
               <TableHead>코드</TableHead>
               <TableHead>심각도</TableHead>
               <TableHead>설명</TableHead>
@@ -103,6 +149,12 @@ export default function DeficiencyTable({
           <TableBody>
             {items.map((item: Deficiency) => (
               <TableRow key={item.id}>
+                {canWrite && (
+                  <TableCell>
+                    <input type="checkbox" aria-label={`${item.code} 선택`} checked={picked.has(item.id)}
+                      disabled={item.approval_status === 'confirmed'} onChange={() => toggle(item.id)} />
+                  </TableCell>
+                )}
                 <TableCell className="font-mono text-sm">{item.code}</TableCell>
                 <TableCell>
                   <Badge variant="outline" className={SEVERITY_BADGE_CLASS[item.severity]}>

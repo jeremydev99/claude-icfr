@@ -237,10 +237,9 @@ class EvidenceFile:
     data: bytes
 
 
-def record_external(db: Session, h: DocHooks, user_id: UUID, *, purpose: str, approver_body: str,
-                    approved_on: str, reference: str | None, files: list[EvidenceFile]) -> None:
-    """대표이사·이사회 **외부 승인 기록**(ADR-0038 §2.2.1) — 마스터 작성분의 확정, 마스터 요청 재오픈의 승인.
-    증빙 파일 필수(PDF·이미지, 각 20MB). 일반관리자 이상 누구나 등록한다(기록 행위)."""
+def check_external(purpose: str, approver_body: str, approved_on: str, files: list[EvidenceFile]
+                   ) -> tuple[date, list[EvidenceFile]]:
+    """외부 승인 입력 검증 — 목적·승인 기관·승인일·증빙 파일(필수, PDF·이미지, 각 20MB)."""
     if purpose not in ("approve", "reopen"):
         raise FlowError(422, "purpose 는 approve 또는 reopen 입니다")
     if approver_body not in EXTERNAL_BODIES:
@@ -257,6 +256,37 @@ def record_external(db: Session, h: DocHooks, user_id: UUID, *, purpose: str, ap
             raise FlowError(413, f"{f.filename}: 20MB 를 넘습니다")
         if (f.content_type or "") not in ALLOWED_EVIDENCE:
             raise FlowError(415, f"{f.filename}: PDF·이미지 파일만 첨부할 수 있습니다")
+    return on, real
+
+
+def store_external(db: Session, entity_type: str, entity_id: UUID, user_id: UUID, *, purpose: str,
+                   approver_body: str, on: date, reference: str | None, files: list[EvidenceFile],
+                   reopen_request_id: UUID | None = None) -> tuple[str, list[str]]:
+    """외부 승인 기록 + 증빙 저장. (이력에 쓸 사유 문구, 파일명들)을 돌려준다."""
+    ref = (reference or "").strip() or None
+    ea = ExternalApproval(entity_type=entity_type, entity_id=entity_id, purpose=purpose,
+                          reopen_request_id=reopen_request_id, approver_body=approver_body,
+                          approved_on=on, reference=ref, recorded_by_id=user_id)
+    db.add(ea)
+    db.flush()
+    names = []
+    for f in files:
+        gf = GovernanceFile(external_approval_id=ea.id, filename=f.filename[:300], mime_type=f.content_type,
+                            size_bytes=len(f.data), minio_key="pending")
+        db.add(gf)
+        db.flush()
+        gf.minio_key = build_governance_key(entity_type, entity_id, gf.id)
+        upload_object(gf.minio_key, f.data, f.content_type)
+        names.append(f.filename)
+    label = f"{EXTERNAL_BODIES[approver_body]} 승인 {on.isoformat()}" + (f" · {ref}" if ref else "")
+    return label, names
+
+
+def record_external(db: Session, h: DocHooks, user_id: UUID, *, purpose: str, approver_body: str,
+                    approved_on: str, reference: str | None, files: list[EvidenceFile]) -> None:
+    """대표이사·이사회 **외부 승인 기록**(ADR-0038 §2.2.1) — 마스터 작성분의 확정, 마스터 요청 재오픈의 승인.
+    증빙 파일 필수(PDF·이미지, 각 20MB). 일반관리자 이상 누구나 등록한다(기록 행위)."""
+    on, real = check_external(purpose, approver_body, approved_on, files)
     st = view_state(db, h)
     c = approval.can(db, st, user_id)
     pend = approval.pending_reopen(db, h.entity_id)
@@ -265,22 +295,9 @@ def record_external(db: Session, h: DocHooks, user_id: UUID, *, purpose: str, ap
     if purpose == "reopen" and not (pend is not None and c.reopen_external):
         raise FlowError(409, "외부 승인이 필요한 재오픈 요청(마스터관리자 요청)이 없습니다")
 
-    ref = (reference or "").strip() or None
-    ea = ExternalApproval(entity_type=h.entity_type, entity_id=h.entity_id, purpose=purpose,
-                          reopen_request_id=pend.id if purpose == "reopen" else None, approver_body=approver_body,
-                          approved_on=on, reference=ref, recorded_by_id=user_id)
-    db.add(ea)
-    db.flush()
-    names = []
-    for f in real:
-        gf = GovernanceFile(external_approval_id=ea.id, filename=f.filename[:300], mime_type=f.content_type,
-                            size_bytes=len(f.data), minio_key="pending")
-        db.add(gf)
-        db.flush()
-        gf.minio_key = build_governance_key(h.entity_type, h.entity_id, gf.id)
-        upload_object(gf.minio_key, f.data, f.content_type)
-        names.append(f.filename)
-    label = f"{EXTERNAL_BODIES[approver_body]} 승인 {on.isoformat()}" + (f" · {ref}" if ref else "")
+    label, names = store_external(db, h.entity_type, h.entity_id, user_id, purpose=purpose,
+                                  approver_body=approver_body, on=on, reference=reference, files=real,
+                                  reopen_request_id=pend.id if purpose == "reopen" else None)
     st = _ensure_state(db, h)
     _rec(db, h, st, EV_EXTERNAL_APPROVE, reason=label,
          after={"목적": "확정" if purpose == "approve" else "재오픈", "증빙": names})

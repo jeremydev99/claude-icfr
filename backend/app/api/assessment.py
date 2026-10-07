@@ -10,12 +10,14 @@ ADR-0025 준수 — 수동 tenant 필터를 걸지 않는다.
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.api import _approval_view as av
+from app.core import governance_log as glog
 from app.core.database import get_db
 from app.core.deps import CurrentUser
-from app.core.permissions import require_icfr_manager, require_write
+from app.core.permissions import require_icfr_manager, require_icfr_staff, require_write
 from app.models.assessment import (
     ACTIVITY_RULES,
     APPROVAL_DEPT,
@@ -28,6 +30,14 @@ from app.models.assessment import (
     AssessmentActivity,
     AssessmentCycle,
     CycleTarget,
+)
+from app.models.governance import (
+    ENTITY_ASSESSMENT_CYCLE,
+    EV_APPROVE,
+    EV_CYCLE_CLOSE,
+    EV_EXTERNAL_APPROVE,
+    ExternalApproval,
+    GovernanceFile,
 )
 from app.models.role_assignment import (
     POLICY_DEPT_APPROVAL_ENABLED,
@@ -44,12 +54,16 @@ from app.schemas.assessment import (
     CycleCloseRequest,
     CycleCloseResult,
     CycleCreate,
+    CycleGovernance,
     CycleRead,
     CycleTargetRead,
     CycleUpdate,
     IncompleteControl,
     PeriodSuggestion,
 )
+from app.schemas.scoping import ExternalApprovalRead, ExternalFileRead, GovernanceEventRead
+from app.services import approval_flow
+from app.services import cycle_approval as cap
 from app.services.assessment_period import (
     current_fiscal_year,
     current_period_index,
@@ -482,6 +496,8 @@ def close_cycle(cycle_id: UUID, body: CycleCloseRequest, user: User = Depends(re
     cycle.closed_at = datetime.now(UTC)
     cycle.closed_by_id = user.id
     cycle.incomplete_reason = body.incomplete_reason if incomplete else None
+    glog.record(db, cycle.id, EV_CYCLE_CLOSE, version=None, reason=cycle.incomplete_reason,
+                after={"미완 통제": len(incomplete)}, entity_type=ENTITY_ASSESSMENT_CYCLE)
     db.commit()
     db.refresh(cycle)
     return CycleCloseResult(cycle=_to_cycle_read(db, cycle), incomplete=incomplete)
@@ -494,6 +510,8 @@ def approve_cycle(cycle_id: UUID, user: User = Depends(require_icfr_manager),
 
     **마감되지 않은 회차는 승인할 수 없다.** 마감이 "이 회차의 작업은 여기까지"를
     확정하는 절차이므로, 그 전에 승인하면 승인 후에도 내용이 바뀔 수 있다.
+    **마감자는 승인할 수 없다**(ADR-0038 2-4, 자기 승인 금지). 마감자 외 마스터가 없으면
+    `POST /external-approval` 로 대표이사·이사회 승인 증빙을 등록한다. 재오픈은 없다 — 이후 개선은 새 회차로.
     """
     cycle = _get_cycle_or_404(db, cycle_id)
     if cycle.status == CYCLE_OPEN:
@@ -501,10 +519,78 @@ def approve_cycle(cycle_id: UUID, user: User = Depends(require_icfr_manager),
             status_code=409, detail="마감되지 않은 회차는 최종승인할 수 없습니다")
     if cycle.status == CYCLE_APPROVED:
         raise HTTPException(status_code=409, detail="이미 최종승인된 회차입니다")
+    c = cap.can(db, cycle, user.id)
+    if not c.approve:
+        raise HTTPException(status_code=409, detail=c.why.get("approve", "최종승인할 수 없습니다"))
 
     cycle.status = CYCLE_APPROVED
     cycle.approved_at = datetime.now(UTC)
     cycle.approved_by_id = user.id
+    glog.record(db, cycle.id, EV_APPROVE, version=None, entity_type=ENTITY_ASSESSMENT_CYCLE,
+                after={"미확정 미비점": cap.unconfirmed_deficiencies(db, cap.fiscal_year_of(db, cycle))})
     db.commit()
     db.refresh(cycle)
     return _to_cycle_read(db, cycle)
+
+
+# ── 최종승인 결재 (ADR-0038 2-4) ──────────────────────────
+
+def _cycle_governance(db: Session, cycle: AssessmentCycle, user_id: UUID) -> CycleGovernance:
+    c = cap.can(db, cycle, user_id)
+    exts = []
+    for e in db.query(ExternalApproval).filter(ExternalApproval.entity_type == ENTITY_ASSESSMENT_CYCLE,
+                                               ExternalApproval.entity_id == cycle.id,
+                                               ExternalApproval.is_deleted == False).all():  # noqa: E712
+        files = db.query(GovernanceFile).filter(GovernanceFile.external_approval_id == e.id,
+                                                GovernanceFile.is_deleted == False).all()  # noqa: E712
+        exts.append(ExternalApprovalRead(
+            id=e.id, purpose=e.purpose, approver_body=e.approver_body, approved_on=e.approved_on,
+            reference=e.reference, recorded_by=av.person(db, e.recorded_by_id), created_at=e.created_at,
+            files=[ExternalFileRead(id=f.id, filename=f.filename, size_bytes=f.size_bytes) for f in files]))
+    fy = cap.fiscal_year_of(db, cycle)
+    return CycleGovernance(
+        cycle=_to_cycle_read(db, cycle), can_approve=c.approve, can_external_approve=c.external_approve, why=c.why,
+        incomplete_count=len(_incomplete_controls(db, cycle)) if cycle.status != CYCLE_OPEN else 0,
+        fiscal_year=fy, unconfirmed_deficiencies=cap.unconfirmed_deficiencies(db, fy),
+        legacy_approved=cap.legacy_approved(db, cycle), external_approvals=exts)
+
+
+@router.get("/cycles/{cycle_id}/governance", response_model=CycleGovernance)
+def get_cycle_governance(cycle_id: UUID, user: CurrentUser, db: Session = Depends(get_db)) -> CycleGovernance:
+    """최종승인 결재 정보 — 승인 가능 여부와 못 하는 이유, 경고(미완·미확정 미비점), 외부 승인 기록."""
+    return _cycle_governance(db, _get_cycle_or_404(db, cycle_id), user.id)
+
+
+@router.post("/cycles/{cycle_id}/external-approval", response_model=CycleGovernance)
+def external_approve_cycle(cycle_id: UUID, approver_body: str = Form(...), approved_on: str = Form(...),
+                           reference: str | None = Form(default=None), files: list[UploadFile] = File(...),
+                           user: User = Depends(require_icfr_staff), db: Session = Depends(get_db)) -> CycleGovernance:
+    """마감자 외 마스터관리자가 없을 때 — 대표이사·이사회 **승인 증빙**을 등록해 최종승인한다(ADR-0038 §2.2.1)."""
+    cycle = _get_cycle_or_404(db, cycle_id)
+    c = cap.can(db, cycle, user.id)
+    if not c.external_approve:
+        raise HTTPException(status_code=409, detail=(
+            "외부 승인 대상이 아닙니다 — " + c.why.get("approve", "마스터관리자가 최종승인합니다")))
+    ev = [approval_flow.EvidenceFile(filename=f.filename or "", content_type=f.content_type,
+                                     data=f.file.read(approval_flow.MAX_EVIDENCE_BYTES + 1)) for f in files]
+    try:
+        on, real = approval_flow.check_external("approve", approver_body, approved_on, ev)
+        label, names = approval_flow.store_external(db, ENTITY_ASSESSMENT_CYCLE, cycle.id, user.id, purpose="approve",
+                                                    approver_body=approver_body, on=on, reference=reference,
+                                                    files=real)
+    except approval_flow.FlowError as e:
+        db.rollback()
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from None
+    glog.record(db, cycle.id, EV_EXTERNAL_APPROVE, version=None, reason=label, entity_type=ENTITY_ASSESSMENT_CYCLE,
+                after={"목적": "최종승인", "증빙": names})
+    cycle.status = CYCLE_APPROVED
+    cycle.approved_at = datetime.now(UTC)
+    cycle.approved_by_id = None          # 승인자는 회사 밖(대표이사·이사회) — 기록자는 외부 승인 기록에 남는다
+    db.commit()
+    return _cycle_governance(db, cycle, user.id)
+
+
+@router.get("/cycles/{cycle_id}/governance-events", response_model=list[GovernanceEventRead])
+def list_cycle_events(cycle_id: UUID, user: CurrentUser, db: Session = Depends(get_db)) -> list[GovernanceEventRead]:
+    """마감·최종승인 이력(최신순) — 지울 수 없는 기록."""
+    return av.events(db, ENTITY_ASSESSMENT_CYCLE, _get_cycle_or_404(db, cycle_id).id)

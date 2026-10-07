@@ -17,6 +17,9 @@ from app.models.remediation import (
 from app.models.user import User
 from app.schemas.remediation import (
     DeficiencyApproval,
+    DeficiencyBulkResult,
+    DeficiencyBulkResultItem,
+    DeficiencyBulkTransition,
     DeficiencyCreate,
     DeficiencyRead,
     DeficiencyUpdate,
@@ -189,25 +192,59 @@ def get_deficiency_approval(deficiency_id: UUID, user: CurrentUser, db: Session 
     return _approval(db, _get_def(db, deficiency_id), user.id)
 
 
+def _transition(db: Session, d: Deficiency, user_id: UUID, to_status: str, reason: str | None) -> None:
+    """단건 전이 — 실패는 FlowError. 커밋은 호출자."""
+    h = dap.hooks(db, d)
+    cur = approval_flow.view_state(db, h).status
+    if cur == "draft" and to_status == "review":
+        approval_flow.submit(db, h, user_id, reason)
+    elif cur == "review" and to_status == "draft":
+        approval_flow.back_to_draft(db, h, user_id, reason)
+    elif cur == "review" and to_status == "confirmed":
+        approval_flow.approve(db, h, user_id, reason)
+    elif cur == "confirmed":
+        raise approval_flow.FlowError(409, dap.NO_REOPEN)
+    else:
+        raise approval_flow.FlowError(409, f"'{cur}' 에서 '{to_status}' 로 바꿀 수 없습니다")
+
+
+@router.post("/deficiencies/bulk-transition", response_model=DeficiencyBulkResult)
+def bulk_transition_deficiencies(body: DeficiencyBulkTransition, user: User = Depends(require_icfr_staff),
+                                 db: Session = Depends(get_db)) -> DeficiencyBulkResult:
+    """미비점 일괄 결재(ADR-0038 2-4) — 일괄 검토 요청·일괄 승인 등. **각 건을 단건 규칙 그대로 판정**하고
+    건별로 커밋한다 — 한 건이 실패해도 나머지는 처리되고, 실패 건은 이유와 함께 돌려준다."""
+    reason = (body.reason or "").strip() or None
+    items: list[DeficiencyBulkResultItem] = []
+    for did in dict.fromkeys(body.ids):   # 중복 제거·순서 유지
+        d = db.query(Deficiency).filter(Deficiency.id == did, Deficiency.is_deleted == False).first()  # noqa: E712
+        if d is None:
+            items.append(DeficiencyBulkResultItem(id=did, code=None, ok=False, approval_status=None,
+                                                  detail="미비점을 찾을 수 없습니다"))
+            continue
+        code = d.code
+        try:
+            _transition(db, d, user.id, body.to_status, reason)
+            db.commit()
+            items.append(DeficiencyBulkResultItem(id=did, code=code, ok=True,
+                                                  approval_status=dap.approval_status(db, d)))
+        except approval_flow.FlowError as e:
+            db.rollback()
+            d = db.get(Deficiency, did)
+            items.append(DeficiencyBulkResultItem(id=did, code=code, ok=False,
+                                                  approval_status=dap.approval_status(db, d) if d else None,
+                                                  detail=e.detail if isinstance(e.detail, str) else str(e.detail)))
+    ok = sum(1 for i in items if i.ok)
+    return DeficiencyBulkResult(succeeded=ok, failed=len(items) - ok, items=items)
+
+
 @router.post("/deficiencies/{deficiency_id}/transition", response_model=DeficiencyApproval)
 def transition_deficiency(deficiency_id: UUID, req: TransitionRequest, user: User = Depends(require_icfr_staff),
                           db: Session = Depends(get_db)) -> DeficiencyApproval:
     """평가 결론 결재 — draft→review(검토 요청: 심각도·최종 결론 필수) / review→draft(회수·반려) /
     review→confirmed(마스터 승인, 요청자·검토자 불가). 확정 후 재오픈 없음."""
     d = _get_def(db, deficiency_id)
-    h = dap.hooks(db, d)
     reason = (req.reason or "").strip() or None
-    cur = approval_flow.view_state(db, h).status
-    if cur == "draft" and req.to_status == "review":
-        _flow(db, lambda: approval_flow.submit(db, h, user.id, reason))
-    elif cur == "review" and req.to_status == "draft":
-        _flow(db, lambda: approval_flow.back_to_draft(db, h, user.id, reason))
-    elif cur == "review" and req.to_status == "confirmed":
-        _flow(db, lambda: approval_flow.approve(db, h, user.id, reason))
-    elif cur == "confirmed":
-        raise HTTPException(status_code=409, detail=dap.NO_REOPEN)
-    else:
-        raise HTTPException(status_code=409, detail=f"'{cur}' 에서 '{req.to_status}' 로 바꿀 수 없습니다")
+    _flow(db, lambda: _transition(db, d, user.id, req.to_status, reason))
     return _approval(db, d, user.id)
 
 

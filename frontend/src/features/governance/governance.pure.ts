@@ -10,6 +10,7 @@ export const EVENT_LABELS: Record<string, string> = {
   review_done: '책임관리자 검토 완료',
   review_return: '반려',
   approve: '승인(확정)',
+  cycle_close: '회차 마감',
   external_approve: '외부 승인 기록',
   reopen_request: '재오픈 요청',
   reopen_approve: '재오픈 승인',

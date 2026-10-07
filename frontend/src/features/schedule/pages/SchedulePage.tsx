@@ -1,5 +1,6 @@
 import EmptyState from '@/components/illustration/EmptyState'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -7,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useCycles, useFiscalStartMonth, useIncompleteCounts, type CycleItem } from '../api/useSchedule'
 import { useAuthStore } from '@/features/auth/store'
 import CycleCreateDialog from '@/features/assessment/components/CycleCreateDialog'
+import CycleApprovalSheet from '../components/CycleApprovalSheet'
 import {
   CATEGORY_STYLE,
   FREQ_LABEL,
@@ -47,6 +49,13 @@ export default function SchedulePage() {
   // 버튼은 외부감사인(조회 전용)만 숨긴다. 평가자 여부는 /me 에 없어 서버 403 사유로 안내한다
   const canWrite = useAuthStore((s) => s.user?.can_write ?? false)
   const [createOpen, setCreateOpen] = useState(false)
+  // 회차 마감·최종승인(ADR-0038 2-4) — 결재 대기함에서 오면 `?cycle=` 로 바로 연다
+  const [cycleSheet, setCycleSheet] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
+  useEffect(() => {
+    const id = searchParams.get('cycle')
+    if (id) setCycleSheet(id)
+  }, [searchParams])
 
   const columns = useMemo(() => buildColumns(fy, startMonth), [fy, startMonth])
   const nowOffset = todayOffset(fy, startMonth, today)
@@ -277,6 +286,9 @@ export default function SchedulePage() {
                       <span className={incomplete[c.id]! > 0 ? 'text-destructive' : ''}> · 미완 {incomplete[c.id]}건</span>
                     )}
                   </span>
+                  <Button size="sm" variant="outline" className="h-7" onClick={() => setCycleSheet(c.id)}>
+                    {c.status === 'open' ? '마감' : c.status === 'closed' ? '최종승인' : '결재 기록'}
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -284,6 +296,7 @@ export default function SchedulePage() {
         </CardContent>
       </Card>
 
+      <CycleApprovalSheet cycleId={cycleSheet} onOpenChange={(o) => { if (!o) setCycleSheet(null) }} />
       <CycleCreateDialog open={createOpen} onOpenChange={setCreateOpen} fiscalYear={fy} currentFiscalYear={thisFy} />
     </div>
   )

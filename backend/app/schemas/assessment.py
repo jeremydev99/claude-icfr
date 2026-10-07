@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.scoping import ExternalApprovalRead
+
 _KIND = "^(design|operation)$"
 _FREQ = "^(weekly|monthly|quarterly|semiannual|annual)$"
 _ACTIVITY = "^(design|design_change|design_assessment|test|operation_assessment)$"
@@ -140,6 +142,19 @@ class IncompleteControl(BaseModel):
 class CycleCloseResult(BaseModel):
     cycle: CycleRead
     incomplete: list[IncompleteControl] = []
+
+
+class CycleGovernance(BaseModel):
+    """회차 최종승인 결재 정보(ADR-0038 2-4) — 화면이 그대로 쓴다. 판정은 서버(`services/cycle_approval.can`)."""
+    cycle: CycleRead
+    can_approve: bool
+    can_external_approve: bool        # 마감자 외 마스터가 없을 때 — 대표이사·이사회 승인 증빙
+    why: dict[str, str]
+    incomplete_count: int
+    fiscal_year: int
+    unconfirmed_deficiencies: int     # 같은 회계연도 미확정 미비점 — 막지 않고 경고
+    legacy_approved: bool             # 2-4 이전 방식 승인
+    external_approvals: list[ExternalApprovalRead]
 
 
 ActivityRead.model_rebuild()

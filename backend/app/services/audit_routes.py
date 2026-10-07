@@ -108,6 +108,7 @@ ROUTES: dict[str, R] = {
     "POST /api/remediation/deficiencies/{deficiency_id}/transition":
         (REM, "미비점 평가 상태 변경", "deficiency", "deficiency_id"),
     "POST /api/remediation/deficiencies/{deficiency_id}/review": (REM, "미비점 평가 검토", "deficiency", "deficiency_id"),
+    "POST /api/remediation/deficiencies/bulk-transition": (REM, "미비점 평가 일괄 결재", None, None),
     "POST /api/remediation/deficiencies/{deficiency_id}/external-approval":
         (REM, "외부 승인 등록", "deficiency", "deficiency_id"),
     "POST /api/remediation/plans": (REM, "개선계획 등록", "plan", None),
@@ -153,6 +154,7 @@ ROUTES: dict[str, R] = {
     "POST /api/assessment/activities/{activity_id}/approvals": (AS, "평가 수행 승인", "activity", "activity_id"),
     "POST /api/assessment/cycles/{cycle_id}/close": (AS, "회차 마감", "cycle", "cycle_id"),
     "POST /api/assessment/cycles/{cycle_id}/approve": (AS, "회차 승인", "cycle", "cycle_id"),
+    "POST /api/assessment/cycles/{cycle_id}/external-approval": (AS, "회차 외부 승인 등록", "cycle", "cycle_id"),
     # 테스트
     "POST /api/test/rawc": (TST, "통제 위험평가 등록", "rawc", None),
     "PATCH /api/test/rawc/{rawc_id}": (TST, "통제 위험평가 수정 저장", "rawc", "rawc_id"),

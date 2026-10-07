@@ -60,6 +60,7 @@ GOVERNANCE_ROUTES = [
     ("POST", f"/api/remediation/deficiencies/{_ID}/transition"),
     ("POST", f"/api/remediation/deficiencies/{_ID}/review"),
     ("POST", f"/api/remediation/deficiencies/{_ID}/external-approval"),
+    ("POST", "/api/remediation/deficiencies/bulk-transition"),
 ]
 
 

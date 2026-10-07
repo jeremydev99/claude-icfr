@@ -13,10 +13,12 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.minio_client import get_object_stream
+from app.models.assessment import CYCLE_CLOSED, AssessmentCycle
 from app.models.financial_statement import FS_BASIS_LABELS, FS_STATEMENT_LABELS, FsStatement
 from app.models.governance import (
     AS_CONFIRMED,
     AS_REVIEW,
+    ENTITY_ASSESSMENT_CYCLE,
     ENTITY_DEFICIENCY,
     ENTITY_FS_STATEMENT,
     ApprovalState,
@@ -25,7 +27,7 @@ from app.models.governance import (
 from app.models.proposal import P_PENDING_REVIEW, P_REVIEWED, Proposal
 from app.models.remediation import Deficiency
 from app.models.scoping import STATUS_CONFIRMED, STATUS_REVIEW, Scoping
-from app.services import approval
+from app.services import approval, cycle_approval
 from app.services import proposals as proposal_svc
 
 router = APIRouter(prefix="/api/governance", tags=["governance"])
@@ -88,6 +90,15 @@ def inbox(user: CurrentUser, db: Session = Depends(get_db)) -> list[InboxItem]:
             if flag:
                 out.append(InboxItem(entity_type=st.entity_type, entity_id=st.entity_id, title=title, action=action,
                                      label=label, path=path))
+    # 평가 회차 최종승인(ADR-0038 2-4) — 마감된 회차
+    for cy in db.query(AssessmentCycle).filter(AssessmentCycle.status == CYCLE_CLOSED,
+                                               AssessmentCycle.is_deleted == False).all():  # noqa: E712
+        c = cycle_approval.can(db, cy, user.id)
+        for flag, action, label in [(c.approve, "approve", "회차 최종승인"),
+                                    (c.external_approve, "external_approve", "대표이사·이사회 승인 증빙 등록")]:
+            if flag:
+                out.append(InboxItem(entity_type=ENTITY_ASSESSMENT_CYCLE, entity_id=cy.id, title=f"평가 회차 {cy.name}",
+                                     action=action, label=label, path=f"/schedule?cycle={cy.id}"))
     for p in db.query(Proposal).filter(Proposal.is_deleted == False,  # noqa: E712
                                        Proposal.status.in_([P_PENDING_REVIEW, P_REVIEWED])).all():
         c = proposal_svc.can(db, p, user.id)
