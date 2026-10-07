@@ -28,6 +28,7 @@ ROUTES: dict[str, R] = {
     "POST /api/schedule/plans/{fiscal_year}/init": (SCH, "일정안 만들기", "schedule_plan", "fiscal_year"),
     "POST /api/schedule/plans/{fiscal_year}/items": (SCH, "일정 추가", "schedule_plan", "fiscal_year"),
     "PUT /api/schedule/plans/{fiscal_year}/items/{iid}": (SCH, "일정 수정 저장", "schedule_item", "iid"),
+    "PATCH /api/schedule/plans/{fiscal_year}/items/{iid}/dates": (SCH, "일정 기간 변경(끌기)", "schedule_item", "iid"),
     "DELETE /api/schedule/plans/{fiscal_year}/items/{iid}": (SCH, "일정 삭제", "schedule_item", "iid"),
     "POST /api/schedule/plans/{fiscal_year}/submit": (SCH, "일정안 결재 요청", "schedule_plan", "fiscal_year"),
     "POST /api/schedule/plans/{fiscal_year}/approve": (SCH, "일정안 승인", "schedule_plan", "fiscal_year"),

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  dateEndX, dateToX, dragDates, planChanges, xToDate,
   STANDARD_TEMPLATE,
   itemsToPhases,
   TOTAL_COLUMNS,
@@ -78,5 +79,30 @@ describe('itemsToPhases', () => {
     ]
     const p = itemsToPhases(items, 2026, 1)
     expect(p.map((x) => [x.itemId, x.start, x.end, x.category])).toEqual([['a', 1, 2, 'planning'], ['b', 3, 3, 'audit']])
+  })
+})
+
+describe('간트 일 단위 위치·끌기 (13.9-100)', () => {
+  it('날짜 ↔ 위치가 서로 맞고 월 칸과 일치한다', () => {
+    expect(dateToX(2026, 1, '2026-01-01')).toBe(0)
+    expect(dateToX(2026, 1, '2026-02-01')).toBeCloseTo(1 / 15)
+    expect(dateEndX(2026, 1, '2026-01-31')).toBeCloseTo(1 / 15)
+    expect(xToDate(2026, 1, dateToX(2026, 1, '2026-07-15') + 0.0001)).toBe('2026-07-15')
+    expect(xToDate(2026, 4, 0)).toBe('2026-04-01')          // 3월 결산 — 4월 시작
+    expect(xToDate(2026, 1, 1)).toBe('2027-03-31')
+  })
+  it('옮기기는 길이 유지, 양 끝은 반대쪽을 넘지 않는다', () => {
+    expect(dragDates('move', '2026-06-01', '2026-08-31', '2026-07-01', '2026-07-11')).toEqual({ start: '2026-06-11', end: '2026-09-10' })
+    expect(dragDates('end', '2026-06-01', '2026-08-31', '2026-08-31', '2026-09-30')).toEqual({ start: '2026-06-01', end: '2026-09-30' })
+    expect(dragDates('start', '2026-06-01', '2026-08-31', '2026-06-01', '2026-10-01')).toEqual({ start: '2026-08-31', end: '2026-08-31' })
+  })
+  it('승인본과 비교해 바뀜·추가·삭제를 찾는다', () => {
+    const a = { id: 'a', title: 'A', category: 'design', start_date: '2026-01-01', end_date: '2026-01-31', description: null, tasks: [] }
+    const b = { ...a, id: 'b', title: 'B' }
+    const r = planChanges([{ ...a, end_date: '2026-02-28' }, { ...a, id: 'c', title: 'C' }], [a, b])
+    expect([...r.changed]).toEqual(['a'])
+    expect([...r.added]).toEqual(['c'])
+    expect(r.removed.map((x) => x.id)).toEqual(['b'])
+    expect(planChanges([a], null).changed.size).toBe(0)
   })
 })
