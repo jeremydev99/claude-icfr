@@ -4,6 +4,7 @@
 - 승인 경로(검토 요청 시점에 정해 저장): 일반 작성 + 책임관리자 있음 → 책임 검토 → 마스터 승인 /
   책임 작성(또는 책임관리자 0명) → 마스터 승인 / 마스터 작성 → 대표이사·이사회 외부 승인(증빙).
 - 자기 승인 금지: 검토자 ≠ 요청자, 승인자 ≠ 요청자, 승인자 ≠ 검토자. 재오픈 승인자 ≠ 재오픈 요청자.
+- 판정 대상은 스코핑(`Scoping`, 자기 칸) 또는 공통 결재 상태(`ApprovalState`, 2-1) — 칸 이름·상태값이 같다.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from app.models.governance import (
     PATH_LEAD_THEN_MASTER,
     PATH_MASTER,
     REOPEN_PENDING,
+    ApprovalState,
     ReopenRequest,
 )
 from app.models.role_assignment import ROLE_EXTERNAL_ADVISOR, ROLE_ICFR_LEAD, TIER_ROLES
@@ -76,7 +78,12 @@ class Can:
     why: dict[str, str] = field(default_factory=dict)
 
 
-def can(db: Session, s: Scoping, user_id: UUID) -> Can:
+def entity_id_of(s: Scoping | ApprovalState):
+    """결재 대상 문서의 id — 스코핑은 자기 id, 공통 결재 상태는 가리키는 문서 id."""
+    return s.entity_id if isinstance(s, ApprovalState) else s.id
+
+
+def can(db: Session, s: Scoping | ApprovalState, user_id: UUID) -> Can:
     t = user_tier(db, user_id)
     c = Can()
     if t == 0:
@@ -106,7 +113,7 @@ def can(db: Session, s: Scoping, user_id: UUID) -> Can:
             c.external_approve = True   # 기록 행위 — 일반 이상 누구나(ADR-0038 §2.2.1)
             c.why["approve"] = "마스터관리자 작성분은 대표이사·이사회 승인 증빙을 등록해 확정합니다"
     elif s.status == STATUS_CONFIRMED:
-        p = pending_reopen(db, s.id)
+        p = pending_reopen(db, entity_id_of(s))
         if p is None:
             c.reopen_request = True
         else:

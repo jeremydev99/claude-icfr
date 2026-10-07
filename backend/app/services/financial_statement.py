@@ -39,6 +39,7 @@ from app.models.financial_statement import (
     FsStatement,
     FsStatementStatusEvent,
 )
+from app.models.governance import AS_REVIEW, ENTITY_FS_STATEMENT, ApprovalState
 
 # ── 검증 규칙 코드 — 응답·이력에 그대로 나간다 ─────────────────────
 RULE_BALANCE = "balance"                          # 자산 = 부채 + 자본
@@ -220,12 +221,16 @@ def set_subtotal(db: Session, account: FsAccount, is_subtotal: bool) -> None:
     """
     if account.is_subtotal == is_subtotal:
         return
-    final = db.scalars(select(FsStatement.fiscal_year).join(FsAmount, FsAmount.statement_id == FsStatement.id)
-                       .where(FsAmount.account_id == account.id, _alive(FsAmount), _alive(FsStatement),
-                              FsStatement.status == FS_STATUS_FINAL)).all()
+    used = db.scalars(select(FsStatement).join(FsAmount, FsAmount.statement_id == FsStatement.id)
+                      .where(FsAmount.account_id == account.id, _alive(FsAmount), _alive(FsStatement))).unique().all()
+    final = [st.fiscal_year for st in used if st.status == FS_STATUS_FINAL]
     if final:
         raise FsConflictError(f"확정된 재무제표({', '.join(str(y) for y in sorted(set(final)))})가 쓰는 계정입니다 "
                               "— 재오픈 후 변경하세요")
+    review = [st.fiscal_year for st in used if in_review(db, st)]
+    if review:
+        raise FsConflictError(f"검토 중인 재무제표({', '.join(str(y) for y in sorted(set(review)))})가 쓰는 계정입니다 "
+                              "— 회수·반려 후 변경하세요")
     account.is_subtotal = is_subtotal
     db.flush()
 
@@ -273,13 +278,28 @@ def create_statement(db: Session, *, fiscal_year: int, statement_type: str, basi
     return s
 
 
-def _ensure_draft(statement: FsStatement) -> None:
+def approval_state(db: Session, statement_id: UUID) -> ApprovalState | None:
+    """재무제표의 결재 상태 행(ADR-0038 2-2). 없으면 결재선을 탄 적 없음."""
+    return db.scalars(select(ApprovalState).where(
+        ApprovalState.entity_type == ENTITY_FS_STATEMENT, ApprovalState.entity_id == statement_id,
+        _alive(ApprovalState))).first()
+
+
+def in_review(db: Session, statement: FsStatement) -> bool:
+    st = approval_state(db, statement.id)
+    return st is not None and st.status == AS_REVIEW
+
+
+def ensure_editable(db: Session, statement: FsStatement) -> None:
+    """확정이거나 **검토 중**이면 거부 — 검토자가 보는 숫자가 결재 도중 바뀌면 안 된다(ADR-0038 2-2)."""
     if statement.status != FS_STATUS_DRAFT:
         raise FsConflictError("확정된 재무제표는 수정할 수 없습니다 — 재오픈 후 수정하세요")
+    if in_review(db, statement):
+        raise FsConflictError("검토 중인 재무제표는 수정할 수 없습니다 — 회수하거나 반려된 뒤 수정하세요")
 
 
 def set_tolerance(db: Session, statement: FsStatement, tolerance: Decimal | int) -> None:
-    _ensure_draft(statement)
+    ensure_editable(db, statement)
     tol = _check_amount(Decimal(tolerance), "허용 오차")
     if tol < 0:
         raise FsError("허용 오차는 0 이상이어야 합니다")
@@ -290,8 +310,8 @@ def set_tolerance(db: Session, statement: FsStatement, tolerance: Decimal | int)
 def set_amount(db: Session, statement: FsStatement, account: FsAccount, amount: Decimal | int | None, *,
                raw_row_no: int | None = None, raw_label: str | None = None, raw_indent: int | None = None,
                raw_value: str | None = None, raw_meta: dict | None = None) -> FsAmount:
-    """금액 1행 저장(있으면 갱신). 금액은 **공시 표시 그대로**(괄호=음수). 확정 상태면 거부."""
-    _ensure_draft(statement)
+    """금액 1행 저장(있으면 갱신). 금액은 **공시 표시 그대로**(괄호=음수). 확정·검토 중이면 거부."""
+    ensure_editable(db, statement)
     if account.statement_type != statement.statement_type:
         raise FsError("계정의 재무제표 종류가 재무제표와 다릅니다")
     if not is_valid_for_year(account, statement.fiscal_year):

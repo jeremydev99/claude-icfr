@@ -9,6 +9,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.scoping import GovernanceInfo
+
 
 class Option(BaseModel):
     value: str
@@ -67,6 +69,8 @@ class StatementListItem(BaseModel):
     source_kind: str | None
     source_filename: str | None
     source_sheet: str | None
+    # 결재 상태(ADR-0038 2-2) — draft | review | confirmed
+    approval_status: str = "draft"
 
 
 class StatusEventRead(BaseModel):
@@ -107,14 +111,10 @@ class StatementDetail(StatementListItem):
     tree: list[AmountNode]
     events: list[StatusEventRead]
     validation: ValidationResult
-
-
-class FinalizeRequest(BaseModel):
-    reason: str | None = Field(default=None, max_length=2000)
-
-
-class ReopenRequest(BaseModel):
-    reason: str = Field(max_length=2000)
+    # 결재(ADR-0038 2-2) — draft | review | confirmed. 확정인데 결재 행이 없으면 legacy_confirmed(이전 방식 확정)
+    approval_status: str
+    legacy_confirmed: bool
+    governance: GovernanceInfo
 
 
 # ── 8-B 업로드 ───────────────────────────────────────────────
@@ -172,8 +172,8 @@ class UploadStatementResult(BaseModel):
     fiscal_year: int
     statement_id: UUID | None   # commit 에서만
     status: str                 # draft / final (preview 는 draft)
-    finalize_candidate: bool    # 최신 연도(자동 확정 대상)
-    finalized: bool
+    finalize_candidate: bool    # 최신 연도(검토 요청 대상)
+    review_requested: bool      # 업로드 직후 검토 요청됨(ADR-0038 2-2 — 업로드가 직접 확정하지 않는다)
     ok: bool
     errors: list[UploadValidationItem]
     skipped: list[UploadValidationItem]

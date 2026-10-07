@@ -29,6 +29,7 @@ from app.services import financial_statement as svc_fs
 from app.services import fs_upload
 from app.services.fs_upload import structure
 from app.services.fs_upload.cells import AmountError, display_label, parse_amount, split_prefix
+from tests import _fs_approval as fsa
 from tests.conftest import TestingSessionLocal
 
 PW = "pw123456"
@@ -398,7 +399,7 @@ def test_preview_does_not_write_and_matches_commit(client: TestClient) -> None:
     assert com.status_code == 200, com.text
     c = com.json()
     st = c["statements"][0]
-    assert c["committed"] and st["status"] == "final" and st["finalized"]
+    assert c["committed"] and st["status"] == "draft" and st["review_requested"]   # 업로드는 검토 요청까지(2-2)
     assert st["checks_count"] == b["statements"][0]["checks_count"]
     assert _count(tid, FsAccount) == 13 and _count(tid, FsAmount) == 13        # 섹션 머리 3행 제외
     # 확정 후 조회 API 의 검증도 같다
@@ -430,7 +431,8 @@ def test_commit_raw_columns_preserved(client: TestClient) -> None:
 def test_horizontal_latest_year_final_only_when_valid(client: TestClient) -> None:
     h, _ = _tenant(client)
     ok = _post(client, h, horizontal_bs(stale_parent=False), mode="commit", unit=1).json()
-    assert {s["fiscal_year"]: s["status"] for s in ok["statements"]} == {2025: "final", 2024: "draft", 2023: "draft"}
+    assert {s["status"] for s in ok["statements"]} == {"draft"}
+    assert {s["fiscal_year"]: s["review_requested"] for s in ok["statements"]} == {2025: True, 2024: False, 2023: False}
 
     h2, _ = _tenant(client)
     bad = _post(client, h2, horizontal_bs(stale_parent=True), mode="commit", unit=1)
@@ -438,7 +440,7 @@ def test_horizontal_latest_year_final_only_when_valid(client: TestClient) -> Non
     sts = bad.json()["statements"]
     assert {s["fiscal_year"]: s["status"] for s in sts} == {2025: "draft", 2024: "draft", 2023: "draft"}
     latest = next(s for s in sts if s["fiscal_year"] == 2025)
-    assert not latest["ok"] and latest["finalize_candidate"] and not latest["finalized"]
+    assert not latest["ok"] and latest["finalize_candidate"] and not latest["review_requested"]
     # 원본 소계 불일치는 임시계정(원본 차이)으로 받고, 미해결 임시계정이 확정을 막는다(마스터 지시 2026-09-30)
     assert {e["rule"] for e in latest["errors"]} == {"suspense_unresolved"}
     assert {(x["parent_name"], D(x["amount"])) for x in latest["suspense"]} == \
@@ -489,7 +491,7 @@ def test_existing_statement_conflict_409(client: TestClient) -> None:
     r = _post(client, h, bs_wb(), mode="commit")
     assert r.status_code == 409
     b = _body(r)
-    assert [c["fiscal_year"] for c in b["conflicts"]] == [2025] and b["conflicts"][0]["status"] == "final"
+    assert [c["fiscal_year"] for c in b["conflicts"]] == [2025] and b["conflicts"][0]["status"] == "draft"
     assert _count(tid, FsAmount) == n
 
 
@@ -508,7 +510,7 @@ def test_existing_master_requires_mapping_then_reuses_accounts(client: TestClien
     ok = _post(client, h, bs_wb(), mode="commit", fiscal_years="2024", mapping=sugg)
     assert ok.status_code == 200, ok.text
     assert _count(tid, FsAccount) == accounts and _count(tid, FsStatement) == 2
-    assert ok.json()["statements"][0]["status"] == "final"                     # 이번 업로드의 최신 연도
+    assert ok.json()["statements"][0]["review_requested"]                      # 이번 업로드의 최신 연도
 
     bad = dict(sugg)
     bad.pop(next(iter(bad)))
@@ -621,7 +623,8 @@ def _disclosure_2y(client, h) -> dict[int, str]:
 
 
 def _reopen(client, h, sid) -> None:
-    assert client.post(f"/api/fs/statements/{sid}/reopen", headers=h, json={"reason": "결합"}).status_code == 200
+    """업로드가 검토 요청해 둔 최신 연도를 회수해 작성 중으로(결합하려면 작성 중이어야 한다)."""
+    assert fsa.withdraw(client, sid, h).status_code == 200
 
 
 def test_attach_worksheet_makes_disclosure_lines_subtotals(client: TestClient) -> None:
@@ -640,7 +643,8 @@ def test_attach_worksheet_makes_disclosure_lines_subtotals(client: TestClient) -
     com = _attach(client, h, worksheet_bs(), mode="commit", unit=1)
     assert com.status_code == 200, com.text
     body = com.json()
-    assert {s["fiscal_year"]: s["status"] for s in body["statements"]} == {2025: "final", 2024: "draft"}
+    assert {s["fiscal_year"]: (s["status"], s["review_requested"]) for s in body["statements"]} == \
+        {2025: ("draft", True), 2024: ("draft", False)}
     names = {r["name"] for r in body["rows"] if not r["skip_reason"]}
     assert {"감가상각누계액_건물", "감가상각누계액_비품", "보통주자본금"} <= names
     assert _count(tid, FsAccount) == before + 11

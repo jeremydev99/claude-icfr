@@ -16,9 +16,15 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api import _approval_view as av
 from app.core.database import get_db
 from app.core.deps import CurrentUser
-from app.core.permissions import fs_writer_kind, require_fs_preparer, require_icfr_manager
+from app.core.permissions import (
+    fs_writer_kind,
+    require_fs_preparer,
+    require_icfr_manager,
+    require_icfr_staff,
+)
 from app.models.financial_statement import (
     FS_BASES,
     FS_BASIS_LABELS,
@@ -31,15 +37,14 @@ from app.models.financial_statement import (
     FS_UNIT_LABELS,
     FsStatement,
 )
+from app.models.governance import AS_CONFIRMED, ENTITY_FS_STATEMENT, ApprovalState
 from app.models.user import User
 from app.schemas.financial_statement import (
     AccountNode,
     AmountNode,
     AttachResponse,
-    FinalizeRequest,
     FsMeta,
     Option,
-    ReopenRequest,
     StatementDetail,
     StatementListItem,
     StatementUpdate,
@@ -53,8 +58,15 @@ from app.schemas.financial_statement import (
     UploadResponse,
     ValidationResult,
 )
+from app.schemas.scoping import (
+    GovernanceEventRead,
+    ReopenCreate,
+    ReopenDecision,
+    ReviewRequest,
+    TransitionRequest,
+)
+from app.services import approval_flow, fs_approval, fs_suspense, fs_upload
 from app.services import financial_statement as svc
-from app.services import fs_suspense, fs_upload
 from app.services import fs_template_match as match_svc
 from app.services.assessment_period import fiscal_year_start_month
 from app.services.fs_upload import attach, importer
@@ -115,14 +127,39 @@ def _validation(result: dict) -> ValidationResult:
     return ValidationResult.model_validate(result)
 
 
-def _detail(db: Session, s: FsStatement) -> StatementDetail:
+def _detail(db: Session, s: FsStatement, user_id: UUID) -> StatementDetail:
     base = StatementListItem.model_validate(s).model_dump()
+    st = approval_flow.view_state(db, fs_approval.hooks(db, s))
+    legacy = st.status == AS_CONFIRMED and st.confirmed_by_id is None
+    base["approval_status"] = st.status
     return StatementDetail(
         **base,
         tree=[AmountNode.model_validate(n) for n in _amount_tree(db, s)],
         events=[StatusEventRead.model_validate(e) for e in svc.status_events(db, s.id)],
         validation=_validation(svc.validate(db, s)),
+        legacy_confirmed=legacy,
+        governance=av.governance_info(db, st, user_id, legacy_confirmed_by=s.finalized_by_id if legacy else None),
     )
+
+
+def _flow(db: Session, fn) -> None:
+    """결재 흐름 실행 — 실패는 HTTP 오류로. 검증 실패는 항목별 차이를 `detail.validation` 에 싣는다(422)."""
+    try:
+        fn()
+    except approval_flow.FlowError as e:
+        db.rollback()
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from None
+    except svc.FsValidationError as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={
+            "message": str(e), "validation": _validation(e.result).model_dump(mode="json")}) from None
+    except svc.FsConflictError as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    except svc.FsError as e:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    db.commit()
 
 
 @router.get("/meta", response_model=FsMeta)
@@ -163,13 +200,21 @@ def list_statements(user: CurrentUser, fiscal_year: int | None = None, basis: st
     order = {t: i for i, t in enumerate(FS_STATEMENT_TYPES)}
     items = sorted(db.scalars(q).all(),
                    key=lambda s: (-s.fiscal_year, s.basis, order.get(s.statement_type, 99)))
-    return [StatementListItem.model_validate(s) for s in items]
+    states = {a.entity_id: a.status for a in db.scalars(select(ApprovalState).where(
+        ApprovalState.entity_type == ENTITY_FS_STATEMENT, ApprovalState.entity_id.in_([x.id for x in items]),
+        ApprovalState.is_deleted == False)).all()} if items else {}  # noqa: E712
+    out = []
+    for x in items:
+        row = StatementListItem.model_validate(x)
+        row.approval_status = states.get(x.id) or (AS_CONFIRMED if x.status == "final" else "draft")
+        out.append(row)
+    return out
 
 
 @router.get("/statements/{statement_id}", response_model=StatementDetail)
 def get_statement(statement_id: UUID, user: CurrentUser, db: Session = Depends(get_db)) -> StatementDetail:
     """상세 — 트리 형태 금액 + 상태 이력 + 현재 검증 결과."""
-    return _detail(db, _get(db, statement_id))
+    return _detail(db, _get(db, statement_id), user.id)
 
 
 @router.get("/statements/{statement_id}/validation", response_model=ValidationResult)
@@ -177,38 +222,90 @@ def get_validation(statement_id: UUID, user: CurrentUser, db: Session = Depends(
     return _validation(svc.validate(db, _get(db, statement_id)))
 
 
-@router.post("/statements/{statement_id}/finalize", response_model=StatementDetail)
-def finalize(statement_id: UUID, body: FinalizeRequest | None = None,
-             user: User = Depends(require_icfr_manager), db: Session = Depends(get_db)) -> StatementDetail:
-    """draft → final. **검증 실패면 422** — `detail.validation` 에 어긋난 계정·차액이 항목별로 있다."""
+# ── 결재 (ADR-0038 2-2) — 확정은 결재선으로만. 예전 `/finalize`·`/reopen`(마스터 단독)은 없앴다 ─────────
+
+@router.post("/statements/{statement_id}/transition", response_model=StatementDetail)
+def transition(statement_id: UUID, req: TransitionRequest, user: User = Depends(require_icfr_staff),
+               db: Session = Depends(get_db)) -> StatementDetail:
+    """상태 전이 — 스코핑과 같은 규칙(ADR-0038 §2.2).
+
+    - draft → review(**검토 요청**): 검증 관문 통과 필수(실패 422 + 항목별 차이). 요청자 단계로 승인 경로 저장.
+    - review → draft: 요청자 **회수** / 검토·승인자 **반려**(사유 필수).
+    - review → confirmed(**승인**): 마스터관리자, 요청자·검토자 본인 불가, 사유 필수. 검증을 다시 돈다.
+      외부 승인 경로(마스터 작성분)는 `POST /external-approval` 로.
+    - confirmed → draft: 직접 불가 — `POST /reopen-requests` → 승인.
+    """
     s = _get(db, statement_id)
-    try:
-        svc.finalize(db, s, user.id, body.reason if body else None)
-    except svc.FsConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from None
-    except svc.FsValidationError as e:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={
-            "message": str(e),
-            "validation": _validation(e.result).model_dump(mode="json"),
-        }) from None
-    db.commit()
-    return _detail(db, s)
+    h = fs_approval.hooks(db, s)
+    reason = (req.reason or "").strip() or None
+    cur = approval_flow.view_state(db, h).status
+    if cur == "draft" and req.to_status == "review":
+        _flow(db, lambda: approval_flow.submit(db, h, user.id, reason))
+    elif cur == "review" and req.to_status == "draft":
+        _flow(db, lambda: approval_flow.back_to_draft(db, h, user.id, reason))
+    elif cur == "review" and req.to_status == "confirmed":
+        _flow(db, lambda: approval_flow.approve(db, h, user.id, reason))
+    elif cur == "confirmed" and req.to_status == "draft":
+        raise HTTPException(status_code=409, detail="확정된 재무제표는 재오픈 요청 후 승인을 받아야 작성 중으로 돌아갑니다")
+    else:
+        raise HTTPException(status_code=409, detail=f"'{cur}' 에서 '{req.to_status}' 로 바꿀 수 없습니다")
+    return _detail(db, s, user.id)
 
 
-@router.post("/statements/{statement_id}/reopen", response_model=StatementDetail)
-def reopen(statement_id: UUID, body: ReopenRequest, user: User = Depends(require_icfr_manager),
+@router.post("/statements/{statement_id}/review", response_model=StatementDetail)
+def review(statement_id: UUID, req: ReviewRequest, user: User = Depends(require_icfr_staff),
            db: Session = Depends(get_db)) -> StatementDetail:
-    """final → draft. **사유 필수**(422). 확정 상태가 아니면 409."""
+    """책임관리자 검토 — 일반관리자가 요청한 건만. 요청자 본인 불가."""
     s = _get(db, statement_id)
-    try:
-        svc.reopen(db, s, user.id, body.reason)
-    except svc.FsConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from None
-    except svc.FsError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from None
-    db.commit()
-    return _detail(db, s)
+    h = fs_approval.hooks(db, s)
+    _flow(db, lambda: approval_flow.review(db, h, user.id, req.action, (req.reason or "").strip() or None))
+    return _detail(db, s, user.id)
+
+
+@router.post("/statements/{statement_id}/reopen-requests", response_model=StatementDetail,
+             status_code=status.HTTP_201_CREATED)
+def request_reopen(statement_id: UUID, body: ReopenCreate, user: User = Depends(require_icfr_staff),
+                   db: Session = Depends(get_db)) -> StatementDetail:
+    """확정 재무제표 재오픈 요청 — **원칙적으로 수정 불가**(ADR-0038 §3.1). 명백한 수정 사유가 있을 때만,
+    보통은 다음 연도 재무제표에 반영한다. 사유 필수, 미결 요청은 하나만. 이전 방식 확정분도 여기서 요청한다."""
+    s = _get(db, statement_id)
+    h = fs_approval.hooks(db, s)
+    _flow(db, lambda: approval_flow.request_reopen(db, h, user.id, body.reason))
+    return _detail(db, s, user.id)
+
+
+@router.post("/statements/{statement_id}/reopen-requests/{request_id}/decide", response_model=StatementDetail)
+def decide_reopen(statement_id: UUID, request_id: UUID, body: ReopenDecision,
+                  user: User = Depends(require_icfr_staff), db: Session = Depends(get_db)) -> StatementDetail:
+    """재오픈 승인·거절 — 마스터관리자, 요청자 본인 불가. 승인 시 작성 중 + 버전 +1."""
+    s = _get(db, statement_id)
+    h = fs_approval.hooks(db, s)
+    _flow(db, lambda: approval_flow.decide_reopen(db, h, user.id, request_id, body.approve,
+                                                  (body.reason or "").strip() or None))
+    return _detail(db, s, user.id)
+
+
+@router.post("/statements/{statement_id}/external-approval", response_model=StatementDetail)
+def external_approval(statement_id: UUID, purpose: str = Form(...), approver_body: str = Form(...),
+                      approved_on: str = Form(...), reference: str | None = Form(default=None),
+                      files: list[UploadFile] = File(...), user: User = Depends(require_icfr_staff),
+                      db: Session = Depends(get_db)) -> StatementDetail:
+    """대표이사·이사회 **외부 승인 기록**(ADR-0038 §2.2.1) — 증빙 파일 필수(PDF·이미지, 각 20MB)."""
+    s = _get(db, statement_id)
+    h = fs_approval.hooks(db, s)
+    ev = [approval_flow.EvidenceFile(filename=f.filename or "", content_type=f.content_type,
+                                     data=f.file.read(approval_flow.MAX_EVIDENCE_BYTES + 1)) for f in files]
+    _flow(db, lambda: approval_flow.record_external(db, h, user.id, purpose=purpose, approver_body=approver_body,
+                                                    approved_on=approved_on, reference=reference, files=ev))
+    return _detail(db, s, user.id)
+
+
+@router.get("/statements/{statement_id}/governance-events", response_model=list[GovernanceEventRead])
+def list_governance_events(statement_id: UUID, user: CurrentUser, db: Session = Depends(get_db)
+                           ) -> list[GovernanceEventRead]:
+    """검토·승인·재오픈 이력(최신순) — 지울 수 없는 기록. 조회는 전 역할."""
+    s = _get(db, statement_id)
+    return av.events(db, ENTITY_FS_STATEMENT, s.id)
 
 
 # ── 8-B 엑셀 업로드 ─────────────────────────────────────────
@@ -248,7 +345,7 @@ def _statement_results(applied: dict, *, committed: bool, finalize: bool) -> lis
         out.append({"fiscal_year": res["fiscal_year"], "statement_id": st.id if committed else None,
                     "status": st.status if committed else "draft",
                     "finalize_candidate": res["finalize_candidate"] and finalize,
-                    "finalized": res["finalized"], "ok": v["ok"], "errors": items(v["errors"]),
+                    "review_requested": res.get("review_requested", False), "ok": v["ok"], "errors": items(v["errors"]),
                     "skipped": items(v["skipped"]), "checks_count": len(v["checks"]),
                     "suspense": res.get("suspense", [])})
     return out
@@ -471,9 +568,11 @@ def upload_attach(file: UploadFile = File(...), mode: str = Form(default="previe
     if mode == "preview":
         if not p.blocked:
             try:
-                # 확정 재무제표가 있어도 preview 는 결과를 보여 준다 — draft 로 가정해 넣어 본 뒤 롤백
+                # 확정·검토 중 재무제표가 있어도 preview 는 결과를 보여 준다 — draft 로 가정해 넣어 본 뒤 롤백
                 for st in p.statements.values():
                     st.status = "draft"
+                    if (ast := svc.approval_state(db, st.id)) is not None:
+                        ast.status = "draft"
                 db.flush()
                 applied = attach.apply(db, parsed, p, user.id, finalize=False, suspense=suspense)
                 resp["statements"] = _statement_results(applied, committed=False, finalize=opts.finalize)
@@ -573,7 +672,7 @@ def resolve_suspense(statement_id: UUID, amount_id: UUID, body: SuspenseResolveR
         db.rollback()
         raise HTTPException(status_code=422, detail=str(e)) from None
     db.commit()
-    return _detail(db, s)
+    return _detail(db, s, user.id)
 
 
 @router.patch("/statements/{statement_id}", response_model=StatementDetail)
@@ -588,4 +687,4 @@ def update_statement(statement_id: UUID, body: StatementUpdate, user: User = Dep
     except svc.FsError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
     db.commit()
-    return _detail(db, s)
+    return _detail(db, s, user.id)

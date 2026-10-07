@@ -1,3 +1,5 @@
+import type { GovernanceInfo } from '@/features/governance/types'
+
 /**
  * 재무제표 (ADR-0037, 8-D) — 백엔드 `schemas/financial_statement.py` 와 1:1.
  *
@@ -36,7 +38,11 @@ export interface StatementListItem {
   source_kind: string | null
   source_filename: string | null
   source_sheet: string | null
+  /** 결재 상태(ADR-0038 2-2) — 검토 단계는 여기에만 있다. `status` 는 draft/final 그대로 */
+  approval_status: ApprovalStatus
 }
+
+export type ApprovalStatus = 'draft' | 'review' | 'confirmed'
 
 export interface AmountNode {
   id: string
@@ -95,6 +101,9 @@ export interface StatementDetail extends StatementListItem {
   tree: AmountNode[]
   events: StatusEvent[]
   validation: ValidationResult
+  /** 확정인데 결재 기록이 없음 = 2단계 이전 방식(마스터 단독) 확정 — 그대로 인정 */
+  legacy_confirmed: boolean
+  governance: GovernanceInfo
 }
 
 export interface SuspenseResolved {
@@ -134,7 +143,8 @@ export interface UploadStatementResult {
   statement_id: string | null
   status: string
   finalize_candidate: boolean
-  finalized: boolean
+  /** 업로드 직후 검토 요청됨 — 업로드가 직접 확정하지 않는다(ADR-0038 2-2) */
+  review_requested: boolean
   ok: boolean
   errors: { rule: string; raw_row_no: number | null; account_name: string | null; diff: Amount | null }[]
   skipped: unknown[]

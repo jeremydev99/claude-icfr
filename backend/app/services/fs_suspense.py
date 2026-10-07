@@ -101,6 +101,8 @@ def resolve(db: Session, statement: FsStatement, amount_id: UUID, action: str, r
     """임시계정 해소. draft 에서만(확정 후엔 재오픈). 결과 행 정보를 돌려준다."""
     if statement.status != "draft":
         raise svc.FsConflictError("확정된 재무제표입니다 — 재오픈 후 해소하세요")
+    if svc.in_review(db, statement):
+        raise svc.FsConflictError("검토 중인 재무제표입니다 — 회수·반려 후 해소하세요")
     if action not in ACTIONS:
         raise svc.FsError(f"해소 방법이 올바르지 않습니다: {action} (가능: {', '.join(ACTIONS)})")
     reason = (reason or "").strip()

@@ -141,8 +141,8 @@ export default function UploadDialog({ open, onOpenChange, onDone }: {
     try {
       const r = await send(mode, params('commit'))
       queryClient.invalidateQueries({ queryKey: queryKeys.fs.all(tenantId) })
-      const finalized = r.statements.filter((s) => s.finalized).map((s) => s.fiscal_year)
-      toast.success(`저장했습니다 — ${r.statements.length}개 연도${finalized.length ? ` (확정 ${finalized.join(', ')})` : ''}`)
+      const submitted = r.statements.filter((s) => s.review_requested).map((s) => s.fiscal_year)
+      toast.success(`저장했습니다 — ${r.statements.length}개 연도${submitted.length ? ` (검토 요청 ${submitted.join(', ')})` : ''}`)
       onDone(r.statement_type, r.statements[0]?.fiscal_year ?? null)
       close(false)
     } catch (e) {
@@ -235,9 +235,9 @@ export default function UploadDialog({ open, onOpenChange, onDone }: {
                     전기도 저장
                   </label>
                 )}
-                <label className="flex items-center gap-1" title="정산표를 결합할 계획이면 끄세요 — 결합은 작성 중 상태에서만 됩니다">
+                <label className="flex items-center gap-1" title="확정은 결재선(검토 요청 → 검토 → 승인)으로만 됩니다. 정산표를 결합할 계획이면 끄세요 — 결합은 작성 중 상태에서만 됩니다">
                   <input type="checkbox" checked={finalize} onChange={(e) => setFinalize(e.target.checked)} />
-                  검증 통과 시 최신 연도 확정
+                  검증 통과 시 최신 연도 검토 요청
                 </label>
               </div>
               <div className="col-span-full flex justify-end">
@@ -374,7 +374,7 @@ function StatementResults({ items }: { items: UploadStatementResult[] }) {
                 : <span className="text-red-700">오류 {s.errors.length}건</span>}
             </td>
             <td>{s.suspense.length ? s.suspense.map((x) => `${x.parent_name} ${formatAmount(x.amount)}`).join(' / ') : '—'}</td>
-            <td>{s.finalized ? <Badge>확정됨</Badge> : s.finalize_candidate ? (s.ok ? '저장 시 확정' : '작성 중으로 저장') : '작성 중'}</td>
+            <td>{s.review_requested ? <Badge>검토 요청됨</Badge> : s.finalize_candidate ? (s.ok ? '저장 시 검토 요청' : '작성 중으로 저장') : '작성 중'}</td>
           </tr>
         ))}
       </tbody>

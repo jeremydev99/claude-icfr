@@ -22,6 +22,7 @@ from app.models.tenant import Tenant, UserTenantAccess
 from app.models.user import User
 from app.models.user_mgmt import UserRole
 from app.services import financial_statement as svc
+from tests import _fs_approval as fsa
 from tests.conftest import TestingSessionLocal
 
 PW = "pw123456"
@@ -235,7 +236,7 @@ def test_finalize_rejected_when_validation_fails(client: TestClient, mgr: dict) 
     with session() as db:
         st, acc = _bs(db, 2106, {**BALANCED, "cash": 105})
         sid, ca_id = st.id, acc["CA"].id
-    r = client.post(f"/api/fs/statements/{sid}/finalize", headers=mgr, json={})
+    r = fsa.submit(client, sid, fsa.lead_headers(client, mgr))   # 검토 요청 단계에서 검증 관문
     assert r.status_code == 422, r.text
     errs = r.json()["detail"]["validation"]["errors"]
     assert errs[0]["rule"] == "subtotal" and errs[0]["account_id"] == str(ca_id)
@@ -255,7 +256,7 @@ def test_q6a_subtotal_without_children_blocks_finalize(client: TestClient, mgr: 
         sid, lonely_id = st.id, lonely.id
         r = svc.validate(db, st)
         assert [(e["rule"], e["account_id"]) for e in r["errors"]] == [(svc.RULE_SUBTOTAL_NO_CHILDREN, lonely_id)]
-    assert client.post(f"/api/fs/statements/{sid}/finalize", headers=mgr, json={}).status_code == 422
+    assert fsa.submit(client, sid, fsa.lead_headers(client, mgr)).status_code == 422
 
 
 def test_q6b_subtotal_amount_missing_is_skipped_not_blocking(client: TestClient, mgr: dict) -> None:
@@ -265,7 +266,7 @@ def test_q6b_subtotal_amount_missing_is_skipped_not_blocking(client: TestClient,
     v = client.get(f"/api/fs/statements/{sid}/validation", headers=mgr).json()
     assert v["ok"] is True and v["errors"] == []
     assert [(s["rule"], s["account_id"]) for s in v["skipped"]] == [("subtotal_amount_missing", str(ca_id))]
-    r = client.post(f"/api/fs/statements/{sid}/finalize", headers=mgr, json={"reason": "결산 확정"})
+    r = fsa.confirm(client, sid, mgr, "결산 확정")
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["status"] == "final"
@@ -285,7 +286,7 @@ def test_tolerance_boundary_and_recorded_on_finalize(client: TestClient, mgr: di
         r = svc.validate(db, over)
         assert r["ok"] is False and r["errors"][0]["diff"] == D(-2)
         sid, ca_id = at_edge.id, acc["CA"].id
-    r = client.post(f"/api/fs/statements/{sid}/finalize", headers=mgr, json={})
+    r = fsa.confirm(client, sid, mgr)
     assert r.status_code == 200, r.text
     ev = r.json()["events"][-1]
     assert D(ev["tolerance"]) == D(1)
@@ -301,32 +302,34 @@ def test_reopen_twice_keeps_history(client: TestClient, mgr: dict, viewer: dict)
         st, _ = _bs(db, 2111)
         sid = st.id
     url = f"/api/fs/statements/{sid}"
-    assert client.post(f"{url}/reopen", headers=mgr, json={"reason": "x"}).status_code == 409   # draft
+    lead = fsa.lead_headers(client, mgr)
+    assert client.post(f"{url}/reopen-requests", headers=lead, json={"reason": "x"}).status_code == 409   # draft
     for i in range(2):
-        assert client.post(f"{url}/finalize", headers=mgr, json={}).status_code == 200
-        assert client.post(f"{url}/reopen", headers=mgr, json={"reason": "  "}).status_code == 422
-        r = client.post(f"{url}/reopen", headers=mgr, json={"reason": f"수정 {i + 1}"})
+        assert fsa.confirm(client, sid, mgr).status_code == 200
+        assert client.post(f"{url}/reopen-requests", headers=lead, json={"reason": "  "}).status_code == 422
+        r = fsa.reopen(client, sid, mgr, f"수정 {i + 1}")
         assert r.status_code == 200, r.text
     evs = client.get(url, headers=viewer).json()["events"]
     assert [(e["from_status"], e["to_status"]) for e in evs] == [("draft", "final"), ("final", "draft")] * 2
-    assert [e["reason"] for e in evs if e["to_status"] == "draft"] == ["수정 1", "수정 2"]
+    assert [e["reason"] for e in evs if e["to_status"] == "draft"] == ["재오픈 승인 — 수정 1", "재오픈 승인 — 수정 2"]
     d = client.get(url, headers=viewer).json()
     assert d["status"] == "draft" and d["finalized_at"] is None
+    assert d["approval_status"] == "draft" and d["governance"]["version"] == 3     # 재오픈마다 +1
 
 
-def test_finalize_and_reopen_require_icfr_manager(client: TestClient, viewer: dict) -> None:
+def test_approval_requires_icfr_tier(client: TestClient, viewer: dict) -> None:
     with session() as db:
         st, _ = _bs(db, 2112)
         sid = st.id
     assert client.get(f"/api/fs/statements/{sid}", headers=viewer).status_code == 200
-    assert client.post(f"/api/fs/statements/{sid}/finalize", headers=viewer, json={}).status_code == 403
+    assert fsa.submit(client, sid, viewer).status_code == 403
 
 
 def test_final_statement_rejects_amount_writes(client: TestClient, mgr: dict) -> None:
     with session() as db:
         st, acc = _bs(db, 2113)
         sid, cash_id = st.id, acc["cash"].id
-    assert client.post(f"/api/fs/statements/{sid}/finalize", headers=mgr, json={}).status_code == 200
+    assert fsa.confirm(client, sid, mgr).status_code == 200
     with session() as db:
         st = svc.get_statement(db, sid)
         with pytest.raises(svc.FsConflictError):
@@ -431,7 +434,7 @@ def test_audit_columns_record_user_id(client: TestClient, mgr: dict) -> None:
         st, _ = _bs(db, 2121)
         sid = st.id
         assert st.created_by == "system:test"
-    assert client.post(f"/api/fs/statements/{sid}/finalize", headers=mgr, json={}).status_code == 200
+    assert fsa.confirm(client, sid, mgr).status_code == 200
     uid = str(_user_id("fs-mgr@acme.example"))
     with session() as db:
         st = db.scalars(select(FsStatement).where(FsStatement.id == sid)).one()
@@ -457,5 +460,5 @@ def test_update_tolerance(client: TestClient, mgr: dict, viewer: dict) -> None:
     assert r.json()["validation"]["ok"] and D(r.json()["tolerance"]) == D(1)
     assert client.patch(f"/api/fs/statements/{sid}", headers=mgr, json={"tolerance": "-1"}).status_code == 422
     assert client.patch(f"/api/fs/statements/{sid}", headers=viewer, json={"tolerance": "0"}).status_code == 403
-    assert client.post(f"/api/fs/statements/{sid}/finalize", headers=mgr, json={}).status_code == 200
+    assert fsa.confirm(client, sid, mgr).status_code == 200
     assert client.patch(f"/api/fs/statements/{sid}", headers=mgr, json={"tolerance": "0"}).status_code == 409

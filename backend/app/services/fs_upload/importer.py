@@ -28,13 +28,12 @@ from app.models.financial_statement import (
     FsStatement,
 )
 from app.services import financial_statement as svc
-from app.services import fs_suspense
+from app.services import fs_approval, fs_suspense
 from app.services.fs_upload.cells import norm
 from app.services.fs_upload.parsed import KIND_DISCLOSURE, KIND_HORIZONTAL, ParsedRow, ParsedSheet
 from app.services.fs_upload.structure import subtotal_diffs
 
 NEW = "new"
-FINALIZE_REASON = "업로드 자동 확정(8-B) — 최신 연도 검증 통과"
 
 
 @dataclass
@@ -268,11 +267,12 @@ def apply(db: Session, sheet: ParsedSheet, p: Plan, opts: UploadOptions, actor_i
         absorbed = fs_suspense.absorb(db, st, result, source=f"upload:{sheet.sheet_name}") if opts.suspense else []
         if absorbed:
             result = svc.validate(db, st)
-        finalized = False
+        # "확정" 옵션 = 검토 요청(ADR-0038 2-2) — 업로드가 결재 없이 확정하는 경로는 없다
+        submitted = False
         if finalize and y == latest and result["ok"]:
-            svc.finalize(db, st, actor_id, FINALIZE_REASON)
-            finalized = True
-        results.append({"fiscal_year": y, "statement": st, "validation": result, "finalized": finalized,
+            db.flush()
+            submitted = fs_approval.submit_after_upload(db, st, actor_id)
+        results.append({"fiscal_year": y, "statement": st, "validation": result, "review_requested": submitted,
                         "finalize_candidate": y == latest, "suspense": absorbed})
     return {"accounts": acc, "statements": results, "structure_warnings": warns}
 

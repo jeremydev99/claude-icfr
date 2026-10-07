@@ -3,24 +3,18 @@ import { useFiscal } from '@/lib/useFiscal'
 import OpenProposalsCard from '@/features/proposals/OpenProposalsCard'
 import EmptyState from '@/components/illustration/EmptyState'
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Loader2, Lock, Upload } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import ApprovalPanel from '@/features/governance/ApprovalPanel'
+import GovernanceHistory from '@/features/governance/GovernanceHistory'
 import { useAuthStore } from '@/features/auth/store'
 import { isIcfrManagerForUser } from '@/features/auth/permissions.pure'
-import { errorDetail, errorValidation, useFsMeta, useFsStatement, useFsStatements, useFsWrite } from '../api/useFs'
+import { errorDetail, errorValidation, useFsApproval, useFsMeta, useFsStatement, useFsStatements, useFsWrite } from '../api/useFs'
 import { UNIT_LABEL, allExpanded, errorsByAccount, formatAmount, initialExpanded, pathTo, usesStatementOrder } from '../fsTree.pure'
 import StatementTree from '../components/StatementTree'
 import ValidationPanel from '../components/ValidationPanel'
@@ -32,8 +26,9 @@ import type { StatementDetail, ValidationResult } from '../types'
 /**
  * 재무제표 화면 (8-D1, ADR-0037 §5) — 회계연도 × 연결/별도 × 종류(BS/PL/CF).
  *
- * 데이터는 엑셀 업로드(8-B)·정산표 결합(8-B2)으로 들어온다. 여기서는 트리 금액·검증·확정/재오픈·
- * 허용 오차·임시계정 해소를 한다. 쓰기는 `icfr_manager` 만(서버도 막는다) — 프론트 판정은 `tenant_roles`.
+ * 데이터는 엑셀 업로드(8-B)·정산표 결합(8-B2)으로 들어온다. 여기서는 트리 금액·검증·허용 오차·임시계정 해소를
+ * 한다. 쓰기는 `icfr_manager` 만(서버도 막는다) — 프론트 판정은 `tenant_roles`.
+ * **확정·재오픈은 결재선**(ADR-0038 2-2) — 검토 요청 → (책임관리자 검토) → 마스터 승인. 버튼은 서버가 준 `governance.can` 만 본다.
  */
 export default function FinancialStatementsPage() {
   const fiscal = useFiscal()
@@ -46,6 +41,18 @@ export default function FinancialStatementsPage() {
   const [stype, setStype] = useState('BS')
   const [uploadOpen, setUploadOpen] = useState(false)
   const [view, setView] = useState<'amounts' | 'template'>('amounts')
+  // 결재 대기함에서 왔으면(`?statement=`) 그 재무제표를 연다
+  const [searchParams] = useSearchParams()
+  const wanted = searchParams.get('statement')
+  useEffect(() => {
+    const s = wanted ? list?.find((x) => x.id === wanted) : undefined
+    if (s) {
+      setYear(s.fiscal_year)
+      setBasis(s.basis)
+      setStype(s.statement_type)
+      setView('amounts')
+    }
+  }, [wanted, list])
   const uploadDialog = (
     <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} onDone={(t, y) => {
       if (t) setStype(t)
@@ -111,13 +118,13 @@ export default function FinancialStatementsPage() {
             return (
               <Button key={t} size="sm" variant={stype === t ? 'default' : 'outline'} disabled={!s}
                 onClick={() => setStype(t)}>
-                {typeLabel(t)}{s?.status === 'final' && ' ✓'}
+                {typeLabel(t)}{s?.approval_status === 'confirmed' ? ' ✓' : s?.approval_status === 'review' ? ' · 검토 중' : ''}
               </Button>
             )
           })}
         </div>
         {!isManager && (
-          <Badge variant="outline" className="gap-1"><Lock className="h-3 w-3" /> 읽기 전용 · 내부회계관리자만 확정</Badge>
+          <Badge variant="outline" className="gap-1"><Lock className="h-3 w-3" /> 읽기 전용 · 금액 수정은 내부회계관리자</Badge>
         )}
         <span className="ml-auto">{uploadButton}</span>
       </div>
@@ -140,13 +147,17 @@ export default function FinancialStatementsPage() {
   )
 }
 
+const APPROVAL_LABEL = { draft: '작성 중', review: '검토 중', confirmed: '확정' } as const
+
 function StatementView({ detail, isManager }: { detail: StatementDetail; isManager: boolean }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => initialExpanded(detail.tree, 1))
   const [highlight, setHighlight] = useState<string | null>(null)
   const [failed, setFailed] = useState<ValidationResult | null>(null)
   const validation = failed ?? detail.validation
   const errors = useMemo(() => errorsByAccount(validation.errors), [validation])
-  const draft = detail.status === 'draft'
+  // 작성 중일 때만 고친다 — 검토 중이면 서버가 409(검토자가 보는 숫자가 바뀌면 안 된다)
+  const draft = detail.approval_status === 'draft'
+  const approval = useFsApproval(detail.id)
 
   useEffect(() => {
     setExpanded(initialExpanded(detail.tree, 1))
@@ -175,18 +186,34 @@ function StatementView({ detail, isManager }: { detail: StatementDetail; isManag
       <Card>
         <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 py-3 text-xs">
           <span>
-            상태 <Badge variant={draft ? 'secondary' : 'default'}>{draft ? '작성 중' : '확정'}</Badge>
+            상태 <Badge variant={draft ? 'secondary' : 'default'}>{APPROVAL_LABEL[detail.approval_status]}</Badge>
+            {detail.legacy_confirmed && <span className="ml-1 text-muted-foreground">(이전 방식 확정 — 결재선 도입 전)</span>}
           </span>
           <span>단위 <b>{UNIT_LABEL[detail.unit] ?? detail.unit}</b> · {detail.currency}</span>
           <ToleranceField detail={detail} editable={isManager && draft} />
           {detail.source_filename && (
             <span className="text-muted-foreground">원천 {detail.source_filename} / {detail.source_sheet}</span>
           )}
-          <span className="ml-auto flex gap-2">
-            {isManager && <StatusButton detail={detail} onFailed={setFailed} />}
-          </span>
         </CardContent>
       </Card>
+
+      <ApprovalPanel status={detail.approval_status} g={detail.governance} pending={approval.isPending}
+        warnBeforeApprove={detail.validation.ok ? undefined : '검증 오류가 있습니다 — 승인하면 서버가 다시 검증해 거부합니다.'}
+        onAction={(a) => approval.mutate(a, {
+          onSuccess: () => {
+            setFailed(null)
+            toast.success('처리했습니다')
+          },
+          onError: (e) => {
+            setFailed(errorValidation(e))
+            toast.error(errorDetail(e, '처리하지 못했습니다'))
+          },
+        })} />
+      {detail.approval_status === 'confirmed' && (
+        <p className="text-xs text-muted-foreground">
+          확정된 재무제표는 원칙적으로 수정하지 않습니다 — 대부분은 다음 연도 재무제표에 반영합니다. 명백한 수정 사유가 있을 때만 재오픈을 요청하세요.
+        </p>
+      )}
 
       <SuspensePanel statementId={detail.id} tree={detail.tree} canEdit={isManager && draft} onSelect={select} />
 
@@ -223,7 +250,7 @@ function StatementView({ detail, isManager }: { detail: StatementDetail; isManag
 
       {detail.events.length > 0 && (
         <Card>
-          <CardHeader className="py-3"><CardTitle className="text-sm">확정·재오픈 이력</CardTitle></CardHeader>
+          <CardHeader className="py-3"><CardTitle className="text-sm">확정·재오픈 기록</CardTitle></CardHeader>
           <CardContent className="space-y-1 text-xs">
             {detail.events.map((ev) => (
               <div key={ev.id} className="flex gap-3">
@@ -238,6 +265,8 @@ function StatementView({ detail, isManager }: { detail: StatementDetail; isManag
           </CardContent>
         </Card>
       )}
+      <GovernanceHistory url={`/api/fs/statements/${detail.id}/governance-events`}
+        refreshKey={`${detail.governance.version}-${detail.approval_status}`} />
     </div>
   )
 }
@@ -265,60 +294,5 @@ function ToleranceField({ detail, editable }: { detail: StatementDetail; editabl
       <Input value={value} onChange={(e) => setValue(e.target.value)} onBlur={commit}
         onKeyDown={(e) => e.key === 'Enter' && commit()} className="h-7 w-24 text-right text-xs" />
     </label>
-  )
-}
-
-function StatusButton({ detail, onFailed }: { detail: StatementDetail; onFailed: (v: ValidationResult | null) => void }) {
-  const [open, setOpen] = useState(false)
-  const [reason, setReason] = useState('')
-  const mutation = useFsWrite(detail.id)
-  const finalizing = detail.status === 'draft'
-
-  const submit = () => {
-    if (!finalizing && !reason.trim()) return toast.error('재오픈 사유를 입력하세요')
-    mutation.mutate(finalizing ? { kind: 'finalize', reason: reason.trim() || undefined } : { kind: 'reopen', reason: reason.trim() }, {
-      onSuccess: () => {
-        onFailed(null)
-        setOpen(false)
-        setReason('')
-        toast.success(finalizing ? '확정했습니다' : '재오픈했습니다')
-      },
-      onError: (e) => {
-        onFailed(errorValidation(e))
-        setOpen(false)
-        toast.error(errorDetail(e, finalizing ? '확정하지 못했습니다' : '재오픈하지 못했습니다'))
-      },
-    })
-  }
-
-  return (
-    <>
-      <Button size="sm" variant={finalizing ? 'default' : 'outline'}
-        disabled={finalizing && !detail.validation.ok} onClick={() => setOpen(true)}
-        title={finalizing && !detail.validation.ok ? '검증 오류를 먼저 해결하세요' : undefined}>
-        {finalizing ? '확정' : '재오픈'}
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{finalizing ? '재무제표 확정' : '재무제표 재오픈'}</DialogTitle>
-            <DialogDescription>
-              {finalizing
-                ? '확정하면 금액을 바꿀 수 없습니다(바꾸려면 재오픈). 허용 오차와 차액이 이력에 남습니다.'
-                : '재오픈하면 금액을 다시 바꿀 수 있습니다. 사유가 이력에 남습니다.'}
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
-            placeholder={finalizing ? '확정 메모 (선택)' : '재오픈 사유 (필수)'} />
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>취소</Button>
-            <Button onClick={submit} disabled={mutation.isPending}>
-              {mutation.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
-              {finalizing ? '확정' : '재오픈'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
   )
 }

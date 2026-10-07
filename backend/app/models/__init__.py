@@ -19,6 +19,7 @@ from app.models.financial_statement import (  # noqa: F401
     FsTemplateLink,
 )
 from app.models.governance import (  # noqa: F401
+    ApprovalState,
     ExternalApproval,
     GovernanceEvent,
     GovernanceFile,

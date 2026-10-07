@@ -13,7 +13,14 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.minio_client import get_object_stream
-from app.models.governance import GovernanceFile
+from app.models.financial_statement import FS_BASIS_LABELS, FS_STATEMENT_LABELS, FsStatement
+from app.models.governance import (
+    AS_CONFIRMED,
+    AS_REVIEW,
+    ENTITY_FS_STATEMENT,
+    ApprovalState,
+    GovernanceFile,
+)
 from app.models.proposal import P_PENDING_REVIEW, P_REVIEWED, Proposal
 from app.models.scoping import STATUS_CONFIRMED, STATUS_REVIEW, Scoping
 from app.services import approval
@@ -52,6 +59,26 @@ def inbox(user: CurrentUser, db: Session = Depends(get_db)) -> list[InboxItem]:
             if flag:
                 out.append(InboxItem(entity_type="scoping", entity_id=s.id, title=title, action=action,
                                      label=label, path="/scoping"))
+    # 공통 결재 상태(2-1)를 쓰는 문서 — 재무제표(2-2)
+    for st in db.query(ApprovalState).filter(ApprovalState.entity_type == ENTITY_FS_STATEMENT,
+                                             ApprovalState.is_deleted == False,  # noqa: E712
+                                             ApprovalState.status.in_([AS_REVIEW, AS_CONFIRMED])).all():
+        fs = db.get(FsStatement, st.entity_id)
+        if fs is None or fs.is_deleted:
+            continue
+        c = approval.can(db, st, user.id)
+        title = (f"{fs.fiscal_year} 회계연도 {FS_STATEMENT_LABELS.get(fs.statement_type, fs.statement_type)}"
+                 f"({FS_BASIS_LABELS.get(fs.basis, fs.basis)})")
+        for flag, action, label in [
+            (c.review, "review", "책임관리자 검토"),
+            (c.approve, "approve", "승인(확정)"),
+            (c.external_approve, "external_approve", "대표이사·이사회 승인 증빙 등록"),
+            (c.reopen_decide, "reopen_decide", "재오픈 승인 여부 결정"),
+            (c.reopen_external, "reopen_external", "재오픈 외부 승인 증빙 등록"),
+        ]:
+            if flag:
+                out.append(InboxItem(entity_type=ENTITY_FS_STATEMENT, entity_id=fs.id, title=title, action=action,
+                                     label=label, path=f"/financial-statements?statement={fs.id}"))
     for p in db.query(Proposal).filter(Proposal.is_deleted == False,  # noqa: E712
                                        Proposal.status.in_([P_PENDING_REVIEW, P_REVIEWED])).all():
         c = proposal_svc.can(db, p, user.id)

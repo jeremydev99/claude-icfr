@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from fastapi.testclient import TestClient
 
+from tests import _fs_approval as fsa
 from tests.test_fs_upload import (
     _attach,
     _disclosure_2y,
@@ -56,7 +57,7 @@ def test_absorb_blocks_finalize_and_numbers_stay_original(client: TestClient) ->
     assert (D(it[PARENT]["actual"]), D(it[PARENT]["expected"])) == (D(500), D(400))
     d = client.get(f"/api/fs/statements/{sid}", headers=h).json()
     assert D(_find(d["tree"], PARENT)["amount"]) == D(500)                     # 원본 숫자는 그대로
-    r = client.post(f"/api/fs/statements/{sid}/finalize", headers=h, json={})
+    r = fsa.submit(client, sid, fsa.lead_headers(client, h))
     assert r.status_code == 422
     assert {e["rule"] for e in r.json()["detail"]["validation"]["errors"]} == {"suspense_unresolved"}
 
@@ -74,7 +75,7 @@ def test_fix_subtotal_rebalances_chained_difference(client: TestClient) -> None:
     assert D(parent["amount"]) == D(400) and D(parent["raw_meta"]["corrected_from"]) == D(500)
     history = [x for x in client.get(f"/api/fs/statements/{sid}/suspense", headers=h).json() if x["is_deleted"]]
     assert [x["resolved"]["action"] for x in history] == ["fix_subtotal"]
-    assert client.post(f"/api/fs/statements/{sid}/finalize", headers=h, json={}).status_code == 200
+    assert fsa.confirm(client, sid, h).status_code == 200
 
 
 def test_accept_keeps_difference_with_reason(client: TestClient) -> None:
@@ -127,5 +128,5 @@ def test_resolve_guards(client: TestClient) -> None:
     # 확정 상태에서는 해소하지 않는다 — 모두 accept 로 확정한 뒤 재오픈 없이 시도
     for x in _items(client, h, sid).values():
         assert _resolve(client, h, sid, x["amount_id"], action="accept", reason="유지").status_code == 200
-    assert client.post(f"/api/fs/statements/{sid}/finalize", headers=h, json={}).status_code == 200
+    assert fsa.confirm(client, sid, h).status_code == 200
     assert _resolve(client, h, sid, aid, action="fix_subtotal", reason="x").status_code == 409

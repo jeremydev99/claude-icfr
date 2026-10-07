@@ -33,11 +33,10 @@ from app.models.financial_statement import (
     FsStatement,
 )
 from app.services import financial_statement as svc
-from app.services import fs_suspense
+from app.services import fs_approval, fs_suspense
 from app.services.fs_upload.cells import norm, split_prefix
 from app.services.fs_upload.parsed import KIND_HORIZONTAL, ROW_LEAF, ParsedRow, ParsedSheet
 
-FINALIZE_REASON = "정산표 결합(8-B2) 후 자동 확정 — 최신 연도 검증 통과"
 MIN_BRIDGE_MATCH = 0.5   # 매핑 열 후보: 값 종류의 절반 이상이 공시 계정과 맞아야 한다
 
 
@@ -165,6 +164,8 @@ def plan(db: Session, sheet: ParsedSheet, opts: AttachOptions) -> AttachPlan:
     for y, s in p.statements.items():
         if s.status == FS_STATUS_FINAL:
             p.conflicts.append({"fiscal_year": y, "statement_id": s.id, "status": s.status})
+        elif svc.in_review(db, s):
+            p.conflicts.append({"fiscal_year": y, "statement_id": s.id, "status": "review"})
 
     # 공시 계정 후보 — 결합으로 만든 COA 계정은 제외. 같은 이름이면 트리에서 가장 위(부모)를 고른다
     accounts = list(db.scalars(select(FsAccount).where(FsAccount.statement_type == stype, _alive(FsAccount))).all())
@@ -337,10 +338,11 @@ def apply(db: Session, sheet: ParsedSheet, p: AttachPlan, actor_id: UUID, *, fin
         absorbed = fs_suspense.absorb(db, st, result, source=f"attach:{sheet.sheet_name}") if suspense else []
         if absorbed:
             result = svc.validate(db, st)
-        finalized = False
+        # "확정" 옵션 = 검토 요청(ADR-0038 2-2) — 업로드가 결재 없이 확정하는 경로는 없다
+        submitted = False
         if finalize and y == latest and result["ok"]:
-            svc.finalize(db, st, actor_id, FINALIZE_REASON)
-            finalized = True
-        results.append({"fiscal_year": y, "statement": st, "validation": result, "finalized": finalized,
+            db.flush()
+            submitted = fs_approval.submit_after_upload(db, st, actor_id)
+        results.append({"fiscal_year": y, "statement": st, "validation": result, "review_requested": submitted,
                         "finalize_candidate": y == latest, "suspense": absorbed})
     return {"accounts": acc, "statements": results, "structure_warnings": []}

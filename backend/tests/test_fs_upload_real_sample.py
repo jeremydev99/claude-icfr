@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from app.services import fs_upload
 from app.services.fs_upload import structure
+from tests import _fs_approval as fsa
 from tests.test_fs_upload import XLSX, _tenant
 
 D = Decimal
@@ -68,7 +69,7 @@ def test_disclosure_commit_passes_gate(client: TestClient, content, sheet) -> No
                     files={"file": ("sample.xlsx", content, XLSX)})
     assert r.status_code == 200, r.text
     sts = {s["fiscal_year"]: s for s in r.json()["statements"]}
-    assert sts[2025]["status"] == "final" and sts[2025]["ok"]
+    assert sts[2025]["status"] == "draft" and sts[2025]["review_requested"] and sts[2025]["ok"]
     assert sts[2024]["ok"] and sts[2024]["status"] == "draft"
 
 
@@ -77,8 +78,8 @@ def test_horizontal_pl_commit(client: TestClient, content) -> None:
     r = client.post("/api/fs/upload", headers=h, data={"mode": "commit", "sheet": "PL정산표", "unit": "1"},
                     files={"file": ("sample.xlsx", content, XLSX)})
     assert r.status_code == 200, r.text
-    assert {s["fiscal_year"]: s["status"] for s in r.json()["statements"]} == \
-        {2025: "final", 2024: "draft", 2023: "draft"}
+    assert {s["fiscal_year"]: s["review_requested"] for s in r.json()["statements"]} == \
+        {2025: True, 2024: False, 2023: False}
 
 
 # ── 8-B2 정산표 결합 (8-C STEP 0 0.3 실측 고정) ──────────────────
@@ -94,7 +95,7 @@ def _up(client, h, content, path="/api/fs/upload", **data):
 
 def _reopen_2025(client, h, sts) -> None:
     sid = next(s["statement_id"] for s in sts if s["fiscal_year"] == 2025)
-    assert client.post(f"/api/fs/statements/{sid}/reopen", headers=h, json={"reason": "정산표 결합"}).status_code == 200
+    assert fsa.withdraw(client, sid, h).status_code == 200
 
 
 @pytest.mark.parametrize("stype,disc,hz,extra", [
@@ -118,7 +119,7 @@ def test_attach_worksheet_to_disclosure(client: TestClient, content, stype, disc
     com = _up(client, h, content, "/api/fs/upload/attach", mode="commit", sheet=hz, unit=1, **extra)
     assert com.status_code == 200, com.text
     got = {s["fiscal_year"]: (s["ok"], s["status"]) for s in com.json()["statements"]}
-    assert got == {2025: (True, "final"), 2024: (True, "draft")}
+    assert got == {2025: (True, "draft"), 2024: (True, "draft")}
     names = {r["name"] for r in com.json()["rows"]}
     if stype == "BS":
         assert {"감가상각누계액_건물", "감가상각누계액_차량운반구", "감가상각누계액_비품"} <= names
@@ -212,7 +213,7 @@ def test_real_scoping_from_financial_statements(client: TestClient, content) -> 
             r = _up(client, h, content, "/api/fs/upload/attach", mode="commit", sheet=hz, unit=1, finalize="false", **extra)
             assert r.status_code == 200, r.text
         for s in up.json()["statements"]:
-            f = client.post(f"/api/fs/statements/{s['statement_id']}/finalize", headers=h, json={})
+            f = fsa.confirm(client, s["statement_id"], h)
             assert f.status_code == 200, (disc, s["fiscal_year"], f.text[:300])
     for stype in ("BS", "PL", "CF"):
         m = client.get("/api/fs/template-matches", headers=h, params={"statement_type": stype}).json()

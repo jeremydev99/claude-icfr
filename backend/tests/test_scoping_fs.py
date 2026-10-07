@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from seeds.seed_scoping_template import load_template
+from tests import _fs_approval as fsa
 from tests.conftest import TestingSessionLocal
 from tests.test_fs_upload import PL_ROWS, _post, _tenant, _wb, bs_wb, horizontal_bs
 
@@ -35,13 +36,12 @@ def _fs_2025(client, h, **kw) -> dict[tuple[str, int], str]:
     """공시 BS·PL 2025(확정)·2024(확정) — {(종류, 연도): statement_id}."""
     out = {}
     for wb in (bs_wb(**kw), _pl_wb(**kw)):
-        r = _post(client, h, wb, mode="commit", include_prior="true")
+        r = _post(client, h, wb, mode="commit", include_prior="true", finalize="false")
         assert r.status_code == 200, r.text
         for s in r.json()["statements"]:
             out[(r.json()["statement_type"], s["fiscal_year"])] = s["statement_id"]
-    for (t, y), sid in out.items():
-        if y == 2024:
-            assert client.post(f"/api/fs/statements/{sid}/finalize", headers=h, json={}).status_code == 200
+    for sid in out.values():   # 확정은 결재선으로만(ADR-0038 2-2) — 업로드는 확정하지 않는다
+        assert fsa.confirm(client, sid, h).status_code == 200
     return out
 
 
@@ -105,7 +105,10 @@ def test_prior_amount_from_draft_comparative(client: TestClient) -> None:
     """전기(2024)가 비교 열로 들어와 작성 중이어도 전년 금액으로 쓴다(당기는 확정본만)."""
     h, _ = _tenant(client)
     for wb in (bs_wb(), _pl_wb()):
-        assert _post(client, h, wb, mode="commit", include_prior="true").status_code == 200   # 2024 는 draft
+        r = _post(client, h, wb, mode="commit", include_prior="true", finalize="false")
+        assert r.status_code == 200
+        sid = next(s["statement_id"] for s in r.json()["statements"] if s["fiscal_year"] == 2025)
+        assert fsa.confirm(client, sid, h).status_code == 200                               # 2024 는 draft
     d = _create(client, h).json()
     assert _acc(d, "매출채권", "BS")["prior_amount"] == 150
 
@@ -125,8 +128,10 @@ def test_suspense_rows_are_not_scoping_accounts(client: TestClient) -> None:
     for x in client.get(f"/api/fs/statements/{sid}/suspense", headers=h).json():
         assert client.post(f"/api/fs/statements/{sid}/suspense/{x['amount_id']}/resolve", headers=h,
                            json={"action": "accept", "reason": "유지"}).status_code == 200
-    assert client.post(f"/api/fs/statements/{sid}/finalize", headers=h, json={}).status_code == 200
-    assert _post(client, h, _pl_wb(), mode="commit").status_code == 200
+    assert fsa.confirm(client, sid, h).status_code == 200
+    pl = _post(client, h, _pl_wb(), mode="commit", finalize="false")
+    assert pl.status_code == 200
+    assert fsa.confirm(client, pl.json()["statements"][0]["statement_id"], h).status_code == 200
     d = _create(client, h)
     assert d.status_code == 201, d.text
     names = [a["name"] for a in d.json()["accounts"] if a["statement_type"] == "BS"]

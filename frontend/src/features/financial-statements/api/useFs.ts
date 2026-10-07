@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import apiClient from '@/lib/axios'
 import { queryKeys } from '@/lib/queryKeys'
 import { useActiveTenantId } from '@/features/auth/store'
+import type { ApprovalAction } from '@/features/governance/ApprovalPanel'
 import type { FsMeta, StatementDetail, StatementListItem, SuspenseAction, SuspenseItem, ValidationResult } from '../types'
 
 export function useFsMeta() {
@@ -40,10 +41,45 @@ export function useFsSuspense(id: string | null) {
 }
 
 export type FsWrite =
-  | { kind: 'finalize'; reason?: string }
-  | { kind: 'reopen'; reason: string }
   | { kind: 'tolerance'; tolerance: string }
   | { kind: 'resolve'; amountId: string; action: SuspenseAction; reason: string; targetAccountId?: string }
+
+/** 결재(ADR-0038 2-2) — 스코핑과 같은 엔드포인트 구성. 확정은 결재선으로만 된다. */
+export function useFsApproval(id: string | null) {
+  const queryClient = useQueryClient()
+  const tenantId = useActiveTenantId()
+  return useMutation({
+    mutationFn: async (a: ApprovalAction) => {
+      const base = `/api/fs/statements/${id}`
+      const post = async (url: string, body: unknown) => (await apiClient.post<StatementDetail>(url, body)).data
+      switch (a.kind) {
+        case 'submit': return post(`${base}/transition`, { to_status: 'review', reason: a.reason })
+        case 'withdraw': return post(`${base}/transition`, { to_status: 'draft' })
+        case 'review_done': return post(`${base}/review`, { action: 'done' })
+        case 'return':
+          return a.viaReview ? post(`${base}/review`, { action: 'return', reason: a.reason })
+            : post(`${base}/transition`, { to_status: 'draft', reason: a.reason })
+        case 'approve': return post(`${base}/transition`, { to_status: 'confirmed', reason: a.reason })
+        case 'reopen_request': return post(`${base}/reopen-requests`, { reason: a.reason })
+        case 'reopen_decide':
+          return post(`${base}/reopen-requests/${a.requestId}/decide`, { approve: a.approve, reason: a.reason })
+        case 'external': {
+          const fd = new FormData()
+          fd.append('purpose', a.purpose)
+          fd.append('approver_body', a.body)
+          fd.append('approved_on', a.approvedOn)
+          if (a.reference) fd.append('reference', a.reference)
+          a.files.forEach((f) => fd.append('files', f))
+          return post(`${base}/external-approval`, fd)
+        }
+      }
+    },
+    onSuccess: (detail) => {
+      queryClient.setQueryData(queryKeys.fs.detail(tenantId, detail.id), detail)
+      queryClient.invalidateQueries({ queryKey: queryKeys.fs.list(tenantId) })
+    },
+  })
+}
 
 /**
  * 모든 쓰기는 **갱신된 상세를 돌려받는다**(검증 결과 포함) — 응답으로 상세 캐시를 바꾸고
@@ -56,10 +92,6 @@ export function useFsWrite(id: string | null) {
     mutationFn: async (w: FsWrite) => {
       const base = `/api/fs/statements/${id}`
       switch (w.kind) {
-        case 'finalize':
-          return (await apiClient.post<StatementDetail>(`${base}/finalize`, { reason: w.reason ?? null })).data
-        case 'reopen':
-          return (await apiClient.post<StatementDetail>(`${base}/reopen`, { reason: w.reason })).data
         case 'tolerance':
           return (await apiClient.patch<StatementDetail>(base, { tolerance: w.tolerance })).data
         case 'resolve':

@@ -82,8 +82,13 @@ ROUTES: dict[str, R] = {
     "POST /api/fs/upload": (FS, "재무제표 업로드", None, None),
     "POST /api/fs/upload/attach": (FS, "재무제표 결합", None, None),
     "PATCH /api/fs/statements/{statement_id}": (FS, "재무제표 수정 저장", "fs_statement", "statement_id"),
-    "POST /api/fs/statements/{statement_id}/finalize": (FS, "재무제표 확정", "fs_statement", "statement_id"),
-    "POST /api/fs/statements/{statement_id}/reopen": (FS, "재무제표 재오픈", "fs_statement", "statement_id"),
+    # 결재(ADR-0038 2-2) — 예전 /finalize·/reopen(마스터 단독)은 없앴다
+    "POST /api/fs/statements/{statement_id}/transition": (FS, "재무제표 상태 변경", "fs_statement", "statement_id"),
+    "POST /api/fs/statements/{statement_id}/review": (FS, "재무제표 검토", "fs_statement", "statement_id"),
+    "POST /api/fs/statements/{statement_id}/reopen-requests": (FS, "재오픈 요청", "fs_statement", "statement_id"),
+    "POST /api/fs/statements/{statement_id}/reopen-requests/{request_id}/decide":
+        (FS, "재오픈 요청 결정", "fs_statement", "statement_id"),
+    "POST /api/fs/statements/{statement_id}/external-approval": (FS, "외부 승인 등록", "fs_statement", "statement_id"),
     "POST /api/fs/statements/{statement_id}/suspense/{amount_id}/resolve": (FS, "미분류 금액 처리", "fs_statement", "statement_id"),
     "POST /api/fs/template-links": (FS, "표준 계정 연결", None, None),
     "DELETE /api/fs/template-links/{link_id}": (FS, "표준 계정 연결 해제", None, "link_id"),
