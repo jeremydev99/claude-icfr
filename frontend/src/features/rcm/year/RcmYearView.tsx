@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Lock } from 'lucide-react'
 import { toast } from 'sonner'
@@ -66,6 +66,11 @@ export default function RcmYearView() {
   })
   const [newYear, setNewYear] = useState(String(new Date().getFullYear()))
   const [busy, setBusy] = useState(false)
+  // 다음에 시작할 연도 — 가장 최근 회계연도의 다음 해(없으면 올해)
+  const latestYear = years[0]?.fiscal_year
+  useEffect(() => {
+    if (latestYear) setNewYear(String(latestYear + 1))
+  }, [latestYear])
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     setBusy(true)
