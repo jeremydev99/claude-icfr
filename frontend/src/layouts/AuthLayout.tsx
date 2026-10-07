@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils'
 import { Outlet } from 'react-router-dom'
 import { ShieldCheck, Layers, FileCheck2 } from 'lucide-react'
 import LogoMark from '@/components/brand/LogoMark'
@@ -18,14 +19,17 @@ const LOGIN_PHOTO = illustrationUrl('login-photo')
 export default function AuthLayout() {
   return (
     <div className="grid min-h-screen bg-background lg:grid-cols-[1.25fr_1fr]">
-      <aside className="relative hidden overflow-hidden bg-[hsl(224_45%_9%)] text-white lg:flex lg:flex-col">
+      <aside className="relative hidden overflow-hidden bg-[hsl(224_45%_9%)] text-white [container-type:inline-size] lg:flex lg:flex-col">
         {LOGIN_PHOTO ? (
           <>
             <img src={LOGIN_PHOTO} alt="" aria-hidden draggable={false} fetchPriority="high"
-              className="absolute inset-0 h-full w-full select-none object-cover object-[70%_center]" />
-            {/* 왼쪽 글자 자리를 남색으로 깊게, 오른쪽 인물은 살린다 */}
-            <div className="absolute inset-0 bg-gradient-to-r from-[hsl(224_45%_8%/0.94)] via-[hsl(224_45%_8%/0.62)] to-[hsl(224_45%_8%/0.08)]" />
-            <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-[hsl(224_45%_8%/0.85)] to-transparent" />
+              style={{ top: 'min(0px, calc(50% - 50.4cqw))' }}
+              className="absolute inset-x-0 min-h-full w-full select-none object-cover brightness-110" />
+            {/* 설명하는 여성의 머리끝(사진 높이 40.6%)을 패널 세로 50%에 맞춘다 — 사진 높이 = 너비×1152/928 이라
+                머리끝 위치 = 0.504×너비(cqw). 넓은 화면에서 천장·하늘이 커지지 않게. 좁아서 위가 비면 0 에 붙인다 */}
+            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[hsl(224_45%_8%/0.7)] to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 h-[58%] bg-gradient-to-t from-[hsl(224_45%_8%/0.95)] via-[hsl(224_45%_8%/0.55)] to-transparent" />
+            <div className="absolute inset-y-0 left-0 w-3/5 bg-gradient-to-r from-[hsl(224_45%_8%/0.45)] to-transparent" />
           </>
         ) : (
           <>
@@ -37,7 +41,7 @@ export default function AuthLayout() {
           </>
         )}
 
-        <div className="relative z-10 flex flex-1 flex-col justify-center px-14 xl:px-20">
+        <div className={cn('relative z-10 flex flex-1 flex-col px-14 xl:px-20', LOGIN_PHOTO ? 'pb-10 pt-12' : 'justify-center')}>
           <div className="flex items-center gap-3">
             <LogoMark className="h-11 w-11 rounded-xl shadow-lg" />
             <div className="leading-tight">
@@ -45,6 +49,7 @@ export default function AuthLayout() {
               <p className="text-xs text-white/70">내부회계관리시스템</p>
             </div>
           </div>
+          {LOGIN_PHOTO && <div className="flex-1" />}
           <h1 className="mt-8 max-w-[520px] text-[40px] font-extrabold leading-[1.2] tracking-tight drop-shadow-sm xl:text-[46px]">
             내부회계관리제도를<br />더 정확하고 가볍게.
           </h1>

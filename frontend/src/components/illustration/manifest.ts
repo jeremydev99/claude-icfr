@@ -60,12 +60,15 @@ export const SLOTS: Record<IllustrationSlot, SlotSpec> = {
     aspect: 'portrait',
     dark: true,
     photo: true,
-    alt: '저녁 무렵 사무실에서 태블릿으로 재무 대시보드를 검토하는 직장인',
+    alt: '회의실에서 전자칠판의 재무 차트를 함께 보며 감사 회의를 하는 팀',
     prompt:
-      'A confident Korean professional woman in her 30s wearing a dark navy blazer, standing by floor-to-ceiling windows ' +
-      'in a modern open-plan office at dusk, reviewing an abstract financial dashboard on a tablet held in both hands, ' +
-      'city skyline lights softly blurred outside, colleagues working at desks blurred in the background, warm pendant lamps, ' +
-      'subject placed on the right third of the frame, the left half darker and calm for overlaid text',
+      'Four Korean business professionals, two men and two women in their 30s to 50s in dark navy and charcoal suits, ' +
+      'gathered around a large wall-mounted interactive digital whiteboard in a modern glass-walled meeting room at dusk, ' +
+      'the whiteboard shows abstract financial charts, flow diagrams and checklist shapes without any readable text, ' +
+      'one woman pointing at the screen while explaining, the others listening and discussing, one man holding a tablet, ' +
+      'audit working papers and a laptop on the table, serious collaborative audit meeting mood, ' +
+      'city lights softly blurred through the windows, warm pendant lamps, ' +
+      'the group and whiteboard on the right two thirds of the frame, the left side darker and calm for overlaid text',
   },
   'sidebar-photo': {
     aspect: 'portrait',
