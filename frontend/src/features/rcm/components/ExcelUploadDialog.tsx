@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { Fragment, useRef, useState } from 'react'
 import { Upload, FileSpreadsheet, AlertTriangle, X, Search } from 'lucide-react'
 import { isAxiosError } from 'axios'
 
@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import ExcelPreviewTable from './ExcelPreviewTable'
+import RcmDiffView from '../year/RcmDiffView'
+import { useRcmLock } from '../year/RcmYearView'
 import {
   previewExcel,
   commitExcel,
@@ -32,6 +34,8 @@ import {
   type ExcelPreviewNeedsExpansion,
   type ExcelCommitResponse,
 } from '../api/uploadExcel'
+
+const LAYER_KO: Record<string, string> = { controls: '통제', risks: '위험', sub_processes: '하위프로세스', processes: '프로세스' }
 
 type Step = 'select' | 'previewing' | 'preview' | 'needsExpansion' | 'committing' | 'done' | 'error'
 
@@ -51,6 +55,7 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [isDragging, setIsDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { data: lock } = useRcmLock()
 
   const reset = () => {
     setStep('select')
@@ -146,7 +151,7 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-6 pt-6 pb-3">
           <DialogTitle>RCM Excel 업로드</DialogTitle>
-          <DialogDescription>RCM 통제 목록을 Excel 파일로 일괄 업로드합니다.</DialogDescription>
+          <DialogDescription>RCM 엑셀을 올리면 현재 RCM 과 코드로 맞춰 바뀌는 것을 먼저 보여 주고, 확인 후 반영합니다.</DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 pb-2 space-y-4">
@@ -156,7 +161,7 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
               <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 flex gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>
-                  Excel 업로드는 실제 DB에 저장됩니다. 업로드 완료 후 통제 목록에 즉시 반영됩니다.
+                  미리보기에서 현재 RCM 대비 변경·추가를 확인한 뒤 반영합니다. 엑셀에 없는 기존 항목은 지우지 않습니다(삭제는 통제 목록에서). 엑셀에 없는 칸(평가 주기 등)은 그대로 둡니다.
                 </span>
               </div>
 
@@ -232,18 +237,49 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
           {step === 'preview' && previewData && (
             <>
               <div className="grid grid-cols-4 gap-3">
-                <SummaryCard label="전체" value={previewData.summary.total_rows} color="default" />
-                <SummaryCard label="저장 가능" value={previewData.summary.valid_rows} color="green" />
+                <SummaryCard label="엑셀 통제" value={previewData.summary.valid_rows} color="default" />
+                <SummaryCard label="바뀌는 항목" value={previewData.sync.diff.total} color="green" />
+                <SummaryCard label="엑셀에 없음" value={previewData.sync.missing_count} color="yellow" />
                 <SummaryCard label="오류" value={previewData.summary.errors.length} color="red" />
-                <SummaryCard label="경고" value={previewData.summary.warnings.length} color="yellow" />
               </div>
 
-              <div>
-                <p className="text-sm font-medium mb-2">
-                  미리보기 (최대 20건 표시 — 유효 항목만)
-                </p>
-                <ExcelPreviewTable items={previewData.preview} />
+              <div className="space-y-2 rounded-md border p-3">
+                <p className="text-sm font-medium">현재 RCM 대비: {previewData.sync.summary_text}</p>
+                <RcmDiffView diff={previewData.sync.diff} />
               </div>
+
+              {previewData.sync.missing_count > 0 && (
+                <details className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+                  <summary className="cursor-pointer font-medium">
+                    엑셀에 없는 기존 항목 {previewData.sync.missing_count}건 — 지우지 않고 그대로 둡니다
+                  </summary>
+                  <ul className="mt-1 space-y-0.5 text-xs">
+                    {Object.entries(previewData.sync.missing).filter(([, v]) => v.length).map(([k, v]) => (
+                      <li key={k} className="break-words">{LAYER_KO[k] ?? k}: {v.join(', ')}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+
+              {previewData.sync.warnings.length > 0 && (
+                <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3">
+                  <p className="text-sm font-medium text-yellow-700 mb-1">반영하지 않는 것 ({previewData.sync.warnings.length}건)</p>
+                  <ul className="space-y-0.5">
+                    {previewData.sync.warnings.map((w, i) => <li key={i} className="text-xs text-yellow-700">{w}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              {lock?.locked && (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {lock.reason} — 미리보기만 할 수 있습니다.
+                </div>
+              )}
+
+              <details>
+                <summary className="cursor-pointer text-sm font-medium">엑셀 읽은 내용 (최대 20건)</summary>
+                <div className="mt-2"><ExcelPreviewTable items={previewData.preview} /></div>
+              </details>
 
               {previewData.summary.errors.length > 0 && (
                 <div className="rounded-md border border-red-200 bg-red-50 p-3">
@@ -274,7 +310,7 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
             <div className="flex flex-col items-center justify-center gap-3 py-16">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
               <p className="text-sm text-muted-foreground">
-                저장 중... ({previewData?.summary.valid_rows ?? 0}건)
+                반영 중... ({previewData?.sync.summary_text ?? ''})
               </p>
             </div>
           )}
@@ -282,20 +318,23 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
           {/* ── STEP: done ── */}
           {step === 'done' && commitData && (
             <div className="space-y-3">
-              <div className="rounded-md border border-green-200 bg-green-50 p-4">
-                <p className="font-medium text-green-800 mb-3">저장 완료</p>
-                <div className="grid grid-cols-2 gap-2 text-sm text-green-700">
-                  <span>통제 저장:</span>
-                  <span className="font-medium">{commitData.created.controls}건</span>
-                  <span>프로세스 처리:</span>
-                  <span className="font-medium">{commitData.created.processes}건</span>
-                  <span>세부 프로세스 처리:</span>
-                  <span className="font-medium">{commitData.created.sub_processes}건</span>
-                  <span>위험 처리:</span>
-                  <span className="font-medium">{commitData.created.risks}건</span>
-                  <span>어서션 처리:</span>
-                  <span className="font-medium">{commitData.created.assertions}건</span>
+              <div className="rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+                <p className="font-medium mb-2">반영 완료 — {commitData.summary_text}</p>
+                <div className="grid grid-cols-3 gap-1 tabular-nums">
+                  <span />
+                  <span className="font-medium">변경</span>
+                  <span className="font-medium">추가</span>
+                  {(['controls', 'risks', 'sub_processes', 'processes'] as const).map((k) => (
+                    <Fragment key={k}>
+                      <span>{LAYER_KO[k]}</span>
+                      <span>{commitData.updated[k]}건</span>
+                      <span>{commitData.created[k]}건</span>
+                    </Fragment>
+                  ))}
                 </div>
+                {commitData.missing_count > 0 && (
+                  <p className="mt-2 text-xs">엑셀에 없는 기존 항목 {commitData.missing_count}건은 그대로 두었습니다.</p>
+                )}
               </div>
               {commitData.summary.errors.length > 0 && (
                 <p className="text-xs text-muted-foreground">
@@ -341,9 +380,10 @@ export default function ExcelUploadDialog({ open, onOpenChange, onSuccess }: Pro
               <Button variant="outline" onClick={reset}>처음으로</Button>
               <Button
                 onClick={handleCommit}
-                disabled={previewData.summary.valid_rows === 0}
+                disabled={previewData.sync.op_count === 0 || Boolean(lock?.locked)}
+                title={lock?.locked ? lock.reason ?? undefined : previewData.sync.op_count === 0 ? '바뀌는 것이 없습니다' : undefined}
               >
-                등록 ({previewData.summary.valid_rows}건)
+                현재 RCM 에 반영 ({previewData.sync.summary_text})
               </Button>
             </>
           )}

@@ -265,6 +265,8 @@ def summarize(payload) -> str | None:
         return f"{len(payload)}건"
     if not isinstance(payload, dict):
         return None
+    if isinstance(payload.get("summary_text"), str):   # 엑셀 갱신 반영 — "통제 61건 변경"(13.9-109)
+        return payload["summary_text"]
     parts = []
     for key, name in (("ok", "처리"), ("updated_count", "반영"), ("deleted_count", "삭제"), ("item_count", "상신"),
                       ("created", "등록"), ("updated", "수정"), ("assigned", "배정"), ("removed", "해제"),

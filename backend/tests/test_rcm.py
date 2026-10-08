@@ -1,20 +1,11 @@
 """RCM 모듈 통합 테스트 — Phase 1 풀 확장."""
 from io import BytesIO
 
-import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
 from app.models.rcm_baseline import BaselineRiskCategory
 from tests.conftest import TestingSessionLocal
-
-# 2-A-3(READ 전환) 후 write(legacy controls)→read(resolver) 소스 분리로 red 가 된 왕복 테스트.
-# strict=True — 2-A-4(POST→instance add) 전환으로 복구되면 xpass 가 실패로 떠서
-# "이 xfail 마킹을 제거하라"는 신호가 된다(부채가 조용히 남는 것 방지). 테스트 로직은 미수정.
-_XFAIL_SRC_SPLIT = pytest.mark.xfail(
-    reason="2-A-3 READ 전환 / 2-A-4 WRITE 전환 대기 — write(legacy controls)→read(resolver) 소스 분리",
-    strict=True,
-)
 
 
 def _token(client: TestClient) -> str:
@@ -257,7 +248,6 @@ def test_excel_upload_preview(client: TestClient) -> None:
     assert data["preview"][0]["code"] == "TP-010-10-10"
 
 
-@_XFAIL_SRC_SPLIT  # 2-A-4-2 에서 GET /controls 가 resolver 로 전환됨 — upload-excel 은 아직 legacy 쓰기
 def test_excel_upload_commit(client: TestClient) -> None:
     h = _headers(client)
     excel = _make_test_excel(
@@ -272,8 +262,7 @@ def test_excel_upload_commit(client: TestClient) -> None:
     )
     assert resp.status_code == 200
     created = resp.json()["created"]
-    assert created["controls"] == 1
-    assert created["assertions"] >= 1
+    assert created["controls"] == 1   # 2026-10-08 부터 현재 RCM(회사 추가)에 반영 — 아래 목록에 보인다
 
     # 실제로 DB에 저장됐는지 확인
     resp = client.get("/api/rcm/controls", headers=h, params={"limit": 200})

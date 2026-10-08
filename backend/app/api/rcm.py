@@ -75,6 +75,7 @@ from app.schemas.rcm import (
     SummaryBucket,
     SummaryGroup,
 )
+from app.services import rcm_diff, rcm_excel_sync
 from app.services.control_resolver import (
     resolve_assertion_target,
     resolve_control_assertion_links,
@@ -1401,115 +1402,141 @@ async def upload_excel(
         "warnings": parsed.warnings,
     }
 
+    live = _excel_live(db)
+    known = _known_assertion_codes(db)
     if mode == "preview":
         return {
             "summary": summary,
             "preview": parsed.controls[:20],
+            "sync": rcm_excel_sync.preview(live, parsed, set(known)),
         }
 
-    # mode == "commit"
-    process_id_map: dict = {}
-    sp_id_map: dict = {}
-    risk_id_map: dict = {}
-
-    for p_code, p_name in parsed.processes.items():
-        existing = db.query(Process).filter(Process.code == p_code).first()
-        if existing:
-            process_id_map[p_code] = existing.id
-        else:
-            obj = Process(code=p_code, name=p_name or p_code)
-            db.add(obj)
-            db.flush()
-            process_id_map[p_code] = obj.id
-
-    for sp_code, sp_info in parsed.sub_processes.items():
-        p_id = process_id_map.get(sp_info["process_code"])
-        if not p_id:
-            continue
-        existing = db.query(SubProcess).filter(SubProcess.code == sp_code).first()
-        if existing:
-            sp_id_map[sp_code] = existing.id
-        else:
-            obj = SubProcess(code=sp_code, name=sp_info["name"] or sp_code, process_id=p_id)
-            db.add(obj)
-            db.flush()
-            sp_id_map[sp_code] = obj.id
-
-    for r_code, r_info in parsed.risks.items():
-        sp_id = sp_id_map.get(r_info["sub_process_code"])
-        if not sp_id:
-            continue
-        existing = db.query(Risk).filter(Risk.code == r_code).first()
-        if existing:
-            risk_id_map[r_code] = existing.id
-        else:
-            obj = Risk(
-                code=r_code,
-                description=r_info["description"],
-                assessment_level=r_info["assessment_level"],
-                sub_process_id=sp_id,
-            )
-            db.add(obj)
-            db.flush()
-            risk_id_map[r_code] = obj.id
-
-    # 7가지 assertion 코드 캐시
-    rc_cache: dict = {}
-    for code, name in [("E", "Existence"), ("C", "Completeness"), ("R", "Rights & Obligations"),
-                        ("V", "Valuation"), ("P", "Presentation"), ("O", "Occurrence"), ("M", "Measurement")]:
-        rc = db.query(RiskCategory).filter(RiskCategory.code == code).first()
-        if not rc:
-            rc = RiskCategory(code=code, name=name)
-            db.add(rc)
-            db.flush()
-        rc_cache[code] = rc.id
-
-    created = {"processes": 0, "sub_processes": 0, "risks": 0, "controls": 0, "assertions": 0}
-    created["processes"] = len([v for v in process_id_map.values()])
-    created["sub_processes"] = len([v for v in sp_id_map.values()])
-    created["risks"] = len([v for v in risk_id_map.values()])
-
-    for c_data in parsed.controls:
-        r_id = risk_id_map.get(c_data["risk_code"])
-        if not r_id:
-            continue
-        existing = db.query(Control).filter(Control.code == c_data["code"]).first()
-        if existing:
-            continue
-        ctrl = Control(
-            code=c_data["code"],
-            name=c_data["name"],
-            description=c_data.get("description"),
-            objective=c_data.get("objective"),
-            owner_name=c_data.get("owner_name"),
-            risk_id=r_id,
-            is_key_control=c_data.get("is_key_control", True),
-            preventive_detective=c_data.get("preventive_detective", "P"),
-            auto_manual=c_data.get("auto_manual", "M"),
-            activity_approval=c_data.get("activity_approval", False),
-            activity_verification=c_data.get("activity_verification", False),
-            activity_physical=c_data.get("activity_physical", False),
-            activity_master_data=c_data.get("activity_master_data", False),
-            activity_reconciliation=c_data.get("activity_reconciliation", False),
-            activity_supervision=c_data.get("activity_supervision", False),
-            related_accounts=c_data.get("related_accounts"),
-            frequency=c_data.get("frequency", "A"),
-            ipe_relevant=c_data.get("ipe_relevant", "N/A"),
-            related_systems=c_data.get("related_systems"),
-            euc_description=c_data.get("euc_description"),
-        )
-        db.add(ctrl)
-        db.flush()
-        created["controls"] += 1
-
-        for a_code in c_data.get("assertions", []):
-            rc_id = rc_cache.get(a_code)
-            if rc_id:
-                db.add(ControlAssertion(control_id=ctrl.id, risk_category_id=rc_id))
-                created["assertions"] += 1
-
+    # mode == "commit" — 현재 RCM 에 회사 수정분으로 반영(2026-10-08, 13.9-109). 예전 테이블에 쓰지 않는다.
+    p = rcm_excel_sync.plan(live, parsed, set(known))
+    counts = _excel_apply(db, p["ops"], known)
     db.commit()
-    return {"summary": summary, "created": created}
+    d = rcm_diff.diff(live, p["target"])
+    return {"summary": summary, **counts, "summary_text": rcm_diff.summary_text(d),
+            "missing_count": sum(len(v) for v in p["missing"].values()), "warnings": p["warnings"]}
+
+
+def _excel_live(db: Session) -> dict:
+    processes, sub_processes, risks = resolve_hierarchy(db)
+    return {"processes": processes, "sub_processes": sub_processes, "risks": risks, "controls": resolve_controls(db)}
+
+
+def _known_assertion_codes(db: Session) -> dict[str, UUID]:
+    return {rc.code: rc.id for rc in db.query(BaselineRiskCategory).filter(
+        BaselineRiskCategory.is_deleted == False).all()}  # noqa: E712
+
+
+def _assertion_add(db: Session, cb_id: UUID | None, ci_id: UUID | None, rc_id: UUID) -> None:
+    """연결 추가 — `create_control_assertion` 과 같은 규칙(baseline 에 있던 연결이면 remove 행을 지운다)."""
+    inst = _find_assertion_instance(db, cb_id, ci_id, rc_id)
+    if cb_id is not None and db.query(BaselineControlAssertion).filter(
+            BaselineControlAssertion.baseline_control_id == cb_id,
+            BaselineControlAssertion.baseline_risk_category_id == rc_id,
+            BaselineControlAssertion.is_deleted == False).first() is not None:  # noqa: E712
+        if inst is not None:
+            inst.is_deleted = True
+        return
+    if inst is None:
+        db.add(ControlAssertionInstance(control_baseline_id=cb_id, control_instance_id=ci_id,
+                                        baseline_risk_category_id=rc_id, action=ASSERTION_ACTION_ADD))
+    else:
+        inst.action, inst.is_deleted = ASSERTION_ACTION_ADD, False
+
+
+def _assertion_remove(db: Session, cb_id: UUID | None, ci_id: UUID | None, rc_id: UUID) -> None:
+    """연결 삭제 — `delete_control_assertion` 과 같은 규칙(baseline 연결은 remove 행, 회사 추가는 소프트 삭제)."""
+    inst = _find_assertion_instance(db, cb_id, ci_id, rc_id)
+    if cb_id is not None and db.query(BaselineControlAssertion).filter(
+            BaselineControlAssertion.baseline_control_id == cb_id,
+            BaselineControlAssertion.baseline_risk_category_id == rc_id,
+            BaselineControlAssertion.is_deleted == False).first() is not None:  # noqa: E712
+        if inst is None:
+            db.add(ControlAssertionInstance(control_baseline_id=cb_id, baseline_risk_category_id=rc_id,
+                                            action=ASSERTION_ACTION_REMOVE))
+        else:
+            inst.action, inst.is_deleted = ASSERTION_ACTION_REMOVE, False
+        return
+    if inst is not None and inst.action == ASSERTION_ACTION_ADD:
+        inst.is_deleted = True
+
+
+_EXCEL_LAYERS = {
+    "processes": (BaselineProcess, ProcessInstance, "baseline_process_id", _PROCESS_OVERRIDE_FIELDS),
+    "sub_processes": (BaselineSubProcess, SubProcessInstance, "baseline_sub_process_id", _SUB_PROCESS_OVERRIDE_FIELDS),
+    "risks": (BaselineRisk, RiskInstance, "baseline_risk_id", _RISK_OVERRIDE_FIELDS),
+}
+_EXCEL_LAYER_LABEL = {"processes": "프로세스", "sub_processes": "하위프로세스", "risks": "위험", "controls": "통제"}
+
+
+def _excel_apply(db: Session, ops: list[dict], known: dict[str, UUID]) -> dict:
+    """`rcm_excel_sync.plan` 의 할 일을 화면 수정과 **같은 함수**로 반영한다. 커밋하지 않는다."""
+    new_ids: dict[str, dict[str, UUID]] = {k: {} for k in _EXCEL_LAYER_LABEL}
+    created = {k: 0 for k in _EXCEL_LAYER_LABEL} | {"assertions": 0}
+    updated = {k: 0 for k in _EXCEL_LAYER_LABEL}
+
+    def real(layer: str, v):
+        if isinstance(v, str) and v.startswith("new:"):
+            return new_ids[layer][v.split(":", 2)[2]]
+        return v
+
+    for op in ops:
+        layer = op["layer"]
+        if op["op"] == "update":
+            if layer == "controls":
+                ok = _apply_control_update(db, op["id"], op["changes"])
+            else:
+                bm, im, fk, fields = _EXCEL_LAYERS[layer]
+                ok = _apply_layer_update(db, bm, im, fk, fields, op["id"], op["changes"])
+            if not ok:
+                raise HTTPException(status_code=409, detail=f"{_EXCEL_LAYER_LABEL[layer]} {op['code']} 를 찾지 못했습니다 — 다시 미리보기 하세요")
+            if layer != "controls":
+                updated[layer] += 1
+        elif op["op"] == "add":
+            data = dict(op["data"])
+            if layer == "processes":
+                _assert_code_available(db, BaselineProcess, ProcessInstance, op["code"], "프로세스")
+                inst = ProcessInstance(action=ACTION_ADD, baseline_process_id=None, code=op["code"], name=data["name"])
+            elif layer == "sub_processes":
+                _assert_code_available(db, BaselineSubProcess, SubProcessInstance, op["code"], "하위프로세스")
+                pb, pi = _resolve_process_parent(db, real("processes", data.pop("process_id")))
+                inst = SubProcessInstance(action=ACTION_ADD, baseline_sub_process_id=None, code=op["code"],
+                                          process_baseline_id=pb, process_instance_id=pi, **data)
+            elif layer == "risks":
+                _assert_code_available(db, BaselineRisk, RiskInstance, op["code"], "위험")
+                sb, si = _resolve_sub_process_parent(db, real("sub_processes", data.pop("sub_process_id")))
+                inst = RiskInstance(action=ACTION_ADD, baseline_risk_id=None, code=op["code"],
+                                    sub_process_baseline_id=sb, sub_process_instance_id=si, **data)
+            else:
+                _assert_code_available(db, BaselineControl, ControlInstance, op["code"], "통제")
+                rb, ri = _resolve_risk_parent(db, real("risks", data.pop("risk_id")))
+                codes = data.pop("assertions")
+                inst = ControlInstance(action=ACTION_ADD, baseline_control_id=None, code=op["code"],
+                                       risk_baseline_id=rb, risk_instance_id=ri, assessment_frequency="annual", **data)
+            db.add(inst)
+            db.flush()
+            new_ids[layer][op["code"]] = inst.id
+            created[layer] += 1
+            if layer == "controls":
+                for c in codes:
+                    _assertion_add(db, None, inst.id, known[c])
+                    created["assertions"] += 1
+        else:  # assertions
+            target = resolve_assertion_target(db, op["id"])
+            if target is None:
+                raise HTTPException(status_code=409, detail=f"통제 {op['code']} 를 찾지 못했습니다 — 다시 미리보기 하세요")
+            cb_id, ci_id = target
+            for c in op["add"]:
+                _assertion_add(db, cb_id, ci_id, known[c])
+            for c in op["remove"]:
+                _assertion_remove(db, cb_id, ci_id, known[c])
+        db.flush()
+    # 통제는 칸 변경·어서션 변경이 따로 올 수 있어 통제 수로 센다
+    updated["controls"] = len({o["id"] for o in ops if o["layer"] == "controls" and o["op"] in ("update", "assertions")})
+    return {"created": created, "updated": updated}
 
 
 # ── 위험 매트릭스 ──────────────────────────────────────────

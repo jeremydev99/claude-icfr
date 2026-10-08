@@ -25,7 +25,6 @@ import {
   RISK_LEVEL_LABELS,
 } from '../types'
 import SourceBadge from './SourceBadge'
-import { EXCEL_UPLOAD_LOCKED, EXCEL_UPLOAD_LOCKED_MESSAGE } from '../excelUploadLock'
 import HelpTerm from '@/features/help/HelpTerm'
 
 interface Props {
@@ -109,8 +108,6 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
             variant="outline"
             size="sm"
             onClick={onUploadClick}
-            disabled={EXCEL_UPLOAD_LOCKED}
-            title={EXCEL_UPLOAD_LOCKED ? EXCEL_UPLOAD_LOCKED_MESSAGE : undefined}
           >
             <Upload className="h-4 w-4 mr-1.5" />
             Excel 업로드

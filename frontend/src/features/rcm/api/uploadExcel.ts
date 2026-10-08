@@ -1,13 +1,5 @@
-import axios from 'axios'
-
-// Separate instance with relative baseURL so Vite proxy handles /api → localhost:8000
-// (apiClient uses http://localhost:8000 directly and may hit CORS on multipart requests)
-const proxyClient = axios.create({ baseURL: '' })
-proxyClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token')
-  if (token) config.headers.Authorization = `Bearer ${token}`
-  return config
-})
+import apiClient from '@/lib/axios'
+import type { RcmDiff } from '../year/RcmDiffView'
 
 // Exact types from backend/app/api/rcm.py upload_excel endpoint
 
@@ -43,9 +35,20 @@ export interface ExcelPreviewItem {
 }
 
 // 정상 미리보기 응답 (status 필드 없음)
+/** 현재 RCM 대비 차이 (2026-10-08) — 엑셀에 없는 기존 항목은 지우지 않고 missing 으로만 알린다. */
+export interface ExcelSyncPreview {
+  diff: RcmDiff
+  summary_text: string
+  missing: Record<string, string[]>
+  missing_count: number
+  warnings: string[]       // 반영하지 않는 것 (상위 변경·모르는 어서션)
+  op_count: number         // 0 이면 바꿀 것이 없다
+}
+
 export interface ExcelPreviewSuccess {
   summary: ExcelUploadSummary
   preview: ExcelPreviewItem[]  // max 20 items (valid rows only)
+  sync: ExcelSyncPreview
 }
 
 // 헤더 탐색 범위 확장 필요 응답
@@ -77,6 +80,10 @@ export interface ExcelCreatedCounts {
 export interface ExcelCommitResponse {
   summary: ExcelUploadSummary
   created: ExcelCreatedCounts
+  updated: Omit<ExcelCreatedCounts, 'assertions'>
+  summary_text: string
+  missing_count: number
+  warnings: string[]
 }
 
 const UPLOAD_URL = '/api/rcm/upload-excel'
@@ -92,7 +99,7 @@ export async function previewExcel(
     formData.append('expand_to', String(expandTo))
   }
   // Do NOT set Content-Type manually — browser sets multipart boundary automatically
-  const res = await proxyClient.post<ExcelPreviewResponse>(UPLOAD_URL, formData)
+  const res = await apiClient.post<ExcelPreviewResponse>(UPLOAD_URL, formData)
   return res.data
 }
 
@@ -106,6 +113,6 @@ export async function commitExcel(
   if (expandTo !== undefined) {
     formData.append('expand_to', String(expandTo))
   }
-  const res = await proxyClient.post<ExcelCommitResponse>(UPLOAD_URL, formData)
+  const res = await apiClient.post<ExcelCommitResponse>(UPLOAD_URL, formData)
   return res.data
 }
