@@ -515,7 +515,7 @@ def confirm_review(scoping_id: UUID, body: ConfirmRequest, user: User = Depends(
     """
     s = _editable(db, scoping_id)
     try:
-        targets = svc.confirm_targets(db, s, body.scope, body.target_id)
+        targets = svc.confirm_targets(db, s, body.scope, body.target_id, body.statement_type)
     except LookupError:
         raise HTTPException(status_code=404, detail="확인할 대상을 찾을 수 없습니다") from None
     svc.set_confirmed(db, s, targets, user.id, undo=body.undo)

@@ -34,7 +34,7 @@ export interface ScopingMeta {
 export type Origin = 'template' | 'confirmed' | 'edited'
 
 /** 검토 확인 범위 — 계정 한 줄 / 중요성 기준 영역 / 문구 한 항목 */
-export type ConfirmScope = 'account' | 'materiality' | 'text'
+export type ConfirmScope = 'account' | 'materiality' | 'text' | 'accounts' | 'texts'
 
 export interface BenchmarkRow {
   kind: string

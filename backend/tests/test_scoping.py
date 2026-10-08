@@ -618,6 +618,32 @@ def test_confirming_everything_makes_warning_zero(client: TestClient, mgr: dict,
     assert client.post(f"{base}/confirm", headers=mgr, json={"scope": "materiality", "undo": True}).status_code == 409
 
 
+def test_bulk_confirm_by_table_and_texts(client: TestClient, mgr: dict) -> None:
+    """일괄 확인(2026-10-08) — 표 하나의 계정 전부 / 문구 전부. 다른 표·고친(edited) 필드는 그대로, 확인자 기록."""
+    s = _create(client, mgr, 2090)
+    base = f"/api/scoping/{s['id']}"
+    a = _acc(s, "대손충당금(매출채권)")
+    st = a["statement_type"]
+    client.patch(f"{base}/accounts/{a['id']}", headers=mgr, json={"qual_basis": "회사 판단"})
+    d = client.post(f"{base}/confirm", headers=mgr, json={"scope": "accounts", "statement_type": st}).json()
+    same = [x for x in d["accounts"] if x["statement_type"] == st]
+    other = [x for x in d["accounts"] if x["statement_type"] != st and x["badges"]]
+    assert same and all("template" not in x["badges"].values() for x in same)
+    assert _acc(d, "대손충당금(매출채권)")["badges"]["qual_basis"] == "edited"
+    assert other and all("template" in x["badges"].values() for x in other)   # 다른 표는 그대로
+    assert all(o.confirmed_by_id is not None for o in _origins_of(same[0]["id"]) if o.status == "confirmed")
+    d = client.post(f"{base}/confirm", headers=mgr, json={"scope": "texts"}).json()
+    assert all(t["badge"] == "confirmed" for t in d["texts"])
+    # 표를 안 주면 전체 — 남은 건 중요성 기준뿐
+    d = client.post(f"{base}/confirm", headers=mgr, json={"scope": "accounts"}).json()
+    assert all("template" not in x["badges"].values() for x in d["accounts"])
+    d = client.post(f"{base}/confirm", headers=mgr, json={"scope": "materiality"}).json()
+    assert d["badge_count"] == 0
+    # 일괄 취소도 된다
+    d = client.post(f"{base}/confirm", headers=mgr, json={"scope": "texts", "undo": True}).json()
+    assert all(t["badge"] == "template" for t in d["texts"])
+
+
 def test_confirm_validation_and_permissions(client: TestClient, mgr: dict) -> None:
     s = _create(client, mgr, 2088)
     base = f"/api/scoping/{s['id']}"

@@ -270,9 +270,22 @@ function ReviewCard({ d, write }: { d: ScopingDetail; write: (m: 'post' | 'patch
 /** 가이던스·판단 원칙·Notes — 템플릿 문구. 동의하면 항목별 "확인", 고치면 그 문구만 배지가 떨어진다 */
 function GuidanceCard({ d, write }: { d: ScopingDetail; write: (m: 'post' | 'patch' | 'delete', p: string, b?: unknown) => void }) {
   const [open, setOpen] = useState<string | null>(null)
+  const pendingTexts = d.texts.filter((t) => t.badge === 'template').length
+  const confirmAllTexts = () => {
+    if (!window.confirm(`가이던스·판단 원칙 문구 ${pendingTexts}개를 읽었고 템플릿 문구에 동의합니다.
+한 번에 "확인"으로 표시합니다 — 확인자(본인)와 시각이 남습니다.`)) return
+    write('post', `/${d.id}/confirm`, { scope: 'texts' })
+  }
   return (
     <Card>
-      <CardHeader><CardTitle className="flex items-center gap-1 text-base">가이던스·판단 원칙 <HelpButton k="screen.scoping.guidance" /></CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1 text-base">가이던스·판단 원칙 <HelpButton k="screen.scoping.guidance" />
+        {d.can_edit && pendingTexts > 0 && (
+          <button type="button" onClick={confirmAllTexts}
+            className="ml-auto rounded-md border border-primary/40 px-3 py-1 text-xs font-medium text-primary hover:bg-accent">
+            미확인 문구 {pendingTexts}개 일괄 확인
+          </button>
+        )}
+      </CardTitle></CardHeader>
       <CardContent className="space-y-1">
         {d.texts.map((t) => (
           <div key={t.id} className="rounded border">

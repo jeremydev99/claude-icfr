@@ -166,7 +166,11 @@ ORIGIN_TARGETS = (ORIGIN_TARGET_SCOPING, ORIGIN_TARGET_TEXT, ORIGIN_TARGET_ACCOU
 CONFIRM_SCOPE_ACCOUNT = "account"         # 계정 한 줄
 CONFIRM_SCOPE_MATERIALITY = "materiality"  # 중요성 기준 영역(스코핑 필드 + 벤치마크 6종)
 CONFIRM_SCOPE_TEXT = "text"               # 문구 한 항목
-CONFIRM_SCOPES = (CONFIRM_SCOPE_ACCOUNT, CONFIRM_SCOPE_MATERIALITY, CONFIRM_SCOPE_TEXT)
+# 일괄(2026-10-08 Regina "언제 일일이 누르고 있어") — 확인자는 누른 사람, edited 는 그대로(set_confirmed 규칙)
+CONFIRM_SCOPE_ACCOUNTS = "accounts"       # 표 하나(statement_type)의 계정 전부 — statement_type 없으면 전체
+CONFIRM_SCOPE_TEXTS = "texts"             # 문구 전부
+CONFIRM_SCOPES = (CONFIRM_SCOPE_ACCOUNT, CONFIRM_SCOPE_MATERIALITY, CONFIRM_SCOPE_TEXT,
+                  CONFIRM_SCOPE_ACCOUNTS, CONFIRM_SCOPE_TEXTS)
 
 CONCLUSIONS = ("Y", "N")
 

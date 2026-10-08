@@ -27,8 +27,10 @@ from app.models.scoping import (
     BENCHMARK_LABELS,
     BENCHMARKS,
     CONFIRM_SCOPE_ACCOUNT,
+    CONFIRM_SCOPE_ACCOUNTS,
     CONFIRM_SCOPE_MATERIALITY,
     CONFIRM_SCOPE_TEXT,
+    CONFIRM_SCOPE_TEXTS,
     DEFAULT_QUAL_COMPARISON,
     DEFAULT_QUAL_THRESHOLD,
     ORIGIN_CONFIRMED,
@@ -291,13 +293,22 @@ def mark_edited(db: Session, scoping_id: UUID, target_type: str, target_id: UUID
         o.confirmed_by_id = o.confirmed_at = None
 
 
-def confirm_targets(db: Session, s: Scoping, scope: str, target_id: UUID | None) -> list[tuple[str, UUID]]:
+def confirm_targets(db: Session, s: Scoping, scope: str, target_id: UUID | None,
+                    statement_type: str | None = None) -> list[tuple[str, UUID]]:
     """확인 범위 → (대상 종류, 대상 id) 목록. 대상 존재는 여기서 검증한다(출처 행에 FK 가 없다).
     없으면 LookupError."""
     if scope == CONFIRM_SCOPE_MATERIALITY:
         benches = _active(db.query(ScopingBenchmark), ScopingBenchmark).filter(
             ScopingBenchmark.scoping_id == s.id).all()
         return [(ORIGIN_TARGET_SCOPING, s.id)] + [(ORIGIN_TARGET_BENCHMARK, b.id) for b in benches]
+    if scope == CONFIRM_SCOPE_ACCOUNTS:
+        q = _active(db.query(ScopingAccount), ScopingAccount).filter(ScopingAccount.scoping_id == s.id)
+        if statement_type is not None:
+            q = q.filter(ScopingAccount.statement_type == statement_type)
+        return [(ORIGIN_TARGET_ACCOUNT, a.id) for a in q.all()]
+    if scope == CONFIRM_SCOPE_TEXTS:
+        return [(ORIGIN_TARGET_TEXT, t.id) for t in _active(db.query(ScopingText), ScopingText).filter(
+            ScopingText.scoping_id == s.id).all()]
     model, target_type = {CONFIRM_SCOPE_ACCOUNT: (ScopingAccount, ORIGIN_TARGET_ACCOUNT),
                           CONFIRM_SCOPE_TEXT: (ScopingText, ORIGIN_TARGET_TEXT)}[scope]
     if target_id is None or _active(db.query(model), model).filter(

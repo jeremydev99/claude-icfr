@@ -82,6 +82,15 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
     write('post', `/${d.id}/accounts/not-applicable`, { account_ids: zeroRows.map((a) => a.id), value: true, reason: reason.trim() })
   }
 
+  // 일괄 확인(2026-10-08) — 이 탭(표) 계정 전부. 확인자는 누른 사람, 고친(edited) 칸은 그대로
+  const tabLabel = meta.statement_types.find((t) => t.value === tab)?.label ?? tab
+  const confirmAll = () => {
+    if (!window.confirm(`${tabLabel} 계정 ${pending}줄의 판정·근거를 검토했고 템플릿 값에 동의합니다.
+` +
+      '한 번에 "확인"으로 표시합니다 — 확인자(본인)와 시각이 남고, 고친 칸은 그대로입니다.')) return
+    write('post', `/${d.id}/confirm`, { scope: 'accounts', statement_type: tab })
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1">
@@ -123,6 +132,12 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
             <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setAll(false)}>모두 펼치기</button>
             <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setAll(true)}>모두 접기</button>
           </>
+        )}
+        {d.can_edit && pending > 0 && (
+          <button type="button" onClick={confirmAll}
+            className="ml-auto rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary hover:bg-accent">
+            이 표 미검토 {pending}줄 일괄 확인
+          </button>
         )}
         {d.can_edit && zeroRows.length > 0 && (
           <button type="button" onClick={markZero}

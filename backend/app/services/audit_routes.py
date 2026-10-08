@@ -73,7 +73,7 @@ ROUTES: dict[str, R] = {
     "POST /api/scoping/{scoping_id}/accounts/not-applicable": (SC, "계정 해당 없음 지정", "scoping", "scoping_id"),
     "PATCH /api/scoping/{scoping_id}/accounts/{account_id}": (SC, "계정 판단 수정 저장", "scoping_account", "account_id"),
     "POST /api/scoping/{scoping_id}/reload-from-fs": (SC, "재무제표에서 다시 불러오기", "scoping", "scoping_id"),
-    "POST /api/scoping/{scoping_id}/confirm": (SC, "스코핑 확정", "scoping", "scoping_id"),
+    "POST /api/scoping/{scoping_id}/confirm": (SC, "스코핑 검토 확인", "scoping", "scoping_id"),
     "POST /api/scoping/{scoping_id}/transition": (SC, "스코핑 상태 변경", "scoping", "scoping_id"),
     "POST /api/scoping/{scoping_id}/review": (SC, "스코핑 검토", "scoping", "scoping_id"),
     "POST /api/scoping/{scoping_id}/reopen-requests": (SC, "재오픈 요청", "scoping", "scoping_id"),

@@ -114,10 +114,11 @@ class ConfirmRequest(BaseModel):
     """검토 확인(6-1b) — 범위 안의 `template` 필드를 전부 `confirmed` 로. `undo` 면 확인 취소.
 
     범위: account(계정 한 줄, target_id=계정 id) / materiality(중요성 기준 영역 전체) /
-    text(문구 한 항목, target_id=문구 id)
+    text(문구 한 항목, target_id=문구 id) / accounts(표 하나의 계정 전부, statement_type) / texts(문구 전부)
     """
     scope: str = Field(pattern=_one_of(CONFIRM_SCOPES))
     target_id: UUID | None = None
+    statement_type: str | None = None   # accounts 일 때만 — 없으면 모든 표
     undo: bool = False
 
 
