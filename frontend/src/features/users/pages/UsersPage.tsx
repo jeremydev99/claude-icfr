@@ -24,6 +24,7 @@ import UserRoleFormDialog from '../components/UserRoleFormDialog'
 import type { User, UserRole } from '../types'
 import HelpButton from '@/features/help/HelpButton'
 import ExternalAccessPanel from '../external/ExternalAccessPanel'
+import { sendTestMail } from '../api/usersApi'
 
 type ActiveTab = 'users' | 'roles' | 'logins' | 'external'
 
@@ -38,6 +39,20 @@ export default function UsersPage() {
     useUsers({ skip: 0, limit: 200 })
 
   const deleteUser = useDeleteUser()
+  const [testMailBusy, setTestMailBusy] = useState(false)
+  const handleTestMail = async () => {
+    setTestMailBusy(true)
+    try {
+      const r = await sendTestMail()
+      if (r.sent) toast.success(`${r.to} 로 시험 메일을 보냈습니다`)
+      else if (r.sent === null) toast.info('서버에 메일 설정이 없습니다 — 링크는 직접 전달하세요')
+      else toast.error(`시험 메일 실패: ${r.error ?? '원인 미상'}`)
+    } catch (e) {
+      toast.error(getErrorDetail(e) ?? '시험 메일을 보내지 못했습니다')
+    } finally {
+      setTestMailBusy(false)
+    }
+  }
   const unlockUser = useUnlockUser()
   const handleUnlock = async (user: User) => {
     try {
@@ -160,7 +175,10 @@ export default function UsersPage() {
       {/* 사용자 뷰 */}
       {activeTab === 'users' && (
         <div className="space-y-3">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" disabled={testMailBusy} onClick={handleTestMail}>
+              {testMailBusy && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}시험 메일
+            </Button>
             <Button
               size="sm"
               onClick={() => { setEditUserTarget(null); setUserFormOpen(true) }}

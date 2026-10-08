@@ -46,3 +46,8 @@ export async function fetchLoginEvents(
 export async function resetUserPassword(id: string, body: ResetPasswordPayload): Promise<void> {
   await apiClient.post(`/api/users/${id}/reset-password`, body)
 }
+
+/** 시험 메일 — 요청한 시스템관리자 본인 주소로 보낸다(2026-10-08). sent=null 이면 서버에 메일 설정이 없다. */
+export async function sendTestMail(): Promise<{ to: string; sent: boolean | null; error: string | null }> {
+  return (await apiClient.post('/api/notification/mail/test')).data
+}

@@ -17,12 +17,17 @@ export interface User {
 export interface UserCreated extends User {
   setup_url?: string | null
   setup_expires_at?: string | null
+  /** 메일 발송 결과 — null 이면 메일 설정 없음(링크 직접 전달) */
+  mail_sent?: boolean | null
+  mail_error?: string | null
 }
 
 export interface SetupLink {
   setup_url: string
   expires_at: string
   purpose: 'invite' | 'reset'
+  mail_sent?: boolean | null
+  mail_error?: string | null
 }
 
 export interface LoginEvent {

@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     # 운영 시 .env 의 ADMIN_DISPLAY_NAME 으로 실제 관리자 실명을 설정한다.
     admin_display_name: str = "홍길동"
 
+    # 메일 발송(사내 메일서버 위임, STARTTLS) — 호스트가 비어 있으면 발송하지 않고 링크 복사만
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_from_name: str = "ICFR"
+    smtp_timeout_seconds: int = 15
+
     # Upload
     max_upload_bytes: int = 52428800  # 50MB
 

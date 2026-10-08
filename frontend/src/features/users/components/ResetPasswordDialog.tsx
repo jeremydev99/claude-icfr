@@ -94,7 +94,8 @@ export default function ResetPasswordDialog({ open, onOpenChange, targetUser, on
         )}
         {link && targetUser ? (
           <>
-            <SetupLinkView url={link.setup_url} expiresAt={link.expires_at} purpose={link.purpose} name={targetUser.display_name} />
+            <SetupLinkView url={link.setup_url} expiresAt={link.expires_at} purpose={link.purpose} name={targetUser.display_name}
+              email={targetUser.email} mailSent={link.mail_sent} mailError={link.mail_error} />
             <DialogFooter><Button onClick={() => onOpenChange(false)}>닫기</Button></DialogFooter>
           </>
         ) : emergency ? (

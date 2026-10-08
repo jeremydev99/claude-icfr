@@ -116,7 +116,7 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
         {created?.setup_url ? (
           <div className="space-y-4">
             <SetupLinkView url={created.setup_url} expiresAt={created.setup_expires_at ?? ''} purpose="invite"
-              name={created.display_name} />
+              name={created.display_name} email={created.email} mailSent={created.mail_sent} mailError={created.mail_error} />
             <DialogFooter><Button onClick={() => onOpenChange(false)}>닫기</Button></DialogFooter>
           </div>
         ) : (
