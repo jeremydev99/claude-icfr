@@ -23,6 +23,7 @@ from app.schemas.user_mgmt import (
     UserRoleUpdate,
 )
 from app.services import account_setup as setup_svc
+from app.services import mailer
 
 router = APIRouter(prefix="/api/users", tags=["user_mgmt"])
 
@@ -78,12 +79,16 @@ class UserCreated(UserRead):
     """생성 결과 — 초대(기본)면 설정 링크 원문을 **이 응답에서 한 번만** 준다(저장은 해시만, ADR-0041)."""
     setup_url: str | None = None
     setup_expires_at: datetime | None = None
+    mail_sent: bool | None = None   # None = 메일 설정 없음(링크 복사로 전달)
+    mail_error: str | None = None
 
 
 class SetupLinkOut(BaseModel):
     setup_url: str
     expires_at: datetime
     purpose: str
+    mail_sent: bool | None = None
+    mail_error: str | None = None
 
 
 def _origin(request: Request) -> str:
@@ -119,6 +124,8 @@ def create_user(body: UserCreate, request: Request, admin: User = Depends(requir
     out = UserCreated.model_validate(obj)
     if raw:
         out.setup_url, out.setup_expires_at = setup_svc.setup_url(_origin(request), raw), row.expires_at
+        m = mailer.setup_link_mail(obj.email, obj.display_name, out.setup_url, invite=True, hours=setup_svc.TOKEN_HOURS)
+        out.mail_sent, out.mail_error = m.sent, m.error
     return out
 
 
@@ -134,8 +141,11 @@ def issue_setup_link(user_id: UUID, request: Request, admin: User = Depends(requ
         raise HTTPException(status_code=409, detail="비활성 계정에는 링크를 발급할 수 없습니다 — 먼저 활성화하세요")
     raw, row = setup_svc.issue(db, obj, admin.id)
     db.commit()
-    return SetupLinkOut(setup_url=setup_svc.setup_url(_origin(request), raw), expires_at=row.expires_at,
-                        purpose=row.purpose)
+    url = setup_svc.setup_url(_origin(request), raw)
+    m = mailer.setup_link_mail(obj.email, obj.display_name, url, invite=row.purpose == setup_svc.PURPOSE_INVITE,
+                               hours=setup_svc.TOKEN_HOURS)
+    return SetupLinkOut(setup_url=url, expires_at=row.expires_at, purpose=row.purpose,
+                        mail_sent=m.sent, mail_error=m.error)
 
 
 @router.patch("/{user_id}", response_model=UserRead)

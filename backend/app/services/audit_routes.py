@@ -137,6 +137,7 @@ ROUTES: dict[str, R] = {
     "DELETE /api/users/{user_id}": (USR, "사용자 삭제", "user", "user_id"),
     "POST /api/users/{user_id}/reset-password": (USR, "비상용 비밀번호 지정", "user", "user_id"),
     "POST /api/users/{user_id}/setup-link": (USR, "설정 링크 발급", "user", "user_id"),
+    "POST /api/notification/mail/test": (USR, "시험 메일 발송", None, None),
     "POST /api/account-setup/{token}": (USR, "본인 비밀번호 설정(링크)", None, None),
     "POST /api/users/{user_id}/unlock": (USR, "잠금 해제", "user", "user_id"),
     "POST /api/users/{user_id}/mfa-reset": (USR, "2단계 인증 초기화", "user", "user_id"),

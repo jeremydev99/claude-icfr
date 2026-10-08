@@ -3,16 +3,20 @@ import { Check, Copy, Link2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import MailNotice from './MailNotice'
 
 /**
  * 설정 링크 표시(ADR-0041) — 원문은 발급 응답에서 한 번만 온다. 관리자는 링크만 전달하고 비밀번호는 직원이 정한다.
- * 메일 발송이 아직 없어 사내 메신저 등으로 직접 전달한다.
+ * 메일 설정이 있으면 서버가 메일로도 보낸다(결과는 MailNotice). 실패·미설정이면 직접 전달한다.
  */
-export default function SetupLinkView({ url, expiresAt, purpose, name }: {
+export default function SetupLinkView({ url, expiresAt, purpose, name, email, mailSent, mailError }: {
   url: string
   expiresAt: string
   purpose: 'invite' | 'reset'
   name: string
+  email?: string
+  mailSent?: boolean | null
+  mailError?: string | null
 }) {
   const [copied, setCopied] = useState(false)
   const copy = async () => {
@@ -29,6 +33,7 @@ export default function SetupLinkView({ url, expiresAt, purpose, name }: {
       <p className="flex items-center gap-1.5 font-medium">
         <Link2 className="h-4 w-4" />{purpose === 'invite' ? `${name}님 계정 시작 링크` : `${name}님 비밀번호 재설정 링크`}
       </p>
+      <MailNotice sent={mailSent} error={mailError} to={email} />
       <div className="flex gap-2">
         <Input readOnly value={url} onFocus={(e) => e.currentTarget.select()} className="font-mono text-xs" />
         <Button type="button" size="sm" onClick={copy} className="shrink-0">

@@ -23,6 +23,8 @@ export interface Invitation {
   accepted_at: string | null
   created_at: string
   invite_url: string | null
+  mail_sent?: boolean | null
+  mail_error?: string | null
 }
 
 export interface ExternalUser {

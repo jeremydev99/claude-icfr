@@ -18,6 +18,7 @@ import {
   type ExternalType, type ExternalUser, type Invitation,
 } from './api'
 import { accessState, addDays, reviewOverdue } from './externalAccess.pure'
+import MailNotice from '../components/MailNotice'
 
 const err = (e: unknown) => (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
 
@@ -43,7 +44,7 @@ export default function ExternalAccessPanel() {
   const users = useExternalUsers()
   const reviews = useAccessReviews()
   const [inviteOpen, setInviteOpen] = useState(false)
-  const [link, setLink] = useState<{ url: string; who: string } | null>(null)
+  const [link, setLink] = useState<LinkInfo | null>(null)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [extend, setExtend] = useState<ExternalUser | null>(null)
   const [revoke, setRevoke] = useState<{ kind: 'inv' | 'user'; id: string; who: string } | null>(null)
@@ -102,7 +103,10 @@ export default function ExternalAccessPanel() {
                   <TableCell className="space-x-1.5 whitespace-nowrap text-right">
                     {i.status === 'pending_approval' && isMaster && (
                       <Button size="sm" disabled={approve.isPending} onClick={() => approve.mutate(i.id, {
-                        onSuccess: (r) => r.invite_url && setLink({ url: r.invite_url, who: `${r.organization} ${r.display_name}` }),
+                        onSuccess: (r) => r.invite_url && setLink({
+                          url: r.invite_url, who: `${r.organization} ${r.display_name}`,
+                          email: r.email, mailSent: r.mail_sent, mailError: r.mail_error,
+                        }),
                         onError: (e) => toast.error(err(e) ?? '승인하지 못했습니다'),
                       })}>승인·링크 발급</Button>
                     )}
@@ -261,7 +265,9 @@ function InviteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
   )
 }
 
-function LinkDialog({ link, onClose }: { link: { url: string; who: string } | null; onClose: () => void }) {
+interface LinkInfo { url: string; who: string; email?: string; mailSent?: boolean | null; mailError?: string | null }
+
+function LinkDialog({ link, onClose }: { link: LinkInfo | null; onClose: () => void }) {
   const [copied, setCopied] = useState(false)
   return (
     <Dialog open={!!link} onOpenChange={(o) => { if (!o) { onClose(); setCopied(false) } }}>
@@ -273,6 +279,7 @@ function LinkDialog({ link, onClose }: { link: { url: string; who: string } | nu
             이메일·메신저로 본인에게만 전달하세요.
           </DialogDescription>
         </DialogHeader>
+        <MailNotice sent={link?.mailSent} error={link?.mailError} to={link?.email} />
         <code className="select-all break-all rounded-md bg-muted px-3 py-2 font-mono text-sm">{link?.url}</code>
         <DialogFooter>
           <Button onClick={async () => {

@@ -43,7 +43,7 @@ from app.models.external import (
 from app.models.tenant import Tenant, UserTenantAccess
 from app.models.user import User
 from app.models.user_mgmt import UserRole
-from app.services import approval
+from app.services import approval, mailer
 
 router = APIRouter(prefix="/api/external", tags=["external"])
 public = APIRouter(prefix="/api/invite", tags=["external"])
@@ -98,6 +98,8 @@ class InviteOut(BaseModel):
     accepted_at: datetime | None
     created_at: datetime
     invite_url: str | None = None   # 승인 직후 응답에만 — 다시 볼 수 없다
+    mail_sent: bool | None = None   # 승인 직후 응답에만. None = 메일 설정 없음
+    mail_error: str | None = None
 
 
 class ProfileOut(BaseModel):
@@ -191,7 +193,10 @@ def approve_invitation(iid: UUID, request: Request, user: CurrentUser, db: Sessi
                 after={"링크 만료": i.token_expires_at.isoformat()})
     db.commit()
     origin = request.headers.get("origin") or f"{request.url.scheme}://{request.headers.get('host', '')}"
-    return _inv_out(db, i, url=f"{origin}/invite/{token}")
+    out = _inv_out(db, i, url=f"{origin}/invite/{token}")
+    m = mailer.invite_mail(i.email, i.display_name, i.organization, out.invite_url, TOKEN_HOURS)
+    out.mail_sent, out.mail_error = m.sent, m.error
+    return out
 
 
 @router.post("/invitations/{iid}/revoke", response_model=InviteOut)
