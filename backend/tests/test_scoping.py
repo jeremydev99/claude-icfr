@@ -620,7 +620,7 @@ def test_confirming_everything_makes_warning_zero(client: TestClient, mgr: dict,
 
 def test_bulk_confirm_by_table_and_texts(client: TestClient, mgr: dict) -> None:
     """일괄 확인(2026-10-08) — 표 하나의 계정 전부 / 문구 전부. 다른 표·고친(edited) 필드는 그대로, 확인자 기록."""
-    s = _create(client, mgr, 2090)
+    s = _create(client, mgr, 2079)
     base = f"/api/scoping/{s['id']}"
     a = _acc(s, "대손충당금(매출채권)")
     st = a["statement_type"]
