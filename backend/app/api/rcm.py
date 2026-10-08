@@ -130,6 +130,19 @@ def require_rcm_editable(user: CurrentUser, db: Session = Depends(get_db)) -> No
         raise HTTPException(status_code=409, detail=why)
 
 
+def require_direct_control_edit(user: User = Depends(require_write), db: Session = Depends(get_db)) -> User:
+    """RCM **바로 반영** — 내부회계관리자만(2026-10-06 통제 수정, 2026-10-08 생성·삭제·상위 계층·어서션·엑셀로 확대).
+    그 외는 통제 필드 수정을 변경 결재(`/api/rcm-changes`, 임시저장 → 조직장 → 일괄 상신 → 내부회계관리자)로 한다.
+    회사에 내부회계관리자가 아직 없으면(결재할 사람이 없으면) 종전처럼 허용한다."""
+    from app.services.control_changes import direct_edit_allowed
+    if not direct_edit_allowed(db, user.id):
+        raise HTTPException(status_code=403, detail=(
+            "RCM 은 내부회계관리자가 바로 반영합니다 — 통제 내용 수정은 임시저장 후 상신(변경 결재)으로, "
+            "통제 추가·삭제·프로세스·위험·어서션 변경은 내부회계관리자에게 요청하세요"))
+    return user
+
+
+
 # ── 모듈 정보 ─────────────────────────────────────────────
 
 @router.get("/info")
@@ -309,7 +322,7 @@ def list_processes(skip: int = 0, limit: int = 100, user: CurrentUser = None, db
 
 
 @router.post("/processes", status_code=status.HTTP_201_CREATED, response_model=ProcessRead, dependencies=[Depends(require_rcm_editable)])
-def create_process(body: ProcessCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
+def create_process(body: ProcessCreate, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> dict:
     """add instance 생성 (2-A-4-3, ADR-0029). tenant_id 는 before_flush 자동 stamp."""
     _assert_code_available(db, BaselineProcess, ProcessInstance, body.code, "프로세스")
     inst = ProcessInstance(action=ACTION_ADD, baseline_process_id=None, **body.model_dump())
@@ -325,7 +338,7 @@ def get_process(process_id: UUID, user: CurrentUser = None, db: Session = Depend
 
 
 @router.patch("/processes/{process_id}", response_model=ProcessRead, dependencies=[Depends(require_rcm_editable)])
-def update_process(process_id: UUID, body: ProcessUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
+def update_process(process_id: UUID, body: ProcessUpdate, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> dict:
     """수정 — baseline 유래면 override instance, add 면 instance 직접 (2-A-4-3, ADR-0029).
 
     `exclude_unset` — False/""/None 도 유효한 값이라 미전송 여부로만 판별한다(2-A-4-2 선례).
@@ -338,7 +351,7 @@ def update_process(process_id: UUID, body: ProcessUpdate, user: User = Depends(r
 
 
 @router.delete("/processes/{process_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_rcm_editable)])
-def delete_process(process_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
+def delete_process(process_id: UUID, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> None:
     """삭제 — baseline 유래는 exclude instance, add 는 soft delete (2-A-4-3, ADR-0029).
 
     하위(sub_process/risk/control)는 건드리지 않는다 — cascade 는 조회 시점 계산(§2.2).
@@ -364,7 +377,7 @@ def list_sub_processes(process_id: UUID | None = None, skip: int = 0, limit: int
 
 
 @router.post("/sub-processes", status_code=status.HTTP_201_CREATED, response_model=SubProcessRead, dependencies=[Depends(require_rcm_editable)])
-def create_sub_process(body: SubProcessCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
+def create_sub_process(body: SubProcessCreate, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> dict:
     """add instance 생성 (2-A-4-3, ADR-0029). 상위는 이중 FK 규칙으로 baseline/instance 매핑."""
     _assert_code_available(db, BaselineSubProcess, SubProcessInstance, body.code, "하위프로세스")
     data = body.model_dump()
@@ -383,7 +396,7 @@ def get_sub_process(sp_id: UUID, user: CurrentUser = None, db: Session = Depends
 
 
 @router.patch("/sub-processes/{sp_id}", response_model=SubProcessRead, dependencies=[Depends(require_rcm_editable)])
-def update_sub_process(sp_id: UUID, body: SubProcessUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
+def update_sub_process(sp_id: UUID, body: SubProcessUpdate, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> dict:
     """수정 — baseline 유래면 override instance, add 면 instance 직접 (2-A-4-3, ADR-0029)."""
     if not _apply_layer_update(db, BaselineSubProcess, SubProcessInstance, "baseline_sub_process_id",
                                _SUB_PROCESS_OVERRIDE_FIELDS, sp_id, body.model_dump(exclude_unset=True)):
@@ -393,7 +406,7 @@ def update_sub_process(sp_id: UUID, body: SubProcessUpdate, user: User = Depends
 
 
 @router.delete("/sub-processes/{sp_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_rcm_editable)])
-def delete_sub_process(sp_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
+def delete_sub_process(sp_id: UUID, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> None:
     """삭제 — baseline 유래는 exclude instance, add 는 soft delete (2-A-4-3, ADR-0029)."""
     if not _apply_layer_delete(db, BaselineSubProcess, SubProcessInstance, "baseline_sub_process_id",
                                _SUB_PROCESS_OVERRIDE_FIELDS, sp_id,
@@ -417,7 +430,7 @@ def list_risks(sub_process_id: UUID | None = None, skip: int = 0, limit: int = 1
 
 
 @router.post("/risks", status_code=status.HTTP_201_CREATED, response_model=RiskRead, dependencies=[Depends(require_rcm_editable)])
-def create_risk(body: RiskCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
+def create_risk(body: RiskCreate, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> dict:
     """add instance 생성 (2-A-4-3, ADR-0029). 상위는 이중 FK 규칙으로 baseline/instance 매핑."""
     _assert_code_available(db, BaselineRisk, RiskInstance, body.code, "위험")
     data = body.model_dump()
@@ -436,7 +449,7 @@ def get_risk(risk_id: UUID, user: CurrentUser = None, db: Session = Depends(get_
 
 
 @router.patch("/risks/{risk_id}", response_model=RiskRead, dependencies=[Depends(require_rcm_editable)])
-def update_risk(risk_id: UUID, body: RiskUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
+def update_risk(risk_id: UUID, body: RiskUpdate, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> dict:
     """수정 — baseline 유래면 override instance, add 면 instance 직접 (2-A-4-3, ADR-0029)."""
     if not _apply_layer_update(db, BaselineRisk, RiskInstance, "baseline_risk_id",
                                _RISK_OVERRIDE_FIELDS, risk_id, body.model_dump(exclude_unset=True)):
@@ -446,7 +459,7 @@ def update_risk(risk_id: UUID, body: RiskUpdate, user: User = Depends(require_wr
 
 
 @router.delete("/risks/{risk_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_rcm_editable)])
-def delete_risk(risk_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
+def delete_risk(risk_id: UUID, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> None:
     """삭제 — baseline 유래는 exclude instance, add 는 soft delete (2-A-4-3, ADR-0029)."""
     if not _apply_layer_delete(db, BaselineRisk, RiskInstance, "baseline_risk_id",
                                _RISK_OVERRIDE_FIELDS, risk_id,
@@ -474,7 +487,7 @@ def list_risk_categories(skip: int = 0, limit: int = 100, user: CurrentUser = No
 
 
 @router.post("/risk-categories", status_code=status.HTTP_201_CREATED, response_model=RiskCategoryRead, dependencies=[Depends(require_rcm_editable)])
-def create_risk_category(body: RiskCategoryCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> RiskCategory:
+def create_risk_category(body: RiskCategoryCreate, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> RiskCategory:
     obj = RiskCategory(**body.model_dump())
     db.add(obj)
     db.commit()
@@ -495,7 +508,7 @@ def get_risk_category(rc_id: UUID, user: CurrentUser = None, db: Session = Depen
 
 
 @router.patch("/risk-categories/{rc_id}", response_model=RiskCategoryRead, dependencies=[Depends(require_rcm_editable)])
-def update_risk_category(rc_id: UUID, body: RiskCategoryUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> RiskCategory:
+def update_risk_category(rc_id: UUID, body: RiskCategoryUpdate, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> RiskCategory:
     obj = db.query(RiskCategory).filter(RiskCategory.id == rc_id, RiskCategory.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="RiskCategory not found")
@@ -507,7 +520,7 @@ def update_risk_category(rc_id: UUID, body: RiskCategoryUpdate, user: User = Dep
 
 
 @router.delete("/risk-categories/{rc_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_rcm_editable)])
-def delete_risk_category(rc_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
+def delete_risk_category(rc_id: UUID, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> None:
     obj = db.query(RiskCategory).filter(RiskCategory.id == rc_id, RiskCategory.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="RiskCategory not found")
@@ -774,7 +787,7 @@ def search_controls(
 
 
 @router.post("/controls/bulk-delete", dependencies=[Depends(require_rcm_editable)])
-def bulk_delete_controls(body: BulkDeleteRequest, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
+def bulk_delete_controls(body: BulkDeleteRequest, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> dict:
     """다건 삭제 — 단건 DELETE 와 동일 분기를 id 마다 적용 (ADR-0027, 2-A-4-2).
 
     미해당 id 는 건너뛰고 `skipped_ids` 로 드러낸다 — 하나 때문에 전체를 404 로 실패시키지 않는다.
@@ -788,15 +801,6 @@ def bulk_delete_controls(body: BulkDeleteRequest, user: User = Depends(require_w
             skipped.append(cid)
     db.commit()
     return {"deleted_count": deleted, "skipped_ids": skipped}
-
-
-def require_direct_control_edit(user: User = Depends(require_write), db: Session = Depends(get_db)) -> User:
-    """통제 내용 **바로 반영** — 내부회계관리자만(2026-10-06). 그 외는 임시저장 → 조직장 → 일괄 상신 → 내부회계관리자
-    결재로 반영한다(`/api/rcm-changes`). 회사에 내부회계관리자가 아직 없으면(결재할 사람이 없으면) 종전처럼 허용한다."""
-    from app.services.control_changes import direct_edit_allowed
-    if not direct_edit_allowed(db, user.id):
-        raise HTTPException(status_code=403, detail="통제 내용은 임시저장 후 상신 → 조직장 → 내부회계관리자 결재로 반영됩니다")
-    return user
 
 
 @router.post("/controls/bulk-update", dependencies=[Depends(require_rcm_editable)])
@@ -939,7 +943,7 @@ def _apply_control_delete(db: Session, control_id: UUID) -> bool:
 
 
 @router.post("/controls", status_code=status.HTTP_201_CREATED, response_model=ControlRead, dependencies=[Depends(require_rcm_editable)])
-def create_control(body: ControlCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
+def create_control(body: ControlCreate, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> dict:
     """add instance 생성 (ADR-0027, 2-A-4-1). 회사 고유 통제 = ControlInstance(action=ACTION_ADD).
 
     tenant_id 는 before_flush 자동 stamp(ADR-0026, 수동 지정 금지).
@@ -991,7 +995,7 @@ def update_control(control_id: UUID, body: ControlUpdate, user: User = Depends(r
 
 
 @router.delete("/controls/{control_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_rcm_editable)])
-def delete_control(control_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
+def delete_control(control_id: UUID, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> None:
     """단건 삭제 — 분기는 `_apply_control_delete` 공통 (ADR-0027, 2-A-4-1, 2-B-3.5 삭제 규약)."""
     if not _apply_control_delete(db, control_id):
         raise HTTPException(status_code=404, detail="Control not found")
@@ -1031,7 +1035,7 @@ def list_control_assertions(skip: int = 0, limit: int = 100, user: CurrentUser =
 
 
 @router.post("/control-assertions", status_code=status.HTTP_201_CREATED, response_model=ControlAssertionRead, dependencies=[Depends(require_rcm_editable)])
-def create_control_assertion(body: ControlAssertionCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> ControlAssertionRead:
+def create_control_assertion(body: ControlAssertionCreate, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> ControlAssertionRead:
     """연결 추가 (2-A-4-4, ADR-0029 §2.3). risk_category_id 는 baseline_risk_categories.id.
 
     - baseline 에 없는 연결 → add instance 생성
@@ -1086,7 +1090,7 @@ def create_control_assertion(body: ControlAssertionCreate, user: User = Depends(
 
 
 @router.delete("/control-assertions/{ca_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_rcm_editable)])
-def delete_control_assertion(ca_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
+def delete_control_assertion(ca_id: UUID, user: User = Depends(require_direct_control_edit), db: Session = Depends(get_db)) -> None:
     """연결 삭제 (2-A-4-4, ADR-0029 §2.3). ca_id 는 목록이 준 연결 정체성 id.
 
     - baseline 연결 → remove instance 생성/재활성화. **baseline_control_assertions 원본 불변.**
@@ -1344,7 +1348,8 @@ async def upload_excel(
     expand_to: 헤더 탐색 최대 행 (1차=15, 2차=30, 3차=130).
     """
     if mode != "preview":
-        require_rcm_editable(user, db)   # 미리보기는 잠금과 무관, 저장만 막는다(ADR-0038 2-5)
+        require_rcm_editable(user, db)
+        require_direct_control_edit(user, db)   # 저장은 내부회계관리자만(2026-10-08)   # 미리보기는 잠금과 무관, 저장만 막는다(ADR-0038 2-5)
     if not file.filename or not file.filename.endswith(".xlsx"):
         raise HTTPException(status_code=400, detail=".xlsx 파일만 허용됩니다")
     if mode not in ("preview", "commit"):

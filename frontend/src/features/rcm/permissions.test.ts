@@ -14,8 +14,12 @@ const baseUser: Omit<UserProfile, 'can_write'> = {
 }
 
 describe('canEditHierarchyForUser', () => {
-  it('can_write=true면 true', () => {
-    expect(canEditHierarchyForUser({ ...baseUser, can_write: true })).toBe(true)
+  it('can_write=true + 내부회계관리자면 true', () => {
+    expect(canEditHierarchyForUser({ ...baseUser, can_write: true, tenant_roles: ['icfr_manager'] })).toBe(true)
+  })
+
+  it('can_write=true 라도 관리자가 아니면 false — 바로 반영은 관리자만(2026-10-08)', () => {
+    expect(canEditHierarchyForUser({ ...baseUser, can_write: true, tenant_roles: ['icfr_staff'] })).toBe(false)
   })
 
   it('can_write=false면 false', () => {

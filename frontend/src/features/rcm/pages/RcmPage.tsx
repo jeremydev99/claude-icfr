@@ -20,6 +20,7 @@ import RoleMatrix from '@/features/admin/roleMatrix/RoleMatrix'
 import ChangeInbox from '../changes/ChangeInbox'
 import BulkChangeBar from '../changes/BulkChangeBar'
 import RcmYearView, { RcmLockBanner } from '../year/RcmYearView'
+import { canEditHierarchy } from '../permissions'
 
 function extractErrorMessage(err: unknown): string {
   if (isAxiosError(err)) {
@@ -65,6 +66,8 @@ export default function RcmPage() {
   const { data, isLoading, isError, error, refetch } = useControls(params)
   const deleteMutation = useDeleteControl()
   const canWrite = useCanWrite()
+  // 통제 추가·삭제·엑셀 저장은 내부회계관리자만(2026-10-08) — 수정은 쓰기 권한자 누구나(관리자 외는 변경 결재로 저장)
+  const canDirect = canEditHierarchy()
 
   const handleChange = (updated: Partial<ControlSearchParams>) => {
     setParams((prev) => ({ ...prev, ...updated }))
@@ -157,10 +160,10 @@ export default function RcmPage() {
             onParamsChange={handleChange}
             onSelect={handleSelect}
             // 조회 전용(external_auditor)이면 쓰기 핸들러를 넘기지 않는다 — 버튼이 렌더되지 않는다
-            onAddClick={canWrite ? handleAddClick : undefined}
+            onAddClick={canDirect ? handleAddClick : undefined}
             onEdit={canWrite ? handleEditClick : undefined}
-            onDelete={canWrite ? handleDeleteClick : undefined}
-            onUploadClick={canWrite ? () => setUploadOpen(true) : undefined}
+            onDelete={canDirect ? handleDeleteClick : undefined}
+            onUploadClick={canDirect ? () => setUploadOpen(true) : undefined}
             isLoading={isLoading}
             isError={isError}
             error={error}
