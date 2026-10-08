@@ -2327,6 +2327,7 @@ HTTP 200
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-10-08 / Regina + Claude** — 13.9-106 운영 반영: `4ddd97e` push → backend·frontend 이미지 `4ddd97e…` healthy, `alembic_version` = `e3a5c7b9d1f4`, `rcm_fiscal_years`·`rcm_snapshots`·`approval_states` 0건(운영 결재 아직 없음 — 2026 RCM 미시작). **Regina 서버 키 등록 확인(15:03, `regina@icfr`)** — 이후 Regina 세션은 CLAUDE.md §8.4 위임을 따른다(서버 조회는 Claude Code 직접 수행, 이번 확인이 첫 사용).
 - **2026-10-08 / Regina + Claude** — **RCM 확정본 버전 비교** (마이그레이션 없음, 13.9-106). 확정본끼리·현재 RCM 과 비교, 재오픈 결재 시 직전 확정본 대비 요약.
 - **2026-10-08 / Regina + Claude** — 13.9-105 운영 반영: `7c8de83` push → CI·Deploy success, 프론트 빌드 교체 확인(`index-i_2-_iu1`), health 정상. 서버 접속(Regina 키) 미등록이라 DB 확인은 못 함.
 - **2026-10-08 / Regina + Claude** — **RCM 바로 반영은 내부회계관리자만** (마이그레이션 없음, 13.9-105). 통제 생성·삭제·계층·어서션·엑셀 저장이 쓰기 권한자 누구나 → 관리자 전용.
