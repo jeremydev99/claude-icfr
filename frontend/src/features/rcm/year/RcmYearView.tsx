@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import ApprovalPanel, { type ApprovalAction } from '@/features/governance/ApprovalPanel'
 import GovernanceHistory from '@/features/governance/GovernanceHistory'
 import type { GovernanceInfo } from '@/features/governance/types'
+import RcmCompare from './RcmCompare'
 
 const BASE = '/api/rcm-years'
 
@@ -21,6 +22,8 @@ export interface RcmYear {
   is_latest: boolean
   snapshots: { version: number; control_count: number; confirmed_by: string | null; confirmed_at: string }[]
   pending_changes: number
+  /** 재오픈 후 검토 중 — 직전 확정본 대비 변경 한 줄 */
+  diff_summary: string | null
   governance: GovernanceInfo
 }
 
@@ -130,6 +133,8 @@ export default function RcmYearView() {
         </span>
       </div>
 
+      <RcmCompare years={years} />
+
       {years.length === 0 && <p className="text-sm text-muted-foreground">아직 시작한 회계연도 RCM 이 없습니다.</p>}
 
       {years.map((y) => (
@@ -142,6 +147,9 @@ export default function RcmYearView() {
               <span className="text-xs text-amber-700">상신된 통제 변경 결재 {y.pending_changes}건 — 끝내야 검토 요청할 수 있습니다</span>
             )}
           </div>
+          {y.diff_summary && (
+            <p className="rounded-md bg-accent px-3 py-2 text-sm text-accent-foreground">{y.diff_summary} — 아래 확정본 비교에서 자세히 볼 수 있습니다</p>
+          )}
           {y.is_latest && (
             <ApprovalPanel status={y.approval_status} g={y.governance} pending={busy} onAction={(a) => act(y, a)} />
           )}

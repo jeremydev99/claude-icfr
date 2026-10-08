@@ -5,7 +5,7 @@
 """
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -24,7 +24,7 @@ from app.schemas.scoping import (
     ReviewRequest,
     TransitionRequest,
 )
-from app.services import approval_flow
+from app.services import approval_flow, rcm_diff
 from app.services import rcm_approval as rap
 
 router = APIRouter(prefix="/api/rcm-years", tags=["rcm-years"])
@@ -49,6 +49,8 @@ class RcmYearRead(BaseModel):
     is_latest: bool
     snapshots: list[SnapshotRead]
     pending_changes: int            # 상신된 통제 변경 결재 — 남아 있으면 검토 요청 불가
+    # 재오픈 후 검토 중일 때 — 직전 확정본 대비 변경 한 줄(승인자가 무엇을 승인하는지)
+    diff_summary: str | None = None
     governance: GovernanceInfo
 
 
@@ -71,13 +73,17 @@ def _read(db: Session, y: RcmFiscalYear, user_id: UUID) -> RcmYearRead:
     snaps = db.query(RcmSnapshot).filter(RcmSnapshot.rcm_year_id == y.id, RcmSnapshot.is_deleted == False).order_by(  # noqa: E712
         RcmSnapshot.version.desc()).all()
     latest = rap.latest_year(db)
+    diff_summary = None
+    if st.status == "review" and snaps:
+        diff_summary = "직전 확정본(v{}) 대비 {}".format(snaps[0].version, rcm_diff.summary_text(
+            rcm_diff.diff(snaps[0].snapshot, rap.build_snapshot(db, y.fiscal_year, st.version or 1))))
     return RcmYearRead(
         id=y.id, fiscal_year=y.fiscal_year, approval_status=st.status, version=st.version or 1,
         is_latest=latest is not None and latest.id == y.id,
         snapshots=[SnapshotRead(version=s.version, control_count=s.control_count,
                                 confirmed_by=(av.person(db, s.confirmed_by_id).name if s.confirmed_by_id else None),
                                 confirmed_at=s.confirmed_at.isoformat()) for s in snaps],
-        pending_changes=rap.pending_changes(db),
+        pending_changes=rap.pending_changes(db), diff_summary=diff_summary,
         governance=av.governance_info(db, st, user_id))
 
 
@@ -97,6 +103,33 @@ def get_lock(user: CurrentUser, db: Session = Depends(get_db)) -> RcmLock:
     why = rap.lock_reason(db)
     return RcmLock(locked=why is not None, reason=why, fiscal_year=y.fiscal_year if y else None,
                    rcm_year_id=y.id if y else None)
+
+
+def _side(db: Session, ref: str) -> tuple[dict, str]:
+    """비교 한쪽 — `live`(현재 RCM) 또는 `<회계연도 RCM id>:<버전>`."""
+    if ref == "live":
+        return rap.build_snapshot(db, None, None), "현재 RCM"
+    try:
+        rid, ver = ref.rsplit(":", 1)
+        rid_u, ver_i = UUID(rid), int(ver)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="비교 대상은 'live' 또는 '<id>:<버전>' 입니다") from None
+    y = _get(db, rid_u)
+    s = db.query(RcmSnapshot).filter(RcmSnapshot.rcm_year_id == y.id, RcmSnapshot.version == ver_i,
+                                     RcmSnapshot.is_deleted == False).first()  # noqa: E712
+    if s is None:
+        raise HTTPException(status_code=404, detail=f"{y.fiscal_year} 회계연도 RCM v{ver_i} 확정본이 없습니다")
+    return s.snapshot, f"{y.fiscal_year} 회계연도 RCM v{ver_i}"
+
+
+@router.get("/compare")
+def compare(user: CurrentUser, base: str = Query(..., description="'live' 또는 '<id>:<버전>'"),
+            target: str = Query(default="live"), db: Session = Depends(get_db)) -> dict:
+    """확정본 비교 — base → target 에서 계층별 추가·삭제·변경(항목별 전→후). 연도가 달라도 되고, 현재 RCM 과도 비교한다."""
+    a, la = _side(db, base)
+    b, lb = _side(db, target)
+    d = rcm_diff.diff(a, b)
+    return {"base": la, "target": lb, "summary_text": rcm_diff.summary_text(d), **d}
 
 
 @router.get("", response_model=list[RcmYearRead])
