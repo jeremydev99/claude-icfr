@@ -173,3 +173,16 @@ def test_lock_is_per_company(client: TestClient) -> None:
     assert client.get(f"{Y}/lock", headers=b.h["master"]).json()["locked"] is False
     r = client.patch(f"/api/rcm/controls/{cid}", headers=b.h["master"], json={"name": "B 회사 수정"})
     assert r.status_code == 200, r.text
+
+
+def test_audit_log_names_the_rcm_year(client: TestClient) -> None:
+    """감사 로그 '대상' 이 경로가 아니라 '2026 회계연도 RCM' (2026-10-08 운영 확정에서 발견)."""
+    t = T(client, {"lead": ("icfr_lead",), "master": ("icfr_manager",)})
+    _control(t)
+    rid = _start(client, t)
+    _confirm(client, t, rid)
+    items = client.get("/api/admin/audit-logs", headers=t.h["master"], params={"module": "RCM"}).json()["items"]
+    got = [(i["action"], i["target_label"], i["target_id"]) for i in reversed(items)]
+    assert got == [("회계연도 RCM 시작", "2026 회계연도 RCM", rid),
+                   ("회계연도 RCM 상태 변경", "2026 회계연도 RCM", rid),
+                   ("회계연도 RCM 상태 변경", "2026 회계연도 RCM", rid)]

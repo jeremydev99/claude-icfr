@@ -102,12 +102,12 @@ ROUTES: dict[str, R] = {
     "DELETE /api/iuc/items/{item_id}": ("IUC", "IUC 삭제", "iuc", "item_id"),
     # 미비점·개선계획
     # 회계연도 RCM 확정 결재(ADR-0038 2-5)
-    "POST /api/rcm-years": (RCM, "회계연도 RCM 시작", None, None),
-    "POST /api/rcm-years/{rid}/transition": (RCM, "회계연도 RCM 상태 변경", None, None),
-    "POST /api/rcm-years/{rid}/review": (RCM, "회계연도 RCM 검토", None, None),
-    "POST /api/rcm-years/{rid}/reopen-requests": (RCM, "회계연도 RCM 재오픈 요청", None, None),
-    "POST /api/rcm-years/{rid}/reopen-requests/{request_id}/decide": (RCM, "회계연도 RCM 재오픈 결정", None, None),
-    "POST /api/rcm-years/{rid}/external-approval": (RCM, "회계연도 RCM 외부 승인 등록", None, None),
+    "POST /api/rcm-years": (RCM, "회계연도 RCM 시작", "rcm_year", None),
+    "POST /api/rcm-years/{rid}/transition": (RCM, "회계연도 RCM 상태 변경", "rcm_year", "rid"),
+    "POST /api/rcm-years/{rid}/review": (RCM, "회계연도 RCM 검토", "rcm_year", "rid"),
+    "POST /api/rcm-years/{rid}/reopen-requests": (RCM, "회계연도 RCM 재오픈 요청", "rcm_year", "rid"),
+    "POST /api/rcm-years/{rid}/reopen-requests/{request_id}/decide": (RCM, "회계연도 RCM 재오픈 결정", "rcm_year", "rid"),
+    "POST /api/rcm-years/{rid}/external-approval": (RCM, "회계연도 RCM 외부 승인 등록", "rcm_year", "rid"),
     "POST /api/remediation/deficiencies": (REM, "미비점 등록", "deficiency", None),
     "PATCH /api/remediation/deficiencies/{deficiency_id}": (REM, "미비점 수정 저장", "deficiency", "deficiency_id"),
     "DELETE /api/remediation/deficiencies/{deficiency_id}": (REM, "미비점 삭제", "deficiency", "deficiency_id"),

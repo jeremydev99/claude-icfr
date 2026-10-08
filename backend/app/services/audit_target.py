@@ -81,6 +81,12 @@ def _scoping(db, oid, _p):
     return f"{o.fiscal_year} 회계연도 스코핑" if o else None
 
 
+def _rcm_year(db, oid, _p):
+    from app.models.rcm_governance import RcmFiscalYear
+    o = _get(db, RcmFiscalYear, oid)
+    return f"{o.fiscal_year} 회계연도 RCM" if o else None
+
+
 def _scoping_account(db, oid, _p):
     from app.models.scoping import ScopingAccount
     o = _get(db, ScopingAccount, oid)
@@ -217,6 +223,7 @@ RESOLVERS: dict[str, Callable] = {
     "change_batch": _change_batch,
     "scoping": _scoping,
     "scoping_account": _scoping_account,
+    "rcm_year": _rcm_year,
     "fs_statement": _fs,
     "euc": _named("EUC", "app.models.euc.EucFile"),
     "iuc": _named("IUC", "app.models.iuc.InformationItem"),
