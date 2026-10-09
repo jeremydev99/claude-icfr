@@ -1,6 +1,7 @@
 import { CheckCircle2, XCircle } from 'lucide-react'
 import { formatAmount, ruleLabel } from '../fsTree.pure'
 import type { ValidationResult } from '../types'
+import HelpButton from '@/features/help/HelpButton'
 
 /** 검증 결과 (8-D) — 항목을 누르면 그 계정 행으로 이동한다. 확정을 막는 것은 `errors` 뿐이다. */
 export default function ValidationPanel({ validation, onSelect }: {
@@ -14,6 +15,7 @@ export default function ValidationPanel({ validation, onSelect }: {
         {validation.ok
           ? <><CheckCircle2 className="h-4 w-4 text-emerald-600" /><span className="font-medium">검증 통과</span></>
           : <><XCircle className="h-4 w-4 text-red-600" /><span className="font-medium">확정 불가 — 오류 {errors.length}건</span></>}
+        <HelpButton k="screen.financial-statements.validation" />
         <span className="text-muted-foreground">
           · 비교 {checks.length}건 · 검사 생략 {skipped.length}건 · 허용 오차 {formatAmount(validation.tolerance)}
         </span>

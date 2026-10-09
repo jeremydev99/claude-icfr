@@ -92,7 +92,11 @@ function HelpPanelContent({ showClose }: { showClose: boolean }) {
 
   // menu.<route> 접두사 조회는 하위 키도 돌려줄 수 있으므로 정확히 같은 키만 머리글로 쓴다.
   const menuEntry = menuQ.data?.find((h) => h.key === menuKey) ?? null
-  const screenEntries = screenQ.data ?? []
+  // 하위 화면(예: /rcm 의 /rcm/links)은 자기 menu.* 를 가진다 — 그 화면의 screen.* 는 상위 화면 패널에서 뺀다.
+  const subScreenPrefixes = (menuQ.data ?? [])
+    .filter((h) => h.key !== menuKey)
+    .map((h) => `screen.${h.key.slice('menu.'.length)}.`)
+  const screenEntries = (screenQ.data ?? []).filter((h) => !subScreenPrefixes.some((p) => h.key.startsWith(p)))
   const terms = termQ.data ?? []
 
   const onScreen =

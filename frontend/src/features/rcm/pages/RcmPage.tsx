@@ -137,7 +137,7 @@ export default function RcmPage() {
         <Button variant={rcmTab === 'year' ? 'default' : 'ghost'} size="sm" onClick={() => setRcmTab('year')}>
           회계연도 확정
         </Button>
-        <HelpButton k={rcmTab === 'controls' ? 'screen.rcm.controls' : 'screen.rcm.hierarchy'} className="mx-1" />
+        <HelpButton k={`screen.rcm.${rcmTab}`} className="mx-1" />
         <Button asChild variant="ghost" size="sm"><Link to="/rcm/links">통제 ↔ 계정 연결 →</Link></Button>
       </div>
 

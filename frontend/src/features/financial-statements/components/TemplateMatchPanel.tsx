@@ -19,6 +19,7 @@ import {
   type MatchRow,
   type TemplateMatches,
 } from '../match.pure'
+import HelpButton from '@/features/help/HelpButton'
 
 /**
  * 스코핑 템플릿 연결 (8-D3, ADR-0037 §4) — 회사 계정 ↔ 스코핑 표준 템플릿 계정.
@@ -66,7 +67,7 @@ export default function TemplateMatchPanel({ statementType, canEdit }: { stateme
   return (
     <div className="space-y-3 text-xs">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="text-muted-foreground">템플릿 {data.template_code} v{data.template_version}</span>
+        <span className="flex items-center gap-1 text-muted-foreground">템플릿 {data.template_code} v{data.template_version} <HelpButton k="screen.financial-statements.template-match" /></span>
         <span>회사 계정 {c.accounts ?? 0} · 연결 <b>{c.linked ?? 0}</b> · 제안(정확) {c.suggested_exact ?? 0} ·
           제안(정규화) {c.suggested_normalized ?? 0} · 제안 없음 {c.unmatched ?? 0}</span>
         <select value={filter} onChange={(e) => setFilter(e.target.value as MatchFilter)}

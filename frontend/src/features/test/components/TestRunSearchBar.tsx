@@ -10,6 +10,7 @@ import { Plus } from 'lucide-react'
 import type { TestRunSearchParams, TestRunStatus } from '../types'
 import { STATUS_LABELS } from '../types'
 import { useCanWrite } from '@/features/auth/useCanWrite'
+import HelpButton from '@/features/help/HelpButton'
 
 interface Props {
   value: TestRunSearchParams
@@ -73,6 +74,8 @@ export default function TestRunSearchBar({ value, onChange, onAddClick }: Props)
           ))}
         </SelectContent>
       </Select>
+
+      <HelpButton k="screen.test.list" />
 
       {canWrite && (
         <div className="ml-auto">

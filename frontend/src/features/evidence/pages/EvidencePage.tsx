@@ -16,6 +16,7 @@ import { useCycleTargets, useEvidenceFiles } from '../api/useEvidence'
 import { buildFileFilterParams, cycleLabel, FILTER_ALL, sortCyclesForUpload } from '../evidence.pure'
 import EvidenceTable from '../components/EvidenceTable'
 import EvidenceUploadDialog from '../components/EvidenceUploadDialog'
+import HelpButton from '@/features/help/HelpButton'
 
 export default function EvidencePage() {
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -66,6 +67,7 @@ export default function EvidencePage() {
             </SelectContent>
           </Select>
         </div>
+        <HelpButton k="screen.evidence.filter" className="mb-2" />
         {filtered && (
           <Button variant="ghost" size="sm" onClick={() => { setCycleFilter(FILTER_ALL); setControlFilter(FILTER_ALL) }}>
             필터 해제

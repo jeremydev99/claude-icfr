@@ -21,6 +21,7 @@ import ValidationPanel from '../components/ValidationPanel'
 import SuspensePanel from '../components/SuspensePanel'
 import UploadDialog from '../components/UploadDialog'
 import TemplateMatchPanel from '../components/TemplateMatchPanel'
+import HelpButton from '@/features/help/HelpButton'
 import type { StatementDetail, ValidationResult } from '../types'
 
 /**
@@ -126,7 +127,7 @@ export default function FinancialStatementsPage() {
         {!isManager && (
           <Badge variant="outline" className="gap-1"><Lock className="h-3 w-3" /> 읽기 전용 · 금액 수정은 내부회계관리자</Badge>
         )}
-        <span className="ml-auto">{uploadButton}</span>
+        <span className="ml-auto flex items-center gap-1">{uploadButton}{isManager && <HelpButton k="screen.financial-statements.upload" />}</span>
       </div>
       {uploadDialog}
 
@@ -188,6 +189,7 @@ function StatementView({ detail, isManager }: { detail: StatementDetail; isManag
           <span>
             상태 <Badge variant={draft ? 'secondary' : 'default'}>{APPROVAL_LABEL[detail.approval_status]}</Badge>
             {detail.legacy_confirmed && <span className="ml-1 text-muted-foreground">(이전 방식 확정 — 결재선 도입 전)</span>}
+            <HelpButton k="screen.financial-statements.approval" className="ml-1" />
           </span>
           <span>단위 <b>{UNIT_LABEL[detail.unit] ?? detail.unit}</b> · {detail.currency}</span>
           <ToleranceField detail={detail} editable={isManager && draft} />
@@ -225,7 +227,7 @@ function StatementView({ detail, isManager }: { detail: StatementDetail; isManag
 
       <Card>
         <CardHeader className="flex-row items-center justify-between py-3">
-          <CardTitle className="text-sm">계정별 금액</CardTitle>
+          <CardTitle className="flex items-center gap-1 text-sm">계정별 금액 <HelpButton k="screen.financial-statements.amounts" /></CardTitle>
           <div className="flex flex-wrap items-center gap-2">
             {canOrder && (
               <div className="flex rounded-md border p-0.5 text-xs" role="group" aria-label="보기 순서">
@@ -250,7 +252,7 @@ function StatementView({ detail, isManager }: { detail: StatementDetail; isManag
 
       {detail.events.length > 0 && (
         <Card>
-          <CardHeader className="py-3"><CardTitle className="text-sm">확정·재오픈 기록</CardTitle></CardHeader>
+          <CardHeader className="py-3"><CardTitle className="flex items-center gap-1 text-sm">확정·재오픈 기록 <HelpButton k="screen.financial-statements.history" /></CardTitle></CardHeader>
           <CardContent className="space-y-1 text-xs">
             {detail.events.map((ev) => (
               <div key={ev.id} className="flex gap-3">

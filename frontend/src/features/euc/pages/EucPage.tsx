@@ -18,6 +18,7 @@ import EucFileDialog from '../components/EucFileDialog'
 import { RiskBadge, errorDetail, labelOf } from '../components/RiskBadge'
 import type { EucFile, EucFilePayload } from '../types'
 import HelpTerm from '@/features/help/HelpTerm'
+import HelpButton from '@/features/help/HelpButton'
 
 /**
  * EUC 화면 — **파일 중심**(ADR-0033 §2.1 정정). 파일 하나에 참조 통제가 여럿 붙을 수 있다.
@@ -96,7 +97,7 @@ export default function EucPage() {
               <TableHead>원천 참고값</TableHead>
               <TableHead>통제 식별</TableHead>
               <TableHead>변경주기</TableHead>
-              <TableHead className="w-24" />
+              <TableHead className="w-24 text-right"><HelpButton k="screen.euc.files" /></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

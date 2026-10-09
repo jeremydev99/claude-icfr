@@ -26,6 +26,7 @@ import {
 } from '../types'
 import SourceBadge from './SourceBadge'
 import HelpTerm from '@/features/help/HelpTerm'
+import HelpButton from '@/features/help/HelpButton'
 
 interface Props {
   data: ControlListResponse | undefined
@@ -102,7 +103,8 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end gap-2">
+      <div className="flex items-center justify-end gap-2">
+        {onUploadClick && <HelpButton k="screen.rcm.excel-upload" />}
         {onUploadClick && (
           <Button
             variant="outline"
@@ -113,6 +115,7 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
             Excel 업로드
           </Button>
         )}
+        {onAddClick && <HelpButton k="screen.rcm.control-form" />}
         {onAddClick && (
           <Button
             size="sm"

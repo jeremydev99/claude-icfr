@@ -4,6 +4,7 @@ import { Loader2, Lock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import HelpButton from '@/features/help/HelpButton'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -90,7 +91,7 @@ export default function FiscalYearPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">설정</CardTitle>
+          <CardTitle className="flex items-center gap-1 text-base">설정<HelpButton k="screen.admin.fiscal-year.settings" /></CardTitle>
           <p className="text-sm text-muted-foreground">
             평가 회차 기간, 일정 날짜, 재무제표 업로드의 회계연도 판단, 보고서 기준일(회계연도 말일)이 이 값으로 정해집니다.
             회차 기간은 제안일 뿐 회차를 만들 때 조정할 수 있습니다.
@@ -139,7 +140,7 @@ export default function FiscalYearPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">현재 기간 제안값 (저장된 설정 기준)</CardTitle>
+          <CardTitle className="flex items-center gap-1 text-base">현재 기간 제안값 (저장된 설정 기준)<HelpButton k="screen.admin.fiscal-year.suggestions" /></CardTitle>
           <p className="text-sm text-muted-foreground">오늘이 속한 회계연도·회차에 대해 서버가 제안하는 평가 대상 기간입니다.</p>
         </CardHeader>
         <CardContent>

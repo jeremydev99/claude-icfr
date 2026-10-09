@@ -33,6 +33,7 @@ import { toast } from 'sonner'
 import { Pencil, Eye } from 'lucide-react'
 import { endMonthOf, fiscalRangeText } from '@/lib/fiscalYear'
 import PlanPanel from '../components/PlanPanel'
+import HelpButton from '@/features/help/HelpButton'
 
 /**
  * 일정관리 — 회계연도 일정안(표준·사용자 지정, 전결라인 결재) + 평가 회차 기간 오버레이(2026-10-06).
@@ -158,6 +159,7 @@ export default function SchedulePage() {
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <CalendarDays className="h-4 w-4" /> 이번 달 할 일
+            <HelpButton k="screen.schedule.this-month" />
           </CardTitle>
         </CardHeader>
         <CardContent className="text-sm">
@@ -195,7 +197,7 @@ export default function SchedulePage() {
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-2">
           <div>
-            <CardTitle className="text-base">연간 일정 {editing && <span className="text-sm font-normal text-amber-700 dark:text-amber-300">· 편집 중({p ? `${p.version}판` : '일정안 없음'})</span>}</CardTitle>
+            <CardTitle className="flex flex-wrap items-center gap-1 text-base">연간 일정 <HelpButton k="screen.schedule.gantt" /> {editing && <span className="text-sm font-normal text-amber-700 dark:text-amber-300">· 편집 중({p ? `${p.version}판` : '일정안 없음'})</span>}</CardTitle>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {editing
                 ? locked ? '결재 중에는 고칠 수 없습니다 — 반려되거나 승인된 뒤 고치세요.'
@@ -255,7 +257,7 @@ export default function SchedulePage() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-base">평가 회차</CardTitle>
+          <CardTitle className="flex items-center gap-1 text-base">평가 회차 <HelpButton k="screen.schedule.cycles" /></CardTitle>
           {canWrite && <Button size="sm" onClick={() => setCreateOpen(true)}>회차 생성</Button>}
         </CardHeader>
         <CardContent className="text-sm">

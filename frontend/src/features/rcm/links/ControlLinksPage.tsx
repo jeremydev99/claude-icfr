@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import HelpButton from '@/features/help/HelpButton'
 import { useAuthStore } from '@/features/auth/store'
 import { isIcfrStaffForUser } from '@/features/auth/permissions.pure'
 import { errDetail, useAddLink, useAutoMatch, useBoard, useRemoveLink, useSubmitLinks } from './api'
@@ -64,7 +65,8 @@ export default function ControlLinksPage() {
           </p>
         </div>
         {canEdit && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <HelpButton k="screen.rcm.links.auto-match" />
             <Button variant="outline" disabled={auto.isPending} onClick={() => auto.mutate(undefined, {
               onSuccess: (r) => toast.success(r.added ? `자동 매칭으로 초안 ${r.added}건을 만들었습니다` : '새로 찾은 연결이 없습니다'),
               onError: (e) => toast.error(errDetail(e, '자동 매칭에 실패했습니다')),
@@ -74,6 +76,7 @@ export default function ControlLinksPage() {
             <Button disabled={stats.draft === 0 || !!board.open_proposal} onClick={() => setSubmitOpen(true)}>
               <Send className="mr-1.5 h-4 w-4" />검토 요청{stats.draft ? ` ${stats.draft}건` : ''}
             </Button>
+            <HelpButton k="screen.rcm.links.submit" />
           </div>
         )}
       </div>
@@ -97,6 +100,7 @@ export default function ControlLinksPage() {
       <div className="flex items-center gap-1 rounded-md border p-1 w-fit">
         <Button size="sm" variant={tab === 'board' ? 'default' : 'ghost'} onClick={() => setTab('board')}><GitMerge className="mr-1.5 h-4 w-4" />연결 보드</Button>
         <Button size="sm" variant={tab === 'matrix' ? 'default' : 'ghost'} onClick={() => setTab('matrix')}><Grid3x3 className="mr-1.5 h-4 w-4" />매트릭스</Button>
+        <HelpButton k={tab === 'board' ? 'screen.rcm.links.board' : 'screen.rcm.links.matrix'} className="mx-1" />
       </div>
 
       {tab === 'board'

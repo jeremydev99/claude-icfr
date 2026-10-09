@@ -139,7 +139,10 @@ export default function ScopingPage() {
             </select>
           )}
           {isManager ? (
-            <Button onClick={() => setCreateOpen(true)}>새 회계연도</Button>
+            <>
+              <Button onClick={() => setCreateOpen(true)}>새 회계연도</Button>
+              <HelpButton k="screen.scoping.create" />
+            </>
           ) : (
             <Badge variant="secondary" className="gap-1"><Lock className="h-3 w-3" /> 읽기 전용 · 내부회계 관리자(일반·책임·마스터)만 편집</Badge>
           )}
@@ -224,6 +227,7 @@ function StatusBar({ d, meta }: { d: ScopingDetail; meta: ScopingMeta }) {
     <div className="flex flex-wrap items-center gap-2 rounded-md border p-3">
       <span className="text-sm">
         <strong>{fiscal.label(d.fiscal_year)}</strong> · 상태 <Badge variant={d.status === 'confirmed' ? 'default' : 'secondary'}>{label(d.status)}</Badge>
+        <HelpButton k="screen.scoping.approval" className="ml-1" />
       </span>
       <span className="text-xs text-muted-foreground">
         템플릿 {d.template_code} v{d.template_version} · 기준 FY{d.base_fiscal_year} 결산 ·

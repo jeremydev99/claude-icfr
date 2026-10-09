@@ -16,6 +16,7 @@ import {
   errDetail, usePlanAction, useSaveTemplates, useTemplates,
   type ItemBody, type PlanItem, type PlanResp, type TemplateRow,
 } from '../api/usePlan'
+import HelpButton from '@/features/help/HelpButton'
 
 const STEP_LABEL: Record<string, string> = { lead: '책임관리자', master: '마스터관리자', ceo: '대표이사' }
 
@@ -40,6 +41,7 @@ export default function PlanPanel({ fy, data }: { fy: number; data: PlanResp }) 
       <CardHeader className="space-y-3 pb-3">
         <div className="flex flex-wrap items-center gap-2">
           <CardTitle className="text-base">{fy} 회계연도 일정안 <span className="text-sm font-normal text-muted-foreground">{fiscalRangeText(fy, data.start_month)}</span></CardTitle>
+          <HelpButton k="screen.schedule.plan" />
           {p && <Badge variant={p.status === 'approved' ? 'default' : p.status === 'in_review' ? 'secondary' : 'outline'}>{p.status_label} · {p.version}판</Badge>}
           <span className="ml-auto flex flex-wrap gap-2">
             {isMaster && <Button size="sm" variant="ghost" onClick={() => setTplOpen(true)}><Settings2 className="mr-1.5 h-4 w-4" />표준 일정 관리</Button>}

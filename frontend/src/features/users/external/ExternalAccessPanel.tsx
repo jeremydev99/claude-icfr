@@ -19,6 +19,7 @@ import {
 } from './api'
 import { accessState, addDays, reviewOverdue } from './externalAccess.pure'
 import MailNotice from '../components/MailNotice'
+import HelpButton from '@/features/help/HelpButton'
 
 const err = (e: unknown) => (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
 
@@ -76,7 +77,7 @@ export default function ExternalAccessPanel() {
 
       {/* 초대 */}
       <section className="space-y-2">
-        <h3 className="text-base font-semibold">진행 중인 초대 <span className="text-muted-foreground">{openInv.length}</span></h3>
+        <h3 className="flex items-center gap-1 text-base font-semibold">진행 중인 초대 <span className="text-muted-foreground">{openInv.length}</span><HelpButton k="screen.users.external-invite" /></h3>
         <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
@@ -123,7 +124,7 @@ export default function ExternalAccessPanel() {
       {/* 외부 사용자 */}
       <section className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-base font-semibold">외부 사용자 <span className="text-muted-foreground">{users.data?.length ?? 0}</span></h3>
+          <h3 className="flex items-center gap-1 text-base font-semibold">외부 사용자 <span className="text-muted-foreground">{users.data?.length ?? 0}</span><HelpButton k="screen.users.external" /></h3>
           <div className="flex items-center gap-2 text-sm">
             <span className={cn('inline-flex items-center gap-1.5', overdue ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
               {overdue ? <ShieldAlert className="h-4 w-4" /> : <ClipboardCheck className="h-4 w-4" />}
@@ -133,6 +134,7 @@ export default function ExternalAccessPanel() {
               {overdue && ' — 분기 재확인 필요'}
             </span>
             {isMaster && <Button size="sm" variant="outline" onClick={() => setReviewOpen(true)}>재확인 기록</Button>}
+            <HelpButton k="screen.users.external-review" label="분기 재확인 설명 보기" />
           </div>
         </div>
         <div className="overflow-x-auto rounded-lg border">

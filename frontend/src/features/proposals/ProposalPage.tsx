@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogD
 import { cn } from '@/lib/utils'
 import GovernanceHistory from '@/features/governance/GovernanceHistory'
 import { DECISION_LABEL, decisionCounts, proposerLabel, type Proposal, type ProposalItem } from './proposals.pure'
+import HelpButton from '@/features/help/HelpButton'
 
 const errorDetail = (e: unknown, f: string) =>
   (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? f
@@ -60,6 +61,7 @@ export default function ProposalPage() {
       <section className="space-y-3 rounded-xl border bg-card p-5 shadow-card">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold">결재선</span>
+          <HelpButton k="screen.proposals.approval-line" />
           <Badge variant={p.status === 'approved' ? 'default' : p.status === 'returned' ? 'destructive' : 'secondary'}>{p.status_label}</Badge>
           <span className="text-sm text-muted-foreground">
             항목 {counts.total} · 승인 {counts.accepted} · 변경 {counts.modified} · 반려 {counts.rejected} · 미결정 {counts.pending}
@@ -105,7 +107,7 @@ export default function ProposalPage() {
 
       <section className="space-y-2">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">제안 항목</h2>
+          <h2 className="flex items-center gap-1 text-base font-semibold">제안 항목 <HelpButton k="screen.proposals.items" /></h2>
           <div className="flex gap-1">
             <Button size="sm" variant={filter === 'all' ? 'default' : 'ghost'} onClick={() => setFilter('all')}>전체</Button>
             <Button size="sm" variant={filter === 'pending' ? 'default' : 'ghost'} onClick={() => setFilter('pending')}>미결정만</Button>

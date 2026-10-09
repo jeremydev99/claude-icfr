@@ -8,15 +8,22 @@
 /** 서버 `core/help_keys.KEY_PATTERN` 과 같은 문자 집합. 벗어나면 조회하지 않는다(422 방지). */
 const KEY_CHARS = /^[a-z0-9_-]+(\.[a-z0-9_-]+)*$/
 
+/** 경로 속 레코드 id 세그먼트 — UUID 또는 숫자만. 키에서 떼어 낸다. */
+const ID_SEGMENT = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d+)$/i
+
 /**
  * route → 키의 route 부분. `/admin/departments` → `admin.departments`.
  * `/`(루트)는 `/dashboard` 로 리다이렉트되므로 `dashboard` 로 본다.
+ * id 세그먼트(UUID·숫자)는 뺀다 — `/proposals/<uuid>` → `proposals`.
  * 규칙 밖 문자가 섞이면 null(패널은 용어만 보여준다).
  */
 export function routeSegment(pathname: string): string | null {
   const trimmed = pathname.replace(/^\/+|\/+$/g, '')
   if (trimmed === '') return 'dashboard'
-  const seg = trimmed.replace(/\/+/g, '.')
+  // 상세 화면(`/proposals/:id`)의 id 는 키에 넣지 않는다 — 같은 화면은 같은 도움말을 본다
+  const parts = trimmed.split(/\/+/).filter((p) => !ID_SEGMENT.test(p))
+  if (parts.length === 0) return null
+  const seg = parts.join('.')
   return KEY_CHARS.test(seg) ? seg : null
 }
 

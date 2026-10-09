@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { errorDetail, useFsSuspense, useFsWrite } from '../api/useFs'
 import { formatAmount, reclassTargets } from '../fsTree.pure'
 import type { AmountNode, SuspenseAction, SuspenseItem } from '../types'
+import HelpButton from '@/features/help/HelpButton'
 
 const ACTION_LABEL: Record<SuspenseAction, string> = {
   fix_subtotal: '소계 정정',
@@ -38,9 +39,10 @@ export default function SuspensePanel({ statementId, tree, canEdit, onSelect }: 
         <p className="text-muted-foreground">
           원본 파일의 소계가 하위 합과 달라 차액을 <b>임시계정(원본 차이)</b>에 넣어 두었습니다. 원본 숫자는 바뀌지 않았습니다.
           검토 후 반영하세요 — 미해결 {open.length}건이 남아 있으면 확정할 수 없습니다.
+          <HelpButton k="screen.financial-statements.suspense" className="ml-1" />
         </p>
       ) : (
-        <p className="text-muted-foreground">원본 차이는 모두 검토했습니다.</p>
+        <p className="text-muted-foreground">원본 차이는 모두 검토했습니다. <HelpButton k="screen.financial-statements.suspense" /></p>
       )}
       {open.map((x) => (
         <SuspenseRow key={x.amount_id} item={x} statementId={statementId} tree={tree} canEdit={canEdit}

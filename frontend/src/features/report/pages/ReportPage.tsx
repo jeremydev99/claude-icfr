@@ -120,6 +120,10 @@ export default function ReportPage() {
           <TabsTrigger value="package">이사회 보고 패키지</TabsTrigger>
           <TabsTrigger value="appendix">별첨 · 평가 결과 데이터</TabsTrigger>
         </TabsList>
+        <span className="ml-1 inline-flex gap-1 align-middle">
+          <HelpButton k="screen.report.package" />
+          <HelpButton k="screen.report.appendix" />
+        </span>
         <TabsContent value="package"><ReportPackage facts={facts} /></TabsContent>
         <TabsContent value="appendix" className="space-y-6">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

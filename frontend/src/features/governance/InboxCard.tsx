@@ -4,6 +4,7 @@ import { ArrowRight, Inbox } from 'lucide-react'
 import apiClient from '@/lib/axios'
 import { useActiveTenantId } from '@/features/auth/store'
 import type { InboxItem } from './types'
+import HelpButton from '@/features/help/HelpButton'
 
 /** 대시보드 "내 결재 대기" — 지금 내가 처리할 검토·승인·재오픈 결정. 없으면 카드를 그리지 않는다. */
 export default function InboxCard() {
@@ -18,6 +19,7 @@ export default function InboxCard() {
     <section className="rounded-xl border border-primary/30 bg-accent/60 p-5 shadow-card">
       <h2 className="flex items-center gap-2 text-base font-semibold">
         <Inbox className="h-5 w-5" /> 내 결재 대기 <span className="rounded-full bg-primary px-2 text-sm text-primary-foreground">{data.length}</span>
+        <HelpButton k="screen.dashboard.inbox" />
       </h2>
       <ul className="mt-3 space-y-2">
         {data.map((i) => (

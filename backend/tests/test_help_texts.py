@@ -31,6 +31,7 @@ from tests.conftest import TestingSessionLocal
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 NAV_PATH = REPO_ROOT / "frontend" / "src" / "config" / "navigation.ts"
+ROUTES_PATH = REPO_ROOT / "frontend" / "src" / "routes" / "index.tsx"
 CLAUDEICFR_PATH = REPO_ROOT / "ClaudeICFR.md"
 
 
@@ -87,7 +88,11 @@ def test_menu_keys_match_navigation_routes():
     entries = load_entries(DATA_FILE)
     actual = {e["key"] for e in entries if e["key"].startswith("menu.")}
     missing_in_data = expected - actual
-    extra_in_data = actual - expected
+    # 사이드바에 없는 하위 화면(예: /rcm/links, /proposals/:id)도 라우터에 있으면 menu.* 를 둘 수 있다.
+    # 패널은 `:id` 같은 id 조각을 떼고 조회한다(help.pure.ts routeSegment).
+    router_paths = re.findall(r"path:\s*'([^']+)'",ROUTES_PATH.read_text(encoding="utf-8"))
+    sub_routes = {"/".join(seg for seg in p.split("/") if not seg.startswith(":")) for p in router_paths}
+    extra_in_data = actual - expected - {_route_to_menu_key(p) for p in sub_routes if p.strip("/")}
     assert not missing_in_data, f"navigation.ts route 인데 menu.* 키가 없음: {sorted(missing_in_data)}"
     assert not extra_in_data, f"menu.* 키인데 navigation.ts route 가 없음: {sorted(extra_in_data)}"
 

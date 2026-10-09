@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useActiveTenantId } from '@/features/auth/store'
 import { toast } from 'sonner'
+import HelpButton from '@/features/help/HelpButton'
 
 interface LogRow {
   id: string
@@ -86,7 +87,7 @@ export default function AuditLogsPage() {
   return (
     <div className="mx-auto max-w-[1400px] space-y-5 p-6 md:p-8">
       <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight"><ShieldCheck className="h-6 w-6 text-primary" />감사 로그</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight"><ShieldCheck className="h-6 w-6 text-primary" />감사 로그<HelpButton k="screen.admin.audit-logs.filters" /></h1>
         <p className="mt-1 text-sm text-muted-foreground">
           사용자가 시스템에서 한 일(등록·수정·삭제·승인·확정·로그인·다운로드)이 시간순으로 남습니다. 화면을 보기만 한 기록은 남기지 않습니다.
           기록은 지우거나 고칠 수 없습니다. 로그인 실패·잠금은 담당자/권한 › 로그인 기록에서 더 자세히 볼 수 있습니다.
@@ -122,7 +123,7 @@ export default function AuditLogsPage() {
           </form>
 
           <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span>총 <b>{(data?.total ?? 0).toLocaleString()}</b>건</span>
+            <span className="inline-flex items-center gap-1">총 <b>{(data?.total ?? 0).toLocaleString()}</b>건<HelpButton k="screen.admin.audit-logs.list" /></span>
             {isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
             <label className="ml-auto flex items-center gap-1.5">
               한 페이지

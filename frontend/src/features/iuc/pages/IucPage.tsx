@@ -24,6 +24,7 @@ import type { InfoItem, InfoItemPayload } from '@/features/euc/types'
 import { useControls } from '@/features/rcm/api/useControls'
 import InfoItemDialog from '../components/InfoItemDialog'
 import HelpTerm from '@/features/help/HelpTerm'
+import HelpButton from '@/features/help/HelpButton'
 
 /**
  * IUC 화면 — **정보 항목(통제) 중심**(ADR-0033 §2.1 정정). 통제가 쓰는 정보를 기술한다.
@@ -106,7 +107,7 @@ export default function IucPage() {
               <TableHead>중요성</TableHead>
               <TableHead>EUC 파일</TableHead>
               <TableHead>시스템</TableHead>
-              <TableHead className="w-24" />
+              <TableHead className="w-24 text-right"><HelpButton k="screen.iuc.items" /></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

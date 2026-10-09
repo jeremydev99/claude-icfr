@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Loader2, Lock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import HelpButton from '@/features/help/HelpButton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuthStore } from '@/features/auth/store'
 import { isIcfrManagerForUser } from '@/features/auth/permissions.pure'
@@ -15,6 +16,14 @@ import {
   unknownPolicies,
 } from '../PolicyDefs.pure'
 import PolicyField from '../components/PolicyField'
+
+/** 정책 묶음 제목 → 도움말 항목 */
+const GROUP_HELP: Record<string, string> = {
+  '평가 워크플로': 'screen.admin.policies.workflow',
+  '이해상충(겸직) 조합': 'screen.admin.policies.conflict',
+  '증빙': 'screen.admin.policies.evidence',
+  'EUC · 스코핑 기본값': 'screen.admin.policies.euc-scoping',
+}
 
 export default function PoliciesPage() {
   const { user } = useAuthStore()
@@ -61,7 +70,7 @@ export default function PoliciesPage() {
           {POLICY_GROUPS.map((g) => (
             <Card key={g.title}>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">{g.title}</CardTitle>
+                <CardTitle className="flex items-center gap-1 text-base">{g.title}{GROUP_HELP[g.title] && <HelpButton k={GROUP_HELP[g.title]} />}</CardTitle>
               </CardHeader>
               <CardContent>
                 {g.defs.map((d) => (

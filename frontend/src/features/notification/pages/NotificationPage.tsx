@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RULES, SAMPLE_VALUES, TEMPLATES, placeholdersOf, renderTemplate } from '../templates'
+import HelpButton from '@/features/help/HelpButton'
 
 /**
  * 메일발송 — 초안. 발송 백엔드가 없으므로 템플릿 편집은 화면 안에서만 유지되고 저장되지 않는다.
@@ -17,6 +18,7 @@ export default function NotificationPage() {
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-bold tracking-tight">메일발송</h1>
         <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">초안 — 발송 기능 미연결</Badge>
+        <HelpButton k="screen.notification.mail" label="지금 실제로 보내는 메일 설명 보기" />
       </div>
       <p className="text-sm text-muted-foreground">
         내부회계관리제도 업무 알림의 표준 템플릿·발송 규칙·발송 이력을 관리합니다.
@@ -50,7 +52,7 @@ function TemplatesTab() {
   return (
     <div className="grid gap-4 lg:grid-cols-[220px_1fr_1fr]">
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">표준 템플릿</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="flex items-center gap-1 text-base">표준 템플릿 <HelpButton k="screen.notification.templates" /></CardTitle></CardHeader>
         <CardContent className="p-2">
           <ul className="space-y-1">
             {TEMPLATES.map((t) => (
@@ -132,7 +134,7 @@ function RulesTab() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-base">발송 규칙 (샘플)</CardTitle>
+        <CardTitle className="flex items-center gap-1 text-base">발송 규칙 (샘플) <HelpButton k="screen.notification.rules" /></CardTitle>
         <p className="text-sm text-muted-foreground">
           업무 상태 전환·기한을 트리거로 자동 발송하는 규칙 예시입니다. 규칙 저장·스케줄러는 아직 없습니다.
         </p>

@@ -175,16 +175,18 @@ export default function UsersPage() {
       {/* 사용자 뷰 */}
       {activeTab === 'users' && (
         <div className="space-y-3">
-          <div className="flex justify-end gap-2">
+          <div className="flex items-center justify-end gap-2">
             <Button size="sm" variant="outline" disabled={testMailBusy} onClick={handleTestMail}>
               {testMailBusy && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}시험 메일
             </Button>
+            <HelpButton k="screen.users.test-mail" label="시험 메일 설명 보기" />
             <Button
               size="sm"
               onClick={() => { setEditUserTarget(null); setUserFormOpen(true) }}
             >
               + 사용자 등록
             </Button>
+            <HelpButton k="screen.users.setup-link" label="계정 시작 링크 설명 보기" />
           </div>
           <UserTable
             data={userData}

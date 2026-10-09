@@ -27,6 +27,7 @@ import { queryKeys } from '@/lib/queryKeys'
 import { useActiveTenantId } from '@/features/auth/store'
 import { useCycles } from '@/features/schedule/api/useSchedule'
 import { resolveEvidenceError } from '../evidence.pure'
+import HelpButton from '@/features/help/HelpButton'
 
 interface Props {
   files: EvidenceFile[]
@@ -103,7 +104,7 @@ export default function EvidenceTable({ files, canDelete = false }: Props) {
             <TableHead>통제</TableHead>
             <TableHead>크기</TableHead>
             <TableHead>업로드일</TableHead>
-            <TableHead className="w-40"></TableHead>
+            <TableHead className="w-40 text-right"><HelpButton k="screen.evidence.files" /></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

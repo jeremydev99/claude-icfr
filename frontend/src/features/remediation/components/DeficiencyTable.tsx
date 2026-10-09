@@ -27,6 +27,7 @@ import {
   REMEDIATION_STATUS_BADGE_CLASS,
 } from '../types'
 import { useCanWrite } from '@/features/auth/useCanWrite'
+import HelpButton from '@/features/help/HelpButton'
 
 interface Props {
   data: DeficiencyListResponse | undefined
@@ -123,9 +124,11 @@ export default function DeficiencyTable({
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         총 {total}건
+        <HelpButton k="screen.remediation.deficiencies" />
         {canWrite && picked.size > 0 && (
           <span className="ml-auto flex items-center gap-2">
             선택 {picked.size}건
+            <HelpButton k="screen.remediation.bulk-approval" />
             <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => bulk('review')}>일괄 검토 요청</Button>
             <Button size="sm" disabled={bulkBusy} onClick={() => bulk('confirmed')}>일괄 승인</Button>
           </span>

@@ -15,6 +15,7 @@ import { isIcfrManagerForUser, isIcfrStaffForUser } from '@/features/auth/permis
 import type { ReportFacts } from '../reportModel'
 import { useOfficerNames } from '@/features/admin/components/OfficerRoles'
 import { useFiscal } from '@/lib/useFiscal'
+import HelpButton from '@/features/help/HelpButton'
 import {
   DOCS, META_FIELDS, META_ROWS, metaRows, placeholders, rowsOf, sectionText, timeline,
   type Block, type Contents, type Ctx, type DocContent, type DocDef, type DocKey,
@@ -128,7 +129,7 @@ export default function ReportPackage({ facts }: { facts: ReportFacts }) {
       {/* 보고 순서 */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4 shadow-card">
         <div className="w-full space-y-1.5">
-          <p className="text-sm font-medium">평가 대상 회계연도 <span className="font-normal text-muted-foreground">— 회계연도마다 보고 패키지가 따로 있습니다 · {fiscal.endMonth}월 결산</span></p>
+          <p className="text-sm font-medium">평가 대상 회계연도 <HelpButton k="screen.report.package" /> <span className="font-normal text-muted-foreground">— 회계연도마다 보고 패키지가 따로 있습니다 · {fiscal.endMonth}월 결산</span></p>
           <div className="flex flex-wrap gap-2" role="tablist" aria-label="평가 대상 연도">
             {yearList.map((y) => {
               const info = yearInfo.get(y)
@@ -174,6 +175,7 @@ export default function ReportPackage({ facts }: { facts: ReportFacts }) {
         <section className="min-w-0 rounded-xl border bg-card shadow-card">
           <header className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
             <h2 className="text-base font-semibold">{active === 'meta' ? '기본 정보' : doc?.title}</h2>
+            <HelpButton k={active === 'meta' ? 'screen.report.meta' : 'screen.report.documents'} />
             {active !== 'meta' && doc && <span className="text-xs text-muted-foreground">{doc.audience}</span>}
             {locked && <Badge className="gap-1"><Lock className="h-3 w-3" />확정 {row?.finalized_by ? `· ${row.finalized_by}` : ''}</Badge>}
             {row?.updated_by && !locked && <span className="text-xs text-muted-foreground">마지막 수정 {row.updated_by}</span>}

@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { Save, Send, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import HelpButton from '@/features/help/HelpButton'
 import { errText, useChangeAction } from './api'
 
 type FieldDef =
@@ -48,6 +49,7 @@ export default function BulkChangeBar({ ids, onClear, onDone }: { ids: string[];
   }
   return (
     <div className="sticky top-14 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-accent px-4 py-3 text-sm shadow-card">
+      <HelpButton k="screen.rcm.bulk-change" />
       <span>선택한 통제 <b>{ids.length}</b>개의</span>
       <select value={field} onChange={(e) => { setField(e.target.value); setValue('') }} className="h-9 rounded-md border bg-background px-2 py-0">
         {FIELDS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}

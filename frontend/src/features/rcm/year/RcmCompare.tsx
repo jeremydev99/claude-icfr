@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import apiClient from '@/lib/axios'
 import { useActiveTenantId } from '@/features/auth/store'
+import HelpButton from '@/features/help/HelpButton'
 import RcmDiffView, { type RcmDiff } from './RcmDiffView'
 import type { RcmYear } from './RcmYearView'
 
@@ -45,7 +46,7 @@ export default function RcmCompare({ years }: { years: RcmYear[] }) {
   return (
     <div className="space-y-3 rounded-xl border bg-card p-4 shadow-card">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="font-semibold">확정본 비교</span>
+        <span className="flex items-center gap-1 font-semibold">확정본 비교 <HelpButton k="screen.rcm.year-compare" /></span>
         {select('rcm-compare-base', base, setBase, '기준')}
         <span className="text-muted-foreground">→</span>
         {select('rcm-compare-target', target, setTarget, '대상')}
