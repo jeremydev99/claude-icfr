@@ -7,6 +7,8 @@ export interface TestRun {
   fiscal_year: number
   status: TestRunStatus
   tester_id: string | null
+  /** 평가자 실명(목록 응답에만) */
+  tester_name?: string | null
   test_date: string | null
   result: TestResult | null
   notes: string | null

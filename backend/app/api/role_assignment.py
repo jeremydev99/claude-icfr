@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser
-from app.core.permissions import require_icfr_manager, require_write
+from app.core.permissions import require_icfr_manager, require_icfr_staff
 from app.models.euc import POLICY_EUC_IDENTIFICATION_THRESHOLD, RISK_GRADES
 from app.models.role_assignment import (
     EVIDENCE_RETENTION_MIN_YEARS,
@@ -118,7 +118,7 @@ def list_assignments(scope: str | None = None, target_id: UUID | None = None,
 
 
 @router.post("/assignments", status_code=status.HTTP_201_CREATED, response_model=RoleAssignmentRead)
-def create_assignment(body: RoleAssignmentCreate, user: User = Depends(require_write),
+def create_assignment(body: RoleAssignmentCreate, user: User = Depends(require_icfr_staff),
                       db: Session = Depends(get_db)) -> RoleAssignmentRead:
     """배정 생성/교체. 같은 (대상, 역할) 이 있으면 사람만 바꾼다.
 
@@ -194,7 +194,7 @@ def create_assignment(body: RoleAssignmentCreate, user: User = Depends(require_w
 
 
 @router.delete("/assignments/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_assignment(assignment_id: UUID, user: User = Depends(require_write),
+def delete_assignment(assignment_id: UUID, user: User = Depends(require_icfr_staff),
                       db: Session = Depends(get_db)) -> None:
     obj = db.query(RoleAssignment).filter(
         RoleAssignment.id == assignment_id,
@@ -226,7 +226,7 @@ def role_matrix(user: CurrentUser = None, db: Session = Depends(get_db)) -> dict
 
 
 @router.post("/assignments/bulk")
-def bulk_assign(body: BulkBody, user: User = Depends(require_write), db: Session = Depends(get_db)) -> dict:
+def bulk_assign(body: BulkBody, user: User = Depends(require_icfr_staff), db: Session = Depends(get_db)) -> dict:
     """여러 배정을 한 번에. 겸직이 생기면 정책 금지 → 409, 아니면 사유 필수(없으면 409 + 통제 목록)."""
     try:
         res = role_bulk.apply_bulk(

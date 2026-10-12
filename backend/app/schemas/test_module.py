@@ -90,6 +90,7 @@ class TestRunUpdate(BaseModel):
 class TestRunRead(TestRunBase):
     id: UUID
     status: str
+    tester_name: str | None = None   # 목록 표시용(평가자 실명) — 응답에서만 채운다
     approved_by_id: UUID | None = None
     approved_at: datetime | None = None
     created_at: datetime

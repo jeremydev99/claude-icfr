@@ -123,7 +123,7 @@ export default function DeficiencyApprovalSheet({ deficiencyId, onOpenChange }: 
               <Label htmlFor="final-conclusion">최종 결론</Label>
               <Textarea id="final-conclusion" rows={4} value={conclusion} disabled={!draft || !canWrite || busy}
                 onChange={(e) => setConclusion(e.target.value)}
-                placeholder="예: 유의적 미비점 — 대체 통제로 보완되지 않음, 개선계획 필요" />
+                placeholder="예: 유의한 미비점 — 대체 통제로 보완되지 않음, 개선계획 필요" />
               {draft && canWrite && (
                 <div className="flex justify-end">
                   <Button size="sm" variant="outline" disabled={!dirty || busy} onClick={saveConclusion}>결론 저장</Button>

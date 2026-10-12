@@ -152,14 +152,14 @@ export default function UploadDialog({ open, onOpenChange, onDone }: {
     }
   })
 
-  const reopen = (statementId: string) => run(async () => {
+  // 확정본 재오픈은 결재선으로만(ADR-0038 2-2) — 요청만 올리고, 다른 마스터관리자가 승인하면 결합할 수 있다.
+  const requestReopen = (statementId: string) => run(async () => {
     try {
-      await apiClient.post(`/api/fs/statements/${statementId}/reopen`, { reason: '정산표 결합을 위해 재오픈' })
+      await apiClient.post(`/api/fs/statements/${statementId}/reopen-requests`, { reason: '정산표 결합을 위해 재오픈 요청' })
       queryClient.invalidateQueries({ queryKey: queryKeys.fs.all(tenantId) })
-      toast.success('재오픈했습니다 — 미리보기를 다시 만듭니다')
-      await preview()
+      toast.success('재오픈 요청을 올렸습니다 — 다른 마스터관리자가 승인하면 결합할 수 있습니다')
     } catch (e) {
-      toast.error(errorDetail(e, '재오픈하지 못했습니다'))
+      toast.error(errorDetail(e, '재오픈 요청을 올리지 못했습니다'))
     }
   })
 
@@ -272,13 +272,15 @@ export default function UploadDialog({ open, onOpenChange, onDone }: {
 
               {result.conflicts.length > 0 && (
                 <div className="rounded border border-red-300 bg-red-50 p-2">
-                  {mode === 'attach' ? '확정된 재무제표에는 결합할 수 없습니다 — 재오픈 후 결합하세요.' : '같은 연도·종류의 재무제표가 이미 있습니다(덮어쓰지 않습니다).'}
+                  {mode === 'attach'
+                    ? '작성 중인 재무제표에만 결합할 수 있습니다 — 확정본은 재오픈 승인 후, 검토 중이면 결재가 끝나거나 반려된 뒤 결합하세요.'
+                    : '같은 연도·종류의 재무제표가 이미 있습니다(덮어쓰지 않습니다).'}
                   <ul className="mt-1 space-y-1">
                     {result.conflicts.map((c) => (
                       <li key={c.statement_id} className="flex items-center gap-2">
-                        {c.fiscal_year} · {c.status === 'final' ? '확정' : '작성 중'}
+                        {c.fiscal_year} · {conflictStatusLabel(c.status)}
                         {mode === 'attach' && c.status === 'final' && (
-                          <Button size="sm" variant="outline" disabled={busy} onClick={() => reopen(c.statement_id)}>재오픈</Button>
+                          <Button size="sm" variant="outline" disabled={busy} onClick={() => requestReopen(c.statement_id)}>재오픈 요청</Button>
                         )}
                       </li>
                     ))}
@@ -380,4 +382,10 @@ function StatementResults({ items }: { items: UploadStatementResult[] }) {
       </tbody>
     </table>
   )
+}
+
+function conflictStatusLabel(status: string): string {
+  if (status === 'final') return '확정'
+  if (status === 'review') return '검토 중'
+  return '작성 중'
 }

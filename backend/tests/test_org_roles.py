@@ -80,6 +80,12 @@ def org_ctx(client: TestClient):
     h = _headers(client)
     db = TestingSessionLocal()
     tok = set_active_tenant(DEFAULT_TENANT_ID)
+    # 부서·역할 배정은 내부회계 관리자 단계가 필요하다 — 다른 테스트의 부수효과에 기대지 않고 먼저 확보한다.
+    admin = db.query(User).filter(User.email == "admin@acme.example").one()
+    if db.query(UserRole).filter(UserRole.user_id == admin.id, UserRole.role_name == "icfr_manager",
+                                 UserRole.is_deleted == False).first() is None:  # noqa: E712
+        db.add(UserRole(user_id=admin.id, role_name="icfr_manager"))
+        db.commit()
     try:
         yield h, db
     finally:

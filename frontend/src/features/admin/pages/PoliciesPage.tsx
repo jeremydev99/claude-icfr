@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useAuthStore } from '@/features/auth/store'
 import { isIcfrManagerForUser } from '@/features/auth/permissions.pure'
 import { usePolicies } from '../api/PolicyAssignmentApi'
+import { describeClose, endMonthOf } from '@/lib/fiscalYear'
 import {
   POLICY_FISCAL_YEAR_START_MONTH,
   POLICY_GROUPS,
@@ -59,7 +60,7 @@ export default function PoliciesPage() {
           <Card>
             <CardContent className="flex flex-wrap items-center justify-between gap-2 pt-6 text-sm">
               <span>
-                회계연도 시작월: <strong>{parseStartMonth(values[POLICY_FISCAL_YEAR_START_MONTH])}월</strong>
+                회계연도: <strong>{describeClose(endMonthOf(parseStartMonth(values[POLICY_FISCAL_YEAR_START_MONTH])))}</strong>
               </span>
               <Link to="/admin/fiscal-year" className="text-primary underline-offset-4 hover:underline">
                 회계연도 화면에서 변경 →

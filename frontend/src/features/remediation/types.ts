@@ -136,7 +136,7 @@ export interface RemediationStatusHistory {
 export const SEVERITY_LABELS: Record<DeficiencySeverity, string> = {
   // 코드는 그대로, 표시는 내부회계 용어(보고서 classifyDeficiency 와 같은 대응)
   low: '단순 미비점',
-  medium: '유의적 미비점',
+  medium: '유의한 미비점',
   high: '중요한 취약점',
 }
 

@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuthStore } from '@/features/auth/store'
-import { isIcfrManagerForUser } from '@/features/auth/permissions.pure'
+import { isIcfrManagerForUser, isIcfrStaffForUser } from '@/features/auth/permissions.pure'
 import { useUsers } from '@/features/users/api/useUsers'
 import { useMemberships } from '../api/useOrg'
 import {
@@ -40,7 +40,9 @@ const ALL = '__all__'
 
 export default function RoleAssignmentsPage() {
   const { user } = useAuthStore()
+  // 회사 직책(대표이사·내부회계관리자·감사)은 마스터관리자만, 통제별 역할 배정은 내부회계 관리자 1~3단계(서버와 동일)
   const canManage = isIcfrManagerForUser(user)
+  const canAssign = Boolean(user?.can_write) && isIcfrStaffForUser(user)
 
   const { data, isLoading, isError } = useAssignments()
   const { data: processes = [] } = useTargetProcesses()
@@ -117,13 +119,13 @@ export default function RoleAssignmentsPage() {
             이해상충(겸직) 조합은 사유를 남겨야 저장되고, 정책에서 금지하면 거부됩니다.
           </p>
         </div>
-        {canManage ? (
+        {canAssign ? (
           <Button onClick={() => setAddOpen(true)}>
             <Plus className="mr-1 h-4 w-4" /> 배정 추가
           </Button>
         ) : (
           <Badge variant="outline">
-            <Lock className="mr-1 h-3 w-3" /> 읽기 전용 · 내부회계관리자만 편집
+            <Lock className="mr-1 h-3 w-3" /> 읽기 전용 · 내부회계 관리자(일반·책임·마스터)만 편집
           </Badge>
         )}
       </div>
@@ -204,7 +206,7 @@ export default function RoleAssignmentsPage() {
                     <TableHead>역할</TableHead>
                     <TableHead>담당자</TableHead>
                     <TableHead>부서</TableHead>
-                    {canManage && <TableHead className="w-12" />}
+                    {canAssign && <TableHead className="w-12" />}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -222,7 +224,7 @@ export default function RoleAssignmentsPage() {
                       <TableCell>{roleLabel(r.role_name)}</TableCell>
                       <TableCell>{r.user_name ?? r.user_id}</TableCell>
                       <TableCell className="text-muted-foreground">{r.dept || '-'}</TableCell>
-                      {canManage && (
+                      {canAssign && (
                         <TableCell>
                           <Button
                             variant="ghost"
@@ -244,7 +246,7 @@ export default function RoleAssignmentsPage() {
       </Card>
       )}
 
-      {canManage && (
+      {canAssign && (
         <AssignmentAddDialog
           open={addOpen}
           onOpenChange={setAddOpen}

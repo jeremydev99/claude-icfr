@@ -123,7 +123,7 @@ export default function CreateTestRunDialog({ open, onOpenChange, defaultFiscalY
             </div>
 
             <div className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-              ⓘ 평가는 <strong>계획(planned)</strong> 상태로 생성됩니다. 세부 절차·결과는 상세 화면에서 입력하세요 (다음 업데이트 예정).
+              ⓘ 평가는 <strong>계획(planned)</strong> 상태로 생성됩니다. 평가자는 만든 사람으로 지정되며, 세부 절차·결과는 상세 화면에서 입력합니다.
             </div>
           </div>
 

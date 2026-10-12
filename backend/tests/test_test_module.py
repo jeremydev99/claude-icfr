@@ -304,3 +304,15 @@ def test_approved_run_is_locked(client: TestClient) -> None:
     assert client.patch(f"/api/test/steps/{sid}", json={"description": "y"}, headers=h).status_code == 409
     assert client.delete(f"/api/test/steps/{sid}", headers=h).status_code == 409
     assert client.get(f"/api/test/runs/{run_id}", headers=h).status_code == 200   # 조회는 그대로
+
+
+def test_tester_defaults_to_creator_and_list_shows_name(client: TestClient) -> None:
+    """평가자를 고르지 않으면 만든 사람이 평가자 — 목록 '평가자' 칸에 실명이 나온다(13.9-112)."""
+    h = _headers(client)
+    control_id = _create_control(client, "TST-NAME")
+    run = client.post("/api/test/runs", json={"control_id": control_id, "fiscal_year": 2031}, headers=h).json()
+    me = client.get("/api/auth/me", headers=h).json()
+    assert run["tester_id"] == me["id"]
+    items = client.get("/api/test/runs", params={"fiscal_year": 2031}, headers=h).json()["items"]
+    row = next(i for i in items if i["id"] == run["id"])
+    assert row["tester_name"] == me["display_name"]

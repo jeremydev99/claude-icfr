@@ -186,7 +186,14 @@ def list_runs(
         q = q.filter(TestRun.status == status_filter)
     total = q.count()
     items = q.offset(skip).limit(limit).all()
-    return {"items": [TestRunRead.model_validate(i) for i in items], "total": total, "skip": skip, "limit": limit}
+    ids = {i.tester_id for i in items if i.tester_id}
+    names = {u.id: u.display_name for u in db.query(User).filter(User.id.in_(ids)).all()} if ids else {}
+    out = []
+    for i in items:
+        r = TestRunRead.model_validate(i)
+        r.tester_name = names.get(i.tester_id)
+        out.append(r)
+    return {"items": out, "total": total, "skip": skip, "limit": limit}
 
 
 @router.post("/runs", status_code=status.HTTP_201_CREATED, response_model=TestRunRead)
@@ -195,8 +202,11 @@ def create_run(body: TestRunCreate, user: User = Depends(require_write), db: Ses
     if target is None:
         raise HTTPException(status_code=404, detail="Control not found")
     baseline_control_id, instance_control_id = target
+    data = body.model_dump()
+    # 평가자를 고르지 않으면 만든 사람이 평가자다 — 본인 승인 금지(13.9-94)가 평가자에게도 걸린다
+    data["tester_id"] = data.get("tester_id") or user.id
     obj = TestRun(
-        **body.model_dump(),
+        **data,
         status="planned",
         baseline_control_id=baseline_control_id,
         instance_control_id=instance_control_id,

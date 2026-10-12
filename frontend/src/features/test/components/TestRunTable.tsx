@@ -144,7 +144,7 @@ export default function TestRunTable({
                     )}
                   </TableCell>
                   <TableCell>{formatDate(run.test_date)}</TableCell>
-                  <TableCell className="text-muted-foreground">—</TableCell>
+                  <TableCell className={run.tester_name ? undefined : 'text-muted-foreground'}>{run.tester_name ?? '—'}</TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <Button
                       variant="ghost"
