@@ -78,7 +78,9 @@ export default function ReportPackage({ facts }: { facts: ReportFacts }) {
   const user = useAuthStore((s) => s.user)
   const canEdit = isIcfrStaffForUser(user) && Boolean(user?.can_write)
   const isMaster = isIcfrManagerForUser(user)
-  const thisYear = new Date().getFullYear()
+  const fiscal = useFiscal()
+  // 오늘이 속한 회계연도(결산월 반영) — 달력 연도가 아니다
+  const thisYear = fiscal.thisFy
   const [fy, setFy] = useState<number>(() => (facts.fiscalYear && facts.fiscalYear < thisYear ? facts.fiscalYear : thisYear - 1))
   const [active, setActive] = useState<DocKey>('meta')
   const qc = useQueryClient()
@@ -89,7 +91,6 @@ export default function ReportPackage({ facts }: { facts: ReportFacts }) {
   const byKey = useMemo(() => Object.fromEntries(rows.map((r) => [r.doc_key, r])) as Partial<Record<DocKey, DocRow>>, [rows])
   const contents: Contents = useMemo(() => Object.fromEntries(rows.map((r) => [r.doc_key, r.content])), [rows])
   const officers = useOfficerNames()
-  const fiscal = useFiscal()
   const ctx: Ctx = { fy, facts, contents, startMonth: fiscal.startMonth,
     defaults: { ceo: officers.ceo ?? '', icfr_manager: officers.icfr_manager ?? '' } }
   const { data: years = [] } = useQuery({

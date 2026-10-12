@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.core.audit_context import system_actor
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.core.permissions import can_write, tenant_roles
+from app.core.permissions import can_write, is_assessor, tenant_roles
 from app.core.security import (
     create_access_token,
     create_mfa_token,
@@ -308,6 +308,7 @@ def me(
     roles = tenant_roles(db, current_user.id)
     result.tenant_roles = sorted(roles)
     result.can_write = can_write(roles)
+    result.is_assessor = is_assessor(db, current_user.id)
     result.mfa_enabled = current_user.mfa_enabled_at is not None
     result.mfa_required = _mfa_required(db, current_user)
     result.must_change_password = bool(current_user.must_change_password)

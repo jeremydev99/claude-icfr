@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useFiscal } from '@/lib/useFiscal'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -26,7 +27,10 @@ export default function CreateScopingDialog({ open, onOpenChange, onCreate, pend
   onCreate: (year: number, source: ScopingSource) => void
   pending: boolean
 }) {
-  const [year, setYear] = useState(String(new Date().getFullYear()))
+  const { thisFy } = useFiscal()
+  const [year, setYear] = useState(String(thisFy))
+  // 열 때마다 오늘 회계연도로 — 결산월 설정이 늦게 와도 맞는 값으로 시작한다
+  useEffect(() => { if (open) setYear(String(thisFy)) }, [open, thisFy])
   const [source, setSource] = useState<ScopingSource>('financial_statements')
   const y = Number(year)
   const valid = Number.isInteger(y) && y >= 2000 && y <= 2100

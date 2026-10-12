@@ -60,6 +60,8 @@ class UserRead(BaseModel):
     # require_write 와 같은 함수를 쓴다 — FE 가 규칙을 다시 구현하면 어긋난다.
     # 버튼 숨김은 이 값, 안내 문구는 tenant_roles 로 판단한다.
     can_write: bool = True
+    # 회차 생성·마감 자격 — 어느 통제에서든 평가자(assessor) 배정. 판정은 core/permissions.is_assessor
+    is_assessor: bool = False
     # MFA(ADR-0039) — 등록 여부와 의무 여부. 화면의 등록 안내·사이드바 표시용
     mfa_enabled: bool = False
     mfa_required: bool = False

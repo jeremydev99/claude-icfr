@@ -17,7 +17,12 @@ from app.api import _approval_view as av
 from app.core import governance_log as glog
 from app.core.database import get_db
 from app.core.deps import CurrentUser
-from app.core.permissions import require_icfr_manager, require_icfr_staff, require_write
+from app.core.permissions import (
+    is_assessor,
+    require_icfr_manager,
+    require_icfr_staff,
+    require_write,
+)
 from app.models.assessment import (
     ACTIVITY_RULES,
     APPROVAL_DEPT,
@@ -229,15 +234,8 @@ def create_cycle(body: CycleCreate, user: User = Depends(require_write),
 
 
 def _assert_can_create_cycle(db: Session, user: User) -> None:
-    """회차 생성 자격 — 어느 통제에서든 `assessor` 로 배정돼 있어야 한다."""
-    from app.models.role_assignment import RoleAssignment
-
-    is_assessor = db.query(RoleAssignment).filter(
-        RoleAssignment.role_name == ROLE_ASSESSOR,
-        RoleAssignment.user_id == user.id,
-        RoleAssignment.is_deleted == False,  # noqa: E712
-    ).first() is not None
-    if not is_assessor:
+    """회차 생성 자격 — 어느 통제에서든 `assessor` 로 배정돼 있어야 한다(판정은 core/permissions)."""
+    if not is_assessor(db, user.id):
         raise HTTPException(
             status_code=403,
             detail="평가 회차는 평가자(전담부서)만 생성할 수 있습니다",

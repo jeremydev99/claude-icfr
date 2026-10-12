@@ -237,6 +237,38 @@ def test_control_owner_cannot_create_cycle(client: TestClient) -> None:
     assert "평가자" in resp.json()["detail"]
 
 
+def test_me_is_assessor_matches_cycle_create_permission(client: TestClient) -> None:
+    """`/me` 의 `is_assessor` 와 회차 생성 권한이 같은 판정이다(2026-10-12).
+
+    화면이 `can_write` 로 [회차 생성] 버튼을 보이고 서버가 403 을 내던 어긋남의 회귀 방지 —
+    쓰기 권한은 있어도 평가자 배정이 없으면 false·403, 배정하면 true·201.
+    """
+    db, tok = _ctx()
+    try:
+        uid = _user(db, "assessor-me@acme.example", "평가자ME")
+        _, ctrl = _control(db, "ME1", freq="annual")
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+    h = _headers(client, "assessor-me@acme.example", "pw123456")
+    me = client.get("/api/auth/me", headers=h).json()
+    assert me["can_write"] is True and me["is_assessor"] is False
+    body = {"kind": "operation", "frequency": "annual", "name": "ME회차", "fiscal_year": 2026, "period_index": 1}
+    assert client.post("/api/assessment/cycles", headers=h, json=body).status_code == 403
+
+    db, tok = _ctx()
+    try:
+        _assign(db, ctrl, "assessor", uid)
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+    assert client.get("/api/auth/me", headers=h).json()["is_assessor"] is True
+    resp = client.post("/api/assessment/cycles", headers=h, json=body)
+    assert resp.status_code == 201, resp.text
+
+
 # ── §5-6 통제 단위 권한 ───────────────────────────────────
 
 def test_activity_permission_is_per_control(client: TestClient) -> None:

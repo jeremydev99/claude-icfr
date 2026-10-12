@@ -47,8 +47,9 @@ export default function SchedulePage() {
   const [fyOverride, setFy] = useState<number | null>(null)
   const thisFy = currentFiscalYear(today, startMonth)
   const fy = fyOverride ?? thisFy
-  // 버튼은 외부감사인(조회 전용)만 숨긴다. 평가자 여부는 /me 에 없어 서버 403 사유로 안내한다
+  // 회차 생성은 평가자(통제 어디든 assessor 배정)만 — 서버와 같은 판정(/me is_assessor, 2026-10-12)
   const canWrite = useAuthStore((s) => s.user?.can_write ?? false)
+  const canCreateCycle = useAuthStore((s) => Boolean(s.user?.can_write && s.user?.is_assessor))
   const [createOpen, setCreateOpen] = useState(false)
   // 회차 마감·최종승인(ADR-0038 2-4) — 결재 대기함에서 오면 `?cycle=` 로 바로 연다
   const [cycleSheet, setCycleSheet] = useState<string | null>(null)
@@ -258,7 +259,11 @@ export default function SchedulePage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="flex items-center gap-1 text-base">평가 회차 <HelpButton k="screen.schedule.cycles" /></CardTitle>
-          {canWrite && <Button size="sm" onClick={() => setCreateOpen(true)}>회차 생성</Button>}
+          {canCreateCycle ? (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>회차 생성</Button>
+          ) : canWrite ? (
+            <span className="text-xs text-muted-foreground">회차 생성은 평가자만 — [RCM → 담당자 배정]에서 평가자로 배정되면 만들 수 있습니다</span>
+          ) : null}
         </CardHeader>
         <CardContent className="text-sm">
           {loadingCycles ? (

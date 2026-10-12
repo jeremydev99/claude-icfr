@@ -18,6 +18,7 @@ from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.models.role_assignment import (
     READ_ONLY_ROLES,
+    ROLE_ASSESSOR,
     ROLE_EXTERNAL_ADVISOR,
     ROLE_EXTERNAL_AUDITOR,
     ROLE_EXTERNAL_SPECIALIST,
@@ -58,6 +59,22 @@ def can_write(roles: set[str]) -> bool:
         return False
     # 조회 전용 역할(외부감사인·감사위원회)만 가진 계정 — ADR-0039 §2.1
     return not (roles and roles <= READ_ONLY_ROLES)
+
+
+def is_assessor(db: Session, user_id) -> bool:
+    """어느 통제에서든 `assessor`(평가자)로 배정돼 있는가 — 회차 생성·마감 자격(ADR-0032 §2.1).
+
+    회차는 특정 통제에 속하지 않으므로 통제 단위 판정을 쓸 수 없다. `/me` 의 `is_assessor` 와
+    회차 API 가 이 함수 하나를 쓴다 — 화면이 `can_write` 로 버튼을 보이고 서버가 403 을 내던
+    어긋남(2026-10-12)을 다시 만들지 않는다.
+    """
+    from app.models.role_assignment import RoleAssignment
+
+    return db.query(RoleAssignment).filter(
+        RoleAssignment.role_name == ROLE_ASSESSOR,
+        RoleAssignment.user_id == user_id,
+        RoleAssignment.is_deleted == False,  # noqa: E712
+    ).first() is not None
 
 
 def require_write(user: CurrentUser, db: Session = Depends(get_db)) -> User:

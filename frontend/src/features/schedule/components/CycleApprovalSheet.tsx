@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Loader2, Lock } from 'lucide-react'
 import { toast } from 'sonner'
 import apiClient from '@/lib/axios'
-import { useActiveTenantId } from '@/features/auth/store'
+import { useActiveTenantId, useAuthStore } from '@/features/auth/store'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -55,6 +55,8 @@ export default function CycleApprovalSheet({ cycleId, onOpenChange }: {
     enabled: Boolean(cycleId),
   })
   const open = g?.cycle.status === 'open'
+  // 마감은 평가자(전담부서)만 — 서버 `_assert_can_create_cycle` 과 같은 판정(/me is_assessor)
+  const canClose = useAuthStore((s) => Boolean(s.user?.can_write && s.user?.is_assessor))
   const { data: incomplete = [] } = useQuery({
     queryKey: ['cycle-incomplete', tenantId, cycleId],
     queryFn: async () => (await apiClient.get<{ items: Incomplete[] }>(`${BASE}/${cycleId}/incomplete`)).data.items,
@@ -124,7 +126,9 @@ export default function CycleApprovalSheet({ cycleId, onOpenChange }: {
                   </>
                 ) : <p className="text-muted-foreground">미완 통제가 없습니다.</p>}
                 <div className="flex justify-end">
-                  <Button size="sm" disabled={busy || (incomplete.length > 0 && !reason.trim())} onClick={close}>마감</Button>
+                  {canClose
+                    ? <Button size="sm" disabled={busy || (incomplete.length > 0 && !reason.trim())} onClick={close}>마감</Button>
+                    : <span className="text-xs text-muted-foreground">마감은 평가자만 할 수 있습니다</span>}
                 </div>
               </div>
             )}

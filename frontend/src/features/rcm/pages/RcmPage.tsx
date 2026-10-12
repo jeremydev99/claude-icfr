@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useFiscal } from '@/lib/useFiscal'
 import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { isAxiosError } from 'axios'
@@ -61,7 +62,7 @@ export default function RcmPage() {
   const [deleteTarget, setDeleteTarget] = useState<Control | null>(null)
 
   const [uploadOpen, setUploadOpen] = useState(false)
-  const [fiscalYear] = useState(() => new Date().getFullYear())
+  const fiscalYear = useFiscal().thisFy
 
   const { data, isLoading, isError, error, refetch } = useControls(params)
   const deleteMutation = useDeleteControl()

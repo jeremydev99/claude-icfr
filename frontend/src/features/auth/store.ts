@@ -16,6 +16,8 @@ export interface UserProfile {
   active_tenant_id: string | null
   can_write: boolean
   tenant_roles: string[]
+  /** 회차 생성·마감 자격 — 어느 통제에서든 평가자(assessor) 배정(서버 core/permissions.is_assessor) */
+  is_assessor?: boolean
   /** MFA(ADR-0039) — 등록 여부·의무 여부 */
   mfa_enabled?: boolean
   mfa_required?: boolean

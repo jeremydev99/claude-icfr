@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useFiscal } from '@/lib/useFiscal'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Lock } from 'lucide-react'
 import { toast } from 'sonner'
@@ -67,13 +68,14 @@ export default function RcmYearView() {
     queryKey: key,
     queryFn: async () => (await apiClient.get<RcmYear[]>(BASE)).data,
   })
-  const [newYear, setNewYear] = useState(String(new Date().getFullYear()))
+  const { thisFy } = useFiscal()
+  const [newYear, setNewYear] = useState(String(thisFy))
   const [busy, setBusy] = useState(false)
-  // 다음에 시작할 연도 — 가장 최근 회계연도의 다음 해(없으면 올해)
+  // 다음에 시작할 연도 — 가장 최근 회계연도의 다음 해(없으면 오늘이 속한 회계연도)
   const latestYear = years[0]?.fiscal_year
   useEffect(() => {
-    if (latestYear) setNewYear(String(latestYear + 1))
-  }, [latestYear])
+    setNewYear(String(latestYear ? latestYear + 1 : thisFy))
+  }, [latestYear, thisFy])
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     setBusy(true)

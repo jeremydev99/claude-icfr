@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useFiscal } from '@/lib/useFiscal'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -35,7 +36,7 @@ const schema = z.object({
   severity: z.enum(['low', 'medium', 'high']),
   description: z.string().min(1),
   status: z.enum(['open', 'in_progress', 'closed']).default('open'),
-  fiscal_year: z.number().int().min(2000).max(2100).default(new Date().getFullYear()),
+  fiscal_year: z.number().int().min(2000).max(2100),
   control_id: z.preprocess(
     (v) => (v === '' ? null : v),
     z.string().nullable().optional()
@@ -68,6 +69,7 @@ function extractErrorMessage(err: unknown): string {
 
 export default function DeficiencyFormDialog({ open, onOpenChange, editTarget }: Props) {
   const isEdit = !!editTarget
+  const { thisFy } = useFiscal()
   const [controlSelectorOpen, setControlSelectorOpen] = useState(false)
   const [selectedControl, setSelectedControl] = useState<ControlOption | null>(null)
 
@@ -85,7 +87,7 @@ export default function DeficiencyFormDialog({ open, onOpenChange, editTarget }:
       severity: 'medium',
       description: '',
       status: 'open',
-      fiscal_year: new Date().getFullYear(),
+      fiscal_year: thisFy,
       control_id: null,
     },
   })
@@ -107,12 +109,12 @@ export default function DeficiencyFormDialog({ open, onOpenChange, editTarget }:
         severity: 'medium',
         description: '',
         status: 'open',
-        fiscal_year: new Date().getFullYear(),
+        fiscal_year: thisFy,
         control_id: null,
       })
       setSelectedControl(null)
     }
-  }, [open, editTarget, reset])
+  }, [open, editTarget, reset, thisFy])
 
   const createMutation = useCreateDeficiency()
   const updateMutation = useUpdateDeficiency()
