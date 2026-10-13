@@ -173,7 +173,7 @@ export default function ScopingPage() {
                 <Button size="sm" variant="outline" onClick={() => setReloadOpen(true)} disabled={mutation.isPending}>
                   <RefreshCw className="mr-1 h-4 w-4" />재무제표에서 다시 불러오기
                 </Button>
-                {/* 정리본 엑셀의 질적 평가·판단 근거·결론 반영(13.9-117) */}
+                {/* 정리본 엑셀의 질적 평가·판단 근거·결론 반영(13.9-118) */}
                 <Button size="sm" variant="outline" onClick={() => setExcelOpen(true)} disabled={mutation.isPending}>
                   <Upload className="mr-1 h-4 w-4" />스코핑 엑셀 업로드
                 </Button>

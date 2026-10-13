@@ -9,7 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/features/auth/store'
-import { isIcfrManagerForUser } from '@/features/auth/permissions.pure'
+import { isIcfrManagerForUser, isIcfrStaffForUser } from '@/features/auth/permissions.pure'
+import { useQueryClient } from '@tanstack/react-query'
+import AiProposalBanner from '@/features/ai/AiProposalBanner'
 import { CATEGORY_LABEL, CATEGORY_STYLE, offsetToCalendar, type PhaseCategory } from '../schedule.pure'
 import { fiscalRangeText } from '@/lib/fiscalYear'
 import {
@@ -27,6 +29,8 @@ const STEP_LABEL: Record<string, string> = { lead: '책임관리자', master: '�
 export default function PlanPanel({ fy, data }: { fy: number; data: PlanResp }) {
   const user = useAuthStore((s) => s.user)
   const isMaster = isIcfrManagerForUser(user)
+  const canDecideAi = Boolean(user?.can_write) && isIcfrStaffForUser(user)
+  const qc = useQueryClient()
   const act = usePlanAction(fy)
   const [edit, setEdit] = useState<PlanItem | 'new' | null>(null)
   const [tplOpen, setTplOpen] = useState(false)
@@ -74,6 +78,10 @@ export default function PlanPanel({ fy, data }: { fy: number; data: PlanResp }) 
             <li className="ml-2 flex items-center gap-1 text-muted-foreground"><Lock className="h-3 w-3" />{Object.values(data.can.why).join(' · ')}</li>
           )}
         </ol>
+        {data.ai_proposal && (
+          <AiProposalBanner proposal={data.ai_proposal} canDecide={canDecideAi}
+            onDone={() => { void qc.invalidateQueries({ queryKey: ['tenant'] }) }} />
+        )}
         {p?.returned_reason && p.status === 'draft' && <p className="text-sm text-destructive">반려 사유: {p.returned_reason}</p>}
         {p?.status === 'approved' && data.can.edit && <p className="text-xs text-muted-foreground">승인된 일정안을 고치면 새 판(작성 중)이 되어 다시 결재를 받습니다.</p>}
       </CardHeader>

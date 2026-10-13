@@ -478,7 +478,7 @@ def update_account(scoping_id: UUID, account_id: UUID, body: AccountUpdate,
 async def upload_excel(scoping_id: UUID, file: UploadFile = File(...), mode: str = Form(default="preview"),
                        links: str | None = Form(default=None), user: User = Depends(require_icfr_staff),
                        db: Session = Depends(get_db)) -> dict:
-    """스코핑 엑셀 갱신 업로드(13.9-117) — 정리본 엑셀의 질적 10요소·판단 근거·결론을 계정에 반영한다.
+    """스코핑 엑셀 갱신 업로드(13.9-118) — 정리본 엑셀의 질적 10요소·판단 근거·결론을 계정에 반영한다.
 
     `mode=preview` 는 아무것도 바꾸지 않고 계정별 전→후·못 맞춘 행을 돌려준다(작성 중이 아니어도 볼 수 있다).
     `mode=commit` 은 같은 계산을 저장 — 작성 중일 때만(확정·검토 중 409). `links` = 미리보기에서 사람이 고른

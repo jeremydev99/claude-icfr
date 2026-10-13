@@ -14,6 +14,7 @@ from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.core.permissions import tenant_roles
 from app.minio_client import get_object_stream
+from app.models.ai_proposal import AI_PROPOSED, KIND_LABELS, AiProposal
 from app.models.assessment import CYCLE_CLOSED, AssessmentCycle
 from app.models.control_change import (
     B_REVIEW,
@@ -172,6 +173,13 @@ def _work_items(db: Session, user) -> list[InboxItem]:
         out.append(InboxItem(entity_type="control_change", entity_id=rejected[0].id,
                              title=f"반려된 통제 변경 {len(rejected)}건", action="fix_rejected",
                              label="고쳐서 다시 상신", path="/rcm?tab=changes"))
+    # AI 제안 채택 대기(ADR-0042) — 내부회계 관리자 단계가 채택·폐기한다
+    if tier >= 1:
+        for ap in db.query(AiProposal).filter(AiProposal.status == AI_PROPOSED,
+                                              AiProposal.is_deleted == False).all():  # noqa: E712
+            out.append(InboxItem(entity_type="ai_proposal", entity_id=ap.id,
+                                 title=f"AI 제안 · {ap.fiscal_year} {KIND_LABELS.get(ap.kind, ap.kind)}",
+                                 action="ai_adopt", label="검토 후 채택 또는 폐기", path="/schedule"))
     # 연간 일정안 결재(13.9-93) — 지금 단계 승인자이고 자기 승인이 아닐 때
     for p in db.query(SchedulePlan).filter(SchedulePlan.is_deleted == False,  # noqa: E712
                                            SchedulePlan.status == PLAN_REVIEW).all():

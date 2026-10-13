@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
+from app.api.ai_proposals import out as ai_out  # noqa: E402
 from app.core import governance_log as glog
 from app.core.database import get_db
 from app.core.deps import CurrentUser
@@ -23,6 +24,7 @@ from app.models.schedule import (
     ScheduleItem,
 )
 from app.models.user import User
+from app.services import ai_schedule  # noqa: E402
 from app.services import schedule as svc
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
@@ -136,6 +138,8 @@ def _plan_out(db: Session, fy: int, user: User) -> dict:
         "items": [svc.item_dict(i) for i in items],
         "approved_items": p.approved_items,
         "can": can, "policy_line": svc.approval_line(db), "start_month": svc.fiscal_start_month(db),
+        # AI 제안(ADR-0042) — 이 일정안을 AI 가 만들었으면 제안·근거·채택 상태
+        "ai_proposal": ai_out(db, ai_schedule.latest_for(db, p.id)),
     }
 
 

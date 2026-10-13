@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api import (
     account_setup,
+    ai_proposals,
     assessment,
     audit_logs,
     auth,
@@ -158,6 +159,7 @@ def create_app() -> FastAPI:
     app.include_router(account_setup.public)
     app.include_router(external.mfa_admin)
     app.include_router(proposals.router)
+    app.include_router(ai_proposals.router)
 
     @app.get("/")
     def root() -> dict[str, str]:

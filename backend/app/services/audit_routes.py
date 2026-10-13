@@ -31,6 +31,10 @@ ROUTES: dict[str, R] = {
     "PATCH /api/schedule/plans/{fiscal_year}/items/{iid}/dates": (SCH, "일정 기간 변경(끌기)", "schedule_item", "iid"),
     "DELETE /api/schedule/plans/{fiscal_year}/items/{iid}": (SCH, "일정 삭제", "schedule_item", "iid"),
     "POST /api/schedule/plans/{fiscal_year}/submit": (SCH, "일정안 결재 요청", "schedule_plan", "fiscal_year"),
+    # AI 제안(ADR-0042) — 채택·폐기는 사람이 한다. 대상 이름은 제안 요약에 있어 대상 종류 없이 경로만 남긴다
+    "POST /api/ai-proposals/{pid}/adopt": (SCH, "AI 제안 채택", None, None),
+    "POST /api/ai-proposals/{pid}/discard": (SCH, "AI 제안 폐기", None, None),
+    "POST /api/ai-proposals/run": (SCH, "AI 제안 계기 확인 실행", None, None),
     "POST /api/schedule/plans/{fiscal_year}/approve": (SCH, "일정안 승인", "schedule_plan", "fiscal_year"),
     "POST /api/schedule/plans/{fiscal_year}/return": (SCH, "일정안 반려", "schedule_plan", "fiscal_year"),
     # RCM — 계층·통제 직접 편집
