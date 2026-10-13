@@ -16,6 +16,8 @@ import { cn } from '@/lib/utils'
 import LogoMark from '@/components/brand/LogoMark'
 import { illustrationUrl } from '@/components/illustration/Illustration'
 import type { IllustrationSlot } from '@/components/illustration/manifest'
+import InboxBell from '@/features/governance/InboxBell'
+import InboxContextBar from '@/features/governance/InboxContextBar'
 import { navigation, type NavItem } from '@/config/navigation'
 
 const NAV_GROUPS_KEY = 'icfr.nav.expandedGroups'
@@ -383,6 +385,7 @@ export default function AppLayout() {
           {title && <span className="hidden text-lg font-semibold text-foreground md:inline">{title}</span>}
           <div className="relative ml-auto flex items-center gap-2 rounded-xl bg-background/60 px-1 backdrop-blur-sm">
             <InstallButton />
+            {!mustChange && <InboxBell />}
             <button
               type="button"
               onClick={toggleHelp}
@@ -401,7 +404,7 @@ export default function AppLayout() {
         </header>
         <main className="min-w-0 flex-1 overflow-x-hidden bg-background">
           {/* 비상용 비밀번호로 들어왔으면 본인 변경 전까지 화면을 열지 않는다 — 서버도 막는다(ADR-0041) */}
-          {mustChange ? null : <Outlet />}
+          {mustChange ? null : <><InboxContextBar /><Outlet /></>}
         </main>
       </div>
 

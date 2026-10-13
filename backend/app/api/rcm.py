@@ -1351,7 +1351,7 @@ async def upload_excel(
     if mode != "preview":
         require_rcm_editable(user, db)
         # 미리보기는 잠금과 무관, 저장만 막는다(ADR-0038 2-5). 저장은 내부회계관리자(2026-10-08),
-        # 재오픈 작성 중이면 내부회계 관리자 1~3단계도 — 작성자와 승인자를 나눈다(2026-10-13, 13.9-114)
+        # 재오픈 작성 중이면 내부회계 관리자 1~3단계도 — 작성자와 승인자를 나눈다(2026-10-13, 13.9-115)
         from app.services.rcm_approval import can_upload_excel
         if not can_upload_excel(db, user.id):
             raise HTTPException(status_code=403, detail=(

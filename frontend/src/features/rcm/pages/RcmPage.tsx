@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useFiscal } from '@/lib/useFiscal'
 import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -41,11 +41,16 @@ const DEFAULT_PARAMS: ControlSearchParams = {
 }
 
 type RcmTab = 'controls' | 'hierarchy' | 'roles' | 'changes' | 'year'
+const RCM_TABS: readonly RcmTab[] = ['controls', 'hierarchy', 'roles', 'changes', 'year']
+const isRcmTab = (v: string | null): v is RcmTab => v !== null && (RCM_TABS as readonly string[]).includes(v)
 
 export default function RcmPage() {
   const [searchParams] = useSearchParams()
-  // 결재 대기함에서 오면 `?tab=year` — 회계연도 확정 탭으로 연다(ADR-0038 2-5)
-  const [rcmTab, setRcmTab] = useState<RcmTab>(() => (searchParams.get('tab') === 'year' ? 'year' : 'controls'))
+  // 결재 대기함·상단 알림에서 오면 `?tab=year|changes` — 그 탭으로 연다(ADR-0038 2-5, 13.9-114)
+  const tabParam = searchParams.get('tab')
+  const [rcmTab, setRcmTab] = useState<RcmTab>(() => (isRcmTab(tabParam) ? tabParam : 'controls'))
+  // 이미 RCM 화면에 있을 때 알림으로 다른 탭 링크를 누르면 그 탭으로 옮긴다
+  useEffect(() => { if (isRcmTab(tabParam)) setRcmTab(tabParam) }, [tabParam])
   // 일괄 변경 선택 — 페이지를 넘겨도 유지된다(2026-10-06)
   const [bulkSel, setBulkSel] = useState<Set<string>>(new Set())
   // 초기값 계산은 최초 렌더에서만 — 이후 URL 이 바뀌어도 화면 상태를 덮지 않는다(단방향).
@@ -69,7 +74,7 @@ export default function RcmPage() {
   const canWrite = useCanWrite()
   // 통제 추가·삭제·엑셀 저장은 내부회계관리자만(2026-10-08) — 수정은 쓰기 권한자 누구나(관리자 외는 변경 결재로 저장)
   const canDirect = canEditHierarchy()
-  // 엑셀 업로드 — 재오픈 작성 중이면 일반·책임관리자도(작성자·승인자 분리, 13.9-114). 판정은 서버 /rcm-years/lock
+  // 엑셀 업로드 — 재오픈 작성 중이면 일반·책임관리자도(작성자·승인자 분리, 13.9-115). 판정은 서버 /rcm-years/lock
   const { data: rcmLock } = useRcmLock()
   const canUpload = canDirect || Boolean(rcmLock?.can_upload_excel)
 

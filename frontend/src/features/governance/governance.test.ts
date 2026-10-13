@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { approvalSteps, formatValues } from './governance.pure'
+import { approvalSteps, contextItems, formatValues } from './governance.pure'
 import type { GovernanceInfo } from './types'
 
 const base: GovernanceInfo = {
@@ -33,5 +33,20 @@ describe('formatValues', () => {
     expect(formatValues({ a: 1, b: null })).toBe('a: 1 · b: —')
     expect(formatValues({ a: 'x'.repeat(100) }, 10)).toBe('a: ' + 'x'.repeat(10) + '…')
     expect(formatValues(null)).toBe('')
+  })
+})
+
+describe('contextItems', () => {
+  const mk = (path: string) => ({ entity_type: 'x', entity_id: path, title: 't', action: 'approve', label: 'l', path })
+  const items = [mk('/rcm?tab=year'), mk('/rcm?tab=changes'), mk('/scoping'), mk('/proposals/abc')]
+  it('같은 메뉴의 다른 탭 결재만 보인다', () => {
+    expect(contextItems(items, '/rcm', '').map((i) => i.path)).toEqual(['/rcm?tab=year', '/rcm?tab=changes'])
+  })
+  it('이미 그 탭에 있으면 그 항목은 뺀다', () => {
+    expect(contextItems(items, '/rcm', '?tab=year').map((i) => i.path)).toEqual(['/rcm?tab=changes'])
+  })
+  it('다른 메뉴 결재는 고르지 않는다', () => {
+    expect(contextItems(items, '/dashboard', '')).toEqual([])
+    expect(contextItems(items, '/scoping', '')).toEqual([])
   })
 })

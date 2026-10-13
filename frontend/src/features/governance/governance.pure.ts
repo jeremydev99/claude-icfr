@@ -1,5 +1,5 @@
 /** 거버넌스 표시용 순수 함수 — `governance.test.ts`. 규칙 판정은 하지 않는다(서버 `can`). */
-import type { GovernanceInfo, ReviewPath } from './types'
+import type { GovernanceInfo, InboxItem, ReviewPath } from './types'
 
 export const EVENT_LABELS: Record<string, string> = {
   item_confirm: '항목 확인',
@@ -52,4 +52,18 @@ export function formatValues(v: Record<string, unknown> | null | undefined, max 
     const s = x === null || x === undefined ? '—' : typeof x === 'object' ? JSON.stringify(x) : String(x)
     return `${k}: ${s.length > max ? s.slice(0, max) + '…' : s}`
   }).join(' · ')
+}
+
+/**
+ * 지금 보는 화면(경로)에서 처리할 결재 — 같은 메뉴(경로) 안의 결재만 고른다. 이미 그 자리(경로+쿼리 동일)면 뺀다.
+ * 다른 메뉴의 결재는 상단 알림 배지가 맡는다.
+ */
+export function contextItems(items: InboxItem[], pathname: string, search: string): InboxItem[] {
+  const here = pathname.replace(/\/+$/, '') || '/'
+  return items.filter((i) => {
+    const [p, q = ''] = i.path.split('?')
+    const target = p.replace(/\/+$/, '') || '/'
+    if (target !== here) return false
+    return (q ? `?${q}` : '') !== search
+  })
 }

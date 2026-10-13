@@ -59,7 +59,7 @@ class RcmLock(BaseModel):
     reason: str | None
     fiscal_year: int | None
     rcm_year_id: UUID | None
-    # 이 사용자가 엑셀 업로드를 저장할 수 있는가(13.9-114) — 버튼 표시는 이 값, 판정은 rcm_approval.can_upload_excel
+    # 이 사용자가 엑셀 업로드를 저장할 수 있는가(13.9-115) — 버튼 표시는 이 값, 판정은 rcm_approval.can_upload_excel
     can_upload_excel: bool = False
 
 

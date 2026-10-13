@@ -157,7 +157,7 @@ def test_parent_change_is_warned_not_applied(client: TestClient) -> None:
 
 
 def test_lead_can_commit_only_while_reopened_draft(client: TestClient) -> None:
-    """작성(일반·책임)과 승인(마스터)을 나눈다(2026-10-13, 13.9-114).
+    """작성(일반·책임)과 승인(마스터)을 나눈다(2026-10-13, 13.9-115).
 
     엑셀 저장은 평소엔 내부회계관리자만 — 재오픈돼 작성 중(확정본 있음)이면 책임·일반관리자도 저장할 수 있다.
     그 변경은 다음 확정 결재를 반드시 거치므로 결재 밖 경로가 아니다. 외부 자문·시스템관리자는 여전히 불가.
