@@ -28,7 +28,11 @@ export interface RcmYear {
   governance: GovernanceInfo
 }
 
-export interface RcmLock { locked: boolean; reason: string | null; fiscal_year: number | null; rcm_year_id: string | null }
+export interface RcmLock {
+  locked: boolean; reason: string | null; fiscal_year: number | null; rcm_year_id: string | null
+  /** 엑셀 저장 자격(13.9-114) — 내부회계관리자, 또는 재오픈 작성 중이면 일반·책임관리자. 판정은 서버 */
+  can_upload_excel?: boolean
+}
 
 const LABEL = { draft: '작성 중', review: '검토 중', confirmed: '확정' } as const
 

@@ -20,7 +20,7 @@ import HelpButton from '@/features/help/HelpButton'
 import RoleMatrix from '@/features/admin/roleMatrix/RoleMatrix'
 import ChangeInbox from '../changes/ChangeInbox'
 import BulkChangeBar from '../changes/BulkChangeBar'
-import RcmYearView, { RcmLockBanner } from '../year/RcmYearView'
+import RcmYearView, { RcmLockBanner, useRcmLock } from '../year/RcmYearView'
 import { canEditHierarchy } from '../permissions'
 
 function extractErrorMessage(err: unknown): string {
@@ -69,6 +69,9 @@ export default function RcmPage() {
   const canWrite = useCanWrite()
   // 통제 추가·삭제·엑셀 저장은 내부회계관리자만(2026-10-08) — 수정은 쓰기 권한자 누구나(관리자 외는 변경 결재로 저장)
   const canDirect = canEditHierarchy()
+  // 엑셀 업로드 — 재오픈 작성 중이면 일반·책임관리자도(작성자·승인자 분리, 13.9-114). 판정은 서버 /rcm-years/lock
+  const { data: rcmLock } = useRcmLock()
+  const canUpload = canDirect || Boolean(rcmLock?.can_upload_excel)
 
   const handleChange = (updated: Partial<ControlSearchParams>) => {
     setParams((prev) => ({ ...prev, ...updated }))
@@ -164,7 +167,7 @@ export default function RcmPage() {
             onAddClick={canDirect ? handleAddClick : undefined}
             onEdit={canWrite ? handleEditClick : undefined}
             onDelete={canDirect ? handleDeleteClick : undefined}
-            onUploadClick={canDirect ? () => setUploadOpen(true) : undefined}
+            onUploadClick={canUpload ? () => setUploadOpen(true) : undefined}
             isLoading={isLoading}
             isError={isError}
             error={error}

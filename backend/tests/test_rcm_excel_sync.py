@@ -154,3 +154,48 @@ def test_parent_change_is_warned_not_applied(client: TestClient) -> None:
     sync = _post(client, t, [row], "preview").json()["sync"]
     assert any("XP-010-10-10" in w and "반영하지 않습니다" in w for w in sync["warnings"])
     assert [a["code"] for a in sync["diff"]["layers"]["risks"]["added"]] == ["XP-010-20"]
+
+
+def test_lead_can_commit_only_while_reopened_draft(client: TestClient) -> None:
+    """작성(일반·책임)과 승인(마스터)을 나눈다(2026-10-13, 13.9-114).
+
+    엑셀 저장은 평소엔 내부회계관리자만 — 재오픈돼 작성 중(확정본 있음)이면 책임·일반관리자도 저장할 수 있다.
+    그 변경은 다음 확정 결재를 반드시 거치므로 결재 밖 경로가 아니다. 외부 자문·시스템관리자는 여전히 불가.
+    """
+    t = T(client, {"lead": ("icfr_lead",), "staff": ("icfr_staff",), "master": ("icfr_manager",),
+                   "advisor": ("external_advisor",)})
+    _seed(t)
+
+    def post(who, mode="commit"):
+        return client.post(U, headers=t.h[who], data={"mode": mode}, files={"file": ("rcm.xlsx", _excel(ROWS), XLSX)})
+
+    lock = lambda who: client.get("/api/rcm-years/lock", headers=t.h[who]).json()  # noqa: E731
+    # 회계연도 RCM 없음(평소) — 책임관리자는 미리보기만, 저장 403
+    assert post("lead", "preview").status_code == 200
+    assert post("lead").status_code == 403
+    assert lock("lead")["can_upload_excel"] is False and lock("master")["can_upload_excel"] is True
+
+    # 시작했지만 확정본이 없는 작성 중 — 아직 결재 전 첫 버전이라 열지 않는다
+    rid = client.post("/api/rcm-years", headers=t.h["lead"], json={"fiscal_year": 2026}).json()["id"]
+    assert post("lead").status_code == 403
+
+    # 확정 → 재오픈(작성 중 v2)
+    assert client.post(f"/api/rcm-years/{rid}/transition", headers=t.h["lead"], json={"to_status": "review"}).status_code == 200
+    assert client.post(f"/api/rcm-years/{rid}/transition", headers=t.h["master"],
+                       json={"to_status": "confirmed", "reason": "v1"}).status_code == 200
+    req = client.post(f"/api/rcm-years/{rid}/reopen-requests", headers=t.h["lead"],
+                      json={"reason": "v2 반영"}).json()["governance"]["pending_reopen"]["id"]
+    assert client.post(f"/api/rcm-years/{rid}/reopen-requests/{req}/decide", headers=t.h["master"],
+                       json={"approve": True}).status_code == 200
+
+    assert lock("lead")["can_upload_excel"] is True and lock("staff")["can_upload_excel"] is True
+    assert lock("advisor")["can_upload_excel"] is False
+    assert post("advisor").status_code == 403
+    r = post("lead")
+    assert r.status_code == 200, r.text
+    assert r.json()["summary_text"] == "통제 1건 변경·1건 추가"
+
+    # 검토 요청하면 다시 잠긴다(409) — 열린 것은 작성 중일 때뿐
+    assert client.post(f"/api/rcm-years/{rid}/transition", headers=t.h["lead"], json={"to_status": "review"}).status_code == 200
+    assert post("lead").status_code == 409
+    assert lock("lead")["can_upload_excel"] is False

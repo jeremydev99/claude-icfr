@@ -75,6 +75,36 @@ def lock_reason(db: Session) -> str | None:
             "재오픈 요청 후 승인을 받거나, 검토 중이면 회수·반려 후 수정하세요")
 
 
+def reopened_draft(db: Session) -> bool:
+    """가장 최근 회계연도 RCM 이 **확정본이 있는 채로 작성 중**(재오픈 후)인가.
+
+    이 상태의 변경은 다음 확정 결재(버전 비교 → 검토 요청 → 마스터 승인)를 반드시 거친다 — 결재 밖에서 RCM 이
+    바뀌는 경로가 아니다. 엑셀 저장을 내부회계 관리자에게 여는 근거(2026-10-13, 13.9-114).
+    """
+    y = latest_year(db)
+    if y is None:
+        return False
+    if approval_flow.view_state(db, hooks(db, y)).status != AS_DRAFT:
+        return False
+    return db.query(RcmSnapshot.id).filter(RcmSnapshot.rcm_year_id == y.id,
+                                           RcmSnapshot.is_deleted == False).first() is not None  # noqa: E712
+
+
+def can_upload_excel(db: Session, user_id) -> bool:
+    """RCM 엑셀 **저장** 자격 — 내부회계관리자(바로 반영), 또는 재오픈 작성 중이면 내부회계 관리자 1~3단계.
+
+    작성(일반·책임)과 승인(마스터)을 나누기 위해서다 — 마스터가 올리고 마스터가 승인하면 자기 변경을 자기가
+    승인하게 된다(2026-10-13 Regina). 외부 자문(`external_advisor`)은 포함하지 않는다.
+    """
+    from app.core.permissions import tenant_roles
+    from app.models.role_assignment import TIER_ROLES
+    from app.services.control_changes import direct_edit_allowed
+
+    if direct_edit_allowed(db, user_id):
+        return True
+    return bool(tenant_roles(db, user_id) & set(TIER_ROLES)) and reopened_draft(db)
+
+
 def ensure_rcm_editable(db: Session) -> None:
     why = lock_reason(db)
     if why:

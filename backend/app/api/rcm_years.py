@@ -59,6 +59,8 @@ class RcmLock(BaseModel):
     reason: str | None
     fiscal_year: int | None
     rcm_year_id: UUID | None
+    # 이 사용자가 엑셀 업로드를 저장할 수 있는가(13.9-114) — 버튼 표시는 이 값, 판정은 rcm_approval.can_upload_excel
+    can_upload_excel: bool = False
 
 
 def _get(db: Session, rid: UUID) -> RcmFiscalYear:
@@ -102,7 +104,7 @@ def get_lock(user: CurrentUser, db: Session = Depends(get_db)) -> RcmLock:
     y = rap.latest_year(db)
     why = rap.lock_reason(db)
     return RcmLock(locked=why is not None, reason=why, fiscal_year=y.fiscal_year if y else None,
-                   rcm_year_id=y.id if y else None)
+                   rcm_year_id=y.id if y else None, can_upload_excel=rap.can_upload_excel(db, user.id))
 
 
 def _side(db: Session, ref: str) -> tuple[dict, str]:

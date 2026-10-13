@@ -1350,7 +1350,13 @@ async def upload_excel(
     """
     if mode != "preview":
         require_rcm_editable(user, db)
-        require_direct_control_edit(user, db)   # 저장은 내부회계관리자만(2026-10-08)   # 미리보기는 잠금과 무관, 저장만 막는다(ADR-0038 2-5)
+        # 미리보기는 잠금과 무관, 저장만 막는다(ADR-0038 2-5). 저장은 내부회계관리자(2026-10-08),
+        # 재오픈 작성 중이면 내부회계 관리자 1~3단계도 — 작성자와 승인자를 나눈다(2026-10-13, 13.9-114)
+        from app.services.rcm_approval import can_upload_excel
+        if not can_upload_excel(db, user.id):
+            raise HTTPException(status_code=403, detail=(
+                "RCM 엑셀 저장은 내부회계관리자가 합니다 — 회계연도 RCM 이 재오픈돼 작성 중이면 "
+                "내부회계 관리자(일반·책임)도 저장할 수 있습니다"))
     if not file.filename or not file.filename.endswith(".xlsx"):
         raise HTTPException(status_code=400, detail=".xlsx 파일만 허용됩니다")
     if mode not in ("preview", "commit"):
