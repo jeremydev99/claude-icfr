@@ -474,6 +474,45 @@ def update_account(scoping_id: UUID, account_id: UUID, body: AccountUpdate,
     return _detail(db, s, user.id)
 
 
+@router.post("/{scoping_id}/upload-excel")
+async def upload_excel(scoping_id: UUID, file: UploadFile = File(...), mode: str = Form(default="preview"),
+                       links: str | None = Form(default=None), user: User = Depends(require_icfr_staff),
+                       db: Session = Depends(get_db)) -> dict:
+    """스코핑 엑셀 갱신 업로드(13.9-117) — 정리본 엑셀의 질적 10요소·판단 근거·결론을 계정에 반영한다.
+
+    `mode=preview` 는 아무것도 바꾸지 않고 계정별 전→후·못 맞춘 행을 돌려준다(작성 중이 아니어도 볼 수 있다).
+    `mode=commit` 은 같은 계산을 저장 — 작성 중일 때만(확정·검토 중 409). `links` = 미리보기에서 사람이 고른
+    {엑셀 키: 계정 id} JSON. 금액은 반영하지 않는다(확정 재무제표가 원천). 규칙은 `services/scoping_excel` 참조.
+    """
+    import json
+
+    from app.services import scoping_excel as sx
+
+    if mode not in ("preview", "commit"):
+        raise HTTPException(status_code=400, detail="mode 는 'preview' 또는 'commit' 이어야 합니다")
+    s = _editable(db, scoping_id) if mode == "commit" else _get(db, scoping_id)
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail=".xlsx 파일만 올릴 수 있습니다")
+    try:
+        raw_links = json.loads(links) if links else {}
+        link_map = {str(k): UUID(str(v)) for k, v in raw_links.items() if v}
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=422, detail="연결 정보(links) 형식이 올바르지 않습니다") from None
+    try:
+        excel, parse_warnings = sx.parse(await file.read())
+    except sx.ExcelError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    result = sx.plan(db, s, excel, link_map)
+    result["warnings"] = parse_warnings + result["warnings"]
+    if mode == "commit":
+        sx.apply(db, s, result)
+        db.commit()
+    else:
+        result["summary_text"] = f"미리보기 — {result['summary_text']}"
+    result["mode"] = mode
+    return sx.public(result)
+
+
 @router.post("/{scoping_id}/reload-from-fs", response_model=ScopingDetail)
 def reload_from_fs(scoping_id: UUID, user: User = Depends(require_icfr_staff),
                    db: Session = Depends(get_db)) -> ScopingDetail:

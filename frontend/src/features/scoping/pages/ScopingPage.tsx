@@ -2,7 +2,7 @@ import EmptyState from '@/components/illustration/EmptyState'
 import { useFiscal } from '@/lib/useFiscal'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, Loader2, Lock, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Loader2, Lock, RefreshCw, Upload } from 'lucide-react'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -25,6 +25,7 @@ import MaterialityCard from '../components/MaterialityCard'
 import AccountsTable from '../components/AccountsTable'
 import CoverageSection from '../components/CoverageSection'
 import CreateScopingDialog, { type ScopingSource } from '../components/CreateScopingDialog'
+import ScopingExcelDialog from '../components/ScopingExcelDialog'
 import { ConfirmToggle, TemplateBadge } from '../components/bits'
 import type { ScopingDetail, ScopingMeta } from '../types'
 import apiClient from '@/lib/axios'
@@ -61,6 +62,7 @@ export default function ScopingPage() {
   // 결재 동작 → API. 외부 승인은 파일이 있어 FormData 로 직접 보낸다
   const [uploading, setUploading] = useState(false)
   const [reloadOpen, setReloadOpen] = useState(false)
+  const [excelOpen, setExcelOpen] = useState(false)
   const act = async (d: ScopingDetail, a: ApprovalAction) => {
     const base = `/${d.id}`
     switch (a.kind) {
@@ -167,11 +169,19 @@ export default function ScopingPage() {
               <span className="text-muted-foreground">
                 재무제표를 스코핑보다 나중에 올렸거나 수정했다면, FY{detail.base_fiscal_year} 확정 재무제표로 계정·금액·중요성 기준값을 다시 채울 수 있습니다.
               </span>
-              <Button size="sm" variant="outline" onClick={() => setReloadOpen(true)} disabled={mutation.isPending}>
-                <RefreshCw className="mr-1 h-4 w-4" />재무제표에서 다시 불러오기
-              </Button>
+              <span className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => setReloadOpen(true)} disabled={mutation.isPending}>
+                  <RefreshCw className="mr-1 h-4 w-4" />재무제표에서 다시 불러오기
+                </Button>
+                {/* 정리본 엑셀의 질적 평가·판단 근거·결론 반영(13.9-117) */}
+                <Button size="sm" variant="outline" onClick={() => setExcelOpen(true)} disabled={mutation.isPending}>
+                  <Upload className="mr-1 h-4 w-4" />스코핑 엑셀 업로드
+                </Button>
+                <HelpButton k="screen.scoping.excel-upload" />
+              </span>
             </div>
           )}
+          <ScopingExcelDialog scopingId={detail.id} open={excelOpen} onOpenChange={setExcelOpen} />
           <AlertDialog open={reloadOpen} onOpenChange={setReloadOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
