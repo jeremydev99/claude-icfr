@@ -73,10 +73,13 @@ def test_requester_cannot_approve_and_policy_line(client: TestClient) -> None:
     t = _t(client)
     base = "/api/schedule/plans/2027"
     client.post(f"{base}/init", headers=t.h["lead"])
-    client.post(f"{base}/submit", headers=t.h["lead"], json={})
-    d = client.get(base, headers=t.h["lead"]).json()
-    assert d["can"]["approve"] is False and "자기 승인" in d["can"]["why"]["approve"]
+    client.post(f"{base}/submit", headers=t.h["staff"], json={})
+    d = client.get(base, headers=t.h["staff"]).json()
+    assert d["can"]["approve"] is False                                  # 요청자는 승인 단계가 아니다
     assert client.post(f"{base}/return", headers=t.h["master"], json={"note": "x"}).status_code == 409   # 지금은 책임 단계
+    client.post(f"{base}/approve", headers=t.h["lead"], json={})
+    d = client.get(base, headers=t.h["lead"]).json()
+    assert d["can"]["approve"] is False and "마스터관리자" in d["can"]["why"]["approve"]   # 다음 단계로 넘어감
     # 결재선 정책: 마스터만
     pol = "/api/org/policies"
     assert client.put(pol, headers=t.h["master"], json={"policy_key": "schedule_approval_line", "policy_value": "bad"}).status_code == 422
@@ -86,3 +89,21 @@ def test_requester_cannot_approve_and_policy_line(client: TestClient) -> None:
     assert [s["step"] for s in d["plan"]["approval_line"]] == ["master"]
     r = client.post("/api/schedule/plans/2028/return", headers=t.h["master"], json={"note": "기간 조정"})
     assert r.json()["plan"]["status"] == "draft" and r.json()["plan"]["returned_reason"] == "기간 조정"
+
+
+def test_requester_level_steps_escalate(client: TestClient) -> None:
+    """책임관리자가 올리면 책임관리자 단계는 마스터로 올라간다 — 둘뿐인 회사에서도 결재가 멈추지 않는다(2026-10-13)."""
+    from app.services.schedule import effective_line
+    assert effective_line(["lead", "master"], 1) == ["lead", "master"]
+    assert effective_line(["lead", "master"], 2) == ["master"]
+    assert effective_line(["lead"], 2) == ["master"]
+    assert effective_line(["lead", "master"], 3) == ["ceo"]
+    assert effective_line(["master", "ceo"], 3) == ["ceo"]
+    t = T(client, {"lead": ("icfr_lead",), "master": ("icfr_manager",)})
+    assert client.post("/api/schedule/plans/2031/init", headers=t.h["lead"]).status_code == 200
+    d = client.post("/api/schedule/plans/2031/submit", headers=t.h["lead"], json={}).json()
+    assert [s["step"] for s in d["plan"]["approval_line"]] == ["master"]
+    assert any(i["path"] == "/schedule" and i["action"] == "approve"
+               for i in client.get("/api/governance/inbox", headers=t.h["master"]).json())
+    d = client.post("/api/schedule/plans/2031/approve", headers=t.h["master"], json={}).json()
+    assert d["plan"]["status"] == "approved"
