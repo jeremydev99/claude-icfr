@@ -19,6 +19,9 @@ const FIELDS: FieldDef[] = [
   { key: 'frequency', label: '수행 주기', kind: 'select', options: [
     { value: 'D', label: '일' }, { value: 'W', label: '주' }, { value: 'M', label: '월' }, { value: 'Q', label: '분기' },
     { value: 'A', label: '연' }, { value: 'O', label: '수시' }] },
+  { key: 'assessment_frequency', label: '평가 주기', kind: 'select', options: [
+    { value: 'annual', label: '연' }, { value: 'semiannual', label: '반기' }, { value: 'quarterly', label: '분기' },
+    { value: 'monthly', label: '월' }, { value: 'weekly', label: '주' }] },
   { key: 'auto_manual', label: '자동/수동', kind: 'select', options: [{ value: 'A', label: '자동' }, { value: 'M', label: '수동' }, { value: 'IT', label: 'IT 의존 수동' }] },
   { key: 'preventive_detective', label: '예방/적발', kind: 'select', options: [{ value: 'P', label: '예방' }, { value: 'D', label: '적발' }] },
   { key: 'related_systems', label: '관련 시스템', kind: 'text', placeholder: '예: ERP(SAP)' },

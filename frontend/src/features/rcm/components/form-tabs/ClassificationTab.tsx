@@ -30,6 +30,15 @@ const FREQUENCY_OPTIONS = [
   { value: 'A', label: '연' },
 ]
 
+// 평가 주기 — 값은 서버 ASSESSMENT_FREQUENCIES 와 같아야 한다. 회차는 이 값이 같은 통제만 대상으로 묶는다
+const ASSESSMENT_FREQUENCY_OPTIONS = [
+  { value: 'annual', label: '연' },
+  { value: 'semiannual', label: '반기' },
+  { value: 'quarterly', label: '분기' },
+  { value: 'monthly', label: '월' },
+  { value: 'weekly', label: '주' },
+]
+
 const IPE_OPTIONS = [
   { value: 'Y', label: '예 (Y)' },
   { value: 'N', label: '아니오 (N)' },
@@ -125,6 +134,24 @@ export default function ClassificationTab() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {FREQUENCY_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label title="평가 회차를 여는 주기 — 회차와 같은 평가 주기의 통제만 그 회차 대상이 됩니다">평가 주기</Label>
+          <Controller
+            name="assessment_frequency"
+            control={control}
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ASSESSMENT_FREQUENCY_OPTIONS.map((o) => (
                     <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                   ))}
                 </SelectContent>

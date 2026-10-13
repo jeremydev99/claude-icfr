@@ -14,6 +14,7 @@ import {
   ASSERTION_LABELS,
   AUTO_MANUAL_LABELS,
   FREQUENCY_LABELS,
+  ASSESSMENT_FREQUENCY_LABELS,
   PD_LABELS,
   RISK_LEVEL_LABELS,
 } from '../types'
@@ -120,6 +121,7 @@ export default function ControlDetailSheet({ control, open, onOpenChange, onEdit
               <InfoRow label="예방/적발" value={PD_LABELS[control.preventive_detective]} />
               <InfoRow label="자동/수동" value={AUTO_MANUAL_LABELS[control.auto_manual]} />
               <InfoRow label="수행 주기" value={FREQUENCY_LABELS[control.frequency]} />
+              <InfoRow label="평가 주기" value={ASSESSMENT_FREQUENCY_LABELS[control.assessment_frequency] ?? control.assessment_frequency} />
               <InfoRow label="IPE 관련성" value={control.ipe_relevant} />
               <InfoRow label="핵심통제" value={control.is_key_control ? '예' : '아니오'} />
 
