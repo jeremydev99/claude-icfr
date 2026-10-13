@@ -12,8 +12,17 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser
+from app.core.permissions import tenant_roles
 from app.minio_client import get_object_stream
 from app.models.assessment import CYCLE_CLOSED, AssessmentCycle
+from app.models.control_change import (
+    B_REVIEW,
+    CH_DEPT_APPROVED,
+    CH_DEPT_REVIEW,
+    CH_REJECTED,
+    ControlChange,
+    ControlChangeBatch,
+)
 from app.models.financial_statement import FS_BASIS_LABELS, FS_STATEMENT_LABELS, FsStatement
 from app.models.governance import (
     AS_CONFIRMED,
@@ -28,9 +37,12 @@ from app.models.governance import (
 from app.models.proposal import P_PENDING_REVIEW, P_REVIEWED, Proposal
 from app.models.rcm_governance import RcmFiscalYear
 from app.models.remediation import Deficiency
+from app.models.role_assignment import ROLE_ICFR_MANAGER
+from app.models.schedule import PLAN_REVIEW, SchedulePlan
 from app.models.scoping import STATUS_CONFIRMED, STATUS_REVIEW, Scoping
 from app.services import approval, cycle_approval
 from app.services import proposals as proposal_svc
+from app.services import schedule as schedule_svc
 
 router = APIRouter(prefix="/api/governance", tags=["governance"])
 
@@ -48,7 +60,7 @@ class InboxItem(BaseModel):
 def inbox(user: CurrentUser, db: Session = Depends(get_db)) -> list[InboxItem]:
     """지금 내가 처리할 결재 — 검토·승인·외부 승인 등록·재오픈 결정."""
     if approval.user_tier(db, user.id) == 0:
-        return []
+        return _work_items(db, user)   # 조직장·작성자 — 관리자 단계가 없어도 통제 변경 결재·반려 건은 있다
     out: list[InboxItem] = []
     rows = db.query(Scoping).filter(Scoping.is_deleted == False,  # noqa: E712
                                     Scoping.status.in_([STATUS_REVIEW, STATUS_CONFIRMED])).all()
@@ -127,8 +139,46 @@ def inbox(user: CurrentUser, db: Session = Depends(get_db)) -> list[InboxItem]:
         elif c.approve:
             out.append(InboxItem(entity_type="proposal", entity_id=p.id, title=p.title, action="proposal_approve",
                                  label="2차 승인", path=f"/proposals/{p.id}"))
+    out.extend(_work_items(db, user))
     return out
 
+
+
+def _work_items(db: Session, user) -> list[InboxItem]:
+    """관리자 단계와 무관하게 사람에게 걸리는 결재·할 일 — 통제 변경(13.9-95)·연간 일정안(13.9-93)."""
+    out: list[InboxItem] = []
+    # 통제 변경 결재(13.9-95) — 건마다 줄을 만들면 목록이 넘치므로 단계별로 묶어 1줄씩
+    ch = db.query(ControlChange).filter(ControlChange.is_deleted == False)  # noqa: E712
+    dept = ch.filter(ControlChange.status == CH_DEPT_REVIEW, ControlChange.dept_approver_id == user.id).all()
+    if dept:
+        out.append(InboxItem(entity_type="control_change", entity_id=dept[0].id, title=f"통제 변경 {len(dept)}건",
+                             action="dept_approve", label="조직장 결재", path="/rcm?tab=changes"))
+    tier = approval.user_tier(db, user.id)
+    if tier >= 1:
+        queued = ch.filter(ControlChange.status == CH_DEPT_APPROVED).all()
+        if queued:
+            out.append(InboxItem(entity_type="control_change", entity_id=queued[0].id,
+                                 title=f"통제 변경 {len(queued)}건", action="batch_submit",
+                                 label="내부회계 일괄 상신 대기", path="/rcm?tab=changes"))
+    if ROLE_ICFR_MANAGER in tenant_roles(db, user.id):
+        for b in db.query(ControlChangeBatch).filter(ControlChangeBatch.is_deleted == False,  # noqa: E712
+                                                     ControlChangeBatch.status == B_REVIEW,
+                                                     ControlChangeBatch.submitted_by_id != user.id).all():
+            out.append(InboxItem(entity_type="control_change_batch", entity_id=b.id,
+                                 title=f"통제 변경 묶음 {b.item_count}건", action="batch_decide",
+                                 label="관리자 결재", path="/rcm?tab=changes"))
+    rejected = ch.filter(ControlChange.status == CH_REJECTED, ControlChange.author_id == user.id).all()
+    if rejected:
+        out.append(InboxItem(entity_type="control_change", entity_id=rejected[0].id,
+                             title=f"반려된 통제 변경 {len(rejected)}건", action="fix_rejected",
+                             label="고쳐서 다시 상신", path="/rcm?tab=changes"))
+    # 연간 일정안 결재(13.9-93) — 지금 단계 승인자이고 자기 승인이 아닐 때
+    for p in db.query(SchedulePlan).filter(SchedulePlan.is_deleted == False,  # noqa: E712
+                                           SchedulePlan.status == PLAN_REVIEW).all():
+        if schedule_svc.can(db, p, user.id).approve:
+            out.append(InboxItem(entity_type="schedule_plan", entity_id=p.id, title=f"{p.fiscal_year} 회계연도 일정안",
+                                 action="approve", label="일정안 승인", path="/schedule"))
+    return out
 
 @router.get("/files/{file_id}")
 def download_file(file_id: UUID, user: CurrentUser, db: Session = Depends(get_db)) -> StreamingResponse:

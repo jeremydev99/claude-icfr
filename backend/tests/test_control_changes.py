@@ -61,6 +61,9 @@ def test_full_flow_draft_dept_batch_admin_apply(client: TestClient, env) -> None
     assert client.put(f"/api/rcm-changes/control/{cid}", headers=t.h["staff"], json={"changes": {"name": "y"}}).status_code == 409
     d = client.post(f"/api/rcm-changes/{ch}/submit", headers=t.h["owner"]).json()
     assert d["status"] == "dept_review" and d["dept_approver"] == "head"
+    # 상단 알림(13.9-114) — 조직장의 결재 목록에 뜬다
+    inbox = lambda who: [(i["action"], i["path"]) for i in client.get("/api/governance/inbox", headers=t.h[who]).json()]  # noqa: E731
+    assert ("dept_approve", "/rcm?tab=changes") in inbox("head")
     # 조직장: 반려는 사유 필수, 승인 → 내부회계 대기함
     assert client.post(f"/api/rcm-changes/{ch}/dept-approve", headers=t.h["staff"], json={}).status_code == 409
     assert client.post(f"/api/rcm-changes/{ch}/dept-reject", headers=t.h["head"], json={}).status_code == 409
@@ -69,7 +72,10 @@ def test_full_flow_draft_dept_batch_admin_apply(client: TestClient, env) -> None
     assert [x["id"] for x in ov["queue"]] == [ch]
     # 내부회계 담당자 일괄 상신 → 내부회계관리자 결재 → 반영
     assert client.post("/api/rcm-changes/batches", headers=t.h["owner"], json={"change_ids": [ch]}).status_code == 409
+    assert ("batch_submit", "/rcm?tab=changes") in inbox("staff")
     bid = client.post("/api/rcm-changes/batches", headers=t.h["staff"], json={"change_ids": [ch], "note": "10월 묶음"}).json()["id"]
+    assert ("batch_decide", "/rcm?tab=changes") in inbox("master")
+    assert not any(a == "batch_decide" for a, _ in inbox("staff"))
     body = {"decisions": [{"id": ch, "approve": True}]}
     assert client.post(f"/api/rcm-changes/batches/{bid}/decide", headers=t.h["staff"], json=body).status_code == 409
     r = client.post(f"/api/rcm-changes/batches/{bid}/decide", headers=t.h["master"], json=body)
