@@ -39,6 +39,7 @@ SYSTEM_SEED_SCOPING_TEMPLATE = "system:seed-scoping-template"
 SYSTEM_SEED_HELP = "system:seed-help"
 SYSTEM_MIGRATION_RCM_BASELINE = "system:migration-rcm-baseline"
 SYSTEM_TEST = "system:test"
+SYSTEM_AI = "system:ai"   # AI 제안(ADR-0042) — 제안 행·AI 가 만든 초안
 
 # 요청·작업 단위 행위자. 미설정 시 None → 감사 대상 쓰기는 실패한다.
 _current_actor: ContextVar[str | None] = ContextVar("current_actor", default=None)

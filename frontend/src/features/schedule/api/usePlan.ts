@@ -1,3 +1,4 @@
+import type { AiProposal } from '@/features/ai/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import apiClient from '@/lib/axios'
 import { useActiveTenantId } from '@/features/auth/store'
@@ -51,6 +52,8 @@ export interface PlanResp {
   can: { edit: boolean; submit: boolean; approve: boolean; return: boolean; why: Record<string, string> }
   policy_line: string[]
   start_month: number
+  /** AI 제안(ADR-0042) — 이 일정안을 AI 가 만들었으면 */
+  ai_proposal?: AiProposal | null
 }
 
 export interface ItemBody {

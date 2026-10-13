@@ -190,6 +190,10 @@ def submit(db: Session, p: SchedulePlan, user_id: UUID, note: str | None) -> Non
         raise ScheduleError("지금은 결재를 요청할 수 없습니다")
     if not items_of(db, p):
         raise ScheduleError("일정 항목이 없습니다")
+    from app.models.ai_proposal import AI_PROPOSED, AiProposal
+    if db.query(AiProposal).filter(AiProposal.target_id == p.id, AiProposal.status == AI_PROPOSED,
+                                   AiProposal.is_deleted == False).first() is not None:  # noqa: E712
+        raise ScheduleError("AI 제안을 먼저 채택하세요 — 채택한 사람이 이 일정안의 작성 책임자가 됩니다(ADR-0042)")
     line = approval_line(db)
     p.requested_by_id, p.requested_at, p.request_note = user_id, datetime.now(UTC), (note or "").strip() or None
     p.approval_line, p.current_step, p.approvals, p.returned_reason = line, 0, [], None

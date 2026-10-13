@@ -15,6 +15,9 @@ export const EVENT_LABELS: Record<string, string> = {
   reopen_request: '재오픈 요청',
   reopen_approve: '재오픈 승인',
   reopen_reject: '재오픈 거절',
+  ai_propose: 'AI 제안',
+  ai_adopt: 'AI 제안 채택',
+  ai_discard: 'AI 제안 폐기',
 }
 
 export const BODY_LABELS: Record<string, string> = { ceo: '대표이사', board: '이사회' }

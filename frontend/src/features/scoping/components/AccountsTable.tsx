@@ -150,11 +150,13 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
             onClick={() => { setFilter('all'); setSort('default') }}>초기화</button>
         )}
       </div>
-      <div className="overflow-x-auto rounded-md border">
+      {/* 표 영역을 화면 높이에 맞춰 가두고 그 안에서 가로·세로로 스크롤한다 — 표가 길어도 가로 스크롤바가
+          화면 안에 보이게. 머리글 줄은 위, 계정 열은 왼쪽에 고정(2026-10-13) */}
+      <div className="max-h-[calc(100dvh-13rem)] min-h-[20rem] overflow-auto overscroll-contain rounded-md border">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40 text-muted-foreground">
+          <thead className="sticky top-0 z-20 bg-muted text-muted-foreground shadow-[0_1px_0_hsl(var(--border))]">
             <tr>
-              <th className="min-w-[9rem] px-2 py-1 text-left">계정</th>
+              <th className="sticky left-0 z-30 min-w-[9rem] bg-muted px-2 py-1 text-left">계정</th>
               {quantApplies && (
                 <>
                   <th className="min-w-[8.75rem] px-1 text-right">기준 금액<br />(FY{d.base_fiscal_year} 결산)</th>
@@ -216,7 +218,7 @@ function GroupHeader({ label, st, closed, onToggle }: { label: string; st: Group
       onClick={onToggle}>
       <td colSpan={99} className="px-3 py-2">
         {/* 표가 가로로 넓어도 머리 내용은 보이는 폭 안에 — 왼쪽에 붙여 둔다 */}
-        <div className="sticky left-3 flex w-max max-w-[calc(100vw-22rem)] flex-wrap items-center gap-x-4 gap-y-1.5">
+        <div className="sticky left-3 z-10 flex w-max max-w-[calc(100vw-22rem)] flex-wrap items-center gap-x-4 gap-y-1.5">
           <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
             {closed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             {label}
@@ -305,7 +307,8 @@ function AccountRow({
         </tr>
       )}
       <tr className={cn('border-t align-top', a.not_applicable && 'bg-muted/30 text-muted-foreground')}>
-        <td className="px-2 py-1 font-medium">
+        <td className={cn('sticky left-0 z-10 px-2 py-1 font-medium shadow-[1px_0_0_hsl(var(--border))]',
+          a.not_applicable ? 'bg-muted' : 'bg-background')}>
           {a.name}
           {a.not_applicable && (
             <span className="mt-0.5 block text-[11px] font-normal" title={a.na_reason ?? ''}>해당 없음 · {a.na_reason}</span>
