@@ -162,6 +162,30 @@ def _step_ok(db: Session, step: str, user_id: UUID) -> bool:
     return (step == "lead" and t == 2) or (step == "master" and t == 3)
 
 
+def effective_line(line: list[str], requester_tier: int) -> list[str]:
+    """요청자 본인 이하 단계는 독립된 확인이 될 수 없다 — 한 단계 위로 올린다(2026-10-13).
+
+    책임관리자가 올리면 책임관리자 단계 → 마스터관리자, 마스터관리자가 올리면 마스터 단계 → 대표이사
+    (ADR-0038 "마스터 작성분은 대표이사·이사회 승인"과 같은 원칙). 올린 결과 겹치는 단계는 하나로 합친다.
+    """
+    out: list[str] = []
+    for s in line:
+        if s == "lead" and requester_tier >= 2:
+            s = "master"
+        if s == "master" and requester_tier >= 3:
+            s = "ceo"
+        if s not in out:
+            out.append(s)
+    return out
+
+
+def line_of(db: Session, p: SchedulePlan) -> list[str]:
+    """지금 적용할 결재선 — 아직 아무도 승인하지 않았으면 요청자 기준으로 올린 결재선(이전에 올라온 건도 바로잡는다)."""
+    if p.status == PLAN_REVIEW and not p.approvals and p.requested_by_id is not None:
+        return effective_line(p.approval_line, approval.user_tier(db, p.requested_by_id))
+    return p.approval_line
+
+
 def can(db: Session, p: SchedulePlan | None, user_id: UUID) -> SCan:
     c = SCan()
     tier = approval.user_tier(db, user_id)
@@ -172,8 +196,9 @@ def can(db: Session, p: SchedulePlan | None, user_id: UUID) -> SCan:
         c.submit = tier >= 1
         if not c.submit:
             c.why["submit"] = "결재 요청은 내부회계 담당자가 합니다"
-    if p.status == PLAN_REVIEW and p.current_step < len(p.approval_line):
-        step = p.approval_line[p.current_step]
+    line = line_of(db, p)
+    if p.status == PLAN_REVIEW and p.current_step < len(line):
+        step = line[p.current_step]
         prior = {a.get("user_id") for a in p.approvals}
         own = p.requested_by_id == user_id or str(user_id) in prior
         ok = _step_ok(db, step, user_id)
@@ -194,7 +219,7 @@ def submit(db: Session, p: SchedulePlan, user_id: UUID, note: str | None) -> Non
     if db.query(AiProposal).filter(AiProposal.target_id == p.id, AiProposal.status == AI_PROPOSED,
                                    AiProposal.is_deleted == False).first() is not None:  # noqa: E712
         raise ScheduleError("AI 제안을 먼저 채택하세요 — 채택한 사람이 이 일정안의 작성 책임자가 됩니다(ADR-0042)")
-    line = approval_line(db)
+    line = effective_line(approval_line(db), approval.user_tier(db, user_id))
     p.requested_by_id, p.requested_at, p.request_note = user_id, datetime.now(UTC), (note or "").strip() or None
     p.approval_line, p.current_step, p.approvals, p.returned_reason = line, 0, [], None
     if not line:   # 정책상 결재 없음 — 요청과 동시에 승인
@@ -210,6 +235,7 @@ def approve(db: Session, p: SchedulePlan, user: User, note: str | None) -> None:
     c = can(db, p, user.id)
     if not c.approve:
         raise ScheduleError(c.why.get("approve", "승인할 수 없습니다"))
+    p.approval_line = line_of(db, p)
     step = p.approval_line[p.current_step]
     p.approvals = [*p.approvals, {"step": step, "user_id": str(user.id), "name": user.display_name,
                                   "at": datetime.now(UTC).isoformat(), "note": (note or "").strip() or None}]

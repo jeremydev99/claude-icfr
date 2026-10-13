@@ -130,7 +130,7 @@ def _plan_out(db: Session, fy: int, user: User) -> dict:
     return {
         "fiscal_year": fy,
         "plan": {"id": p.id, "status": p.status, "status_label": PLAN_STATUS_LABELS.get(p.status, p.status),
-                 "version": p.version, "approval_line": [{"step": s, "label": STEP_LABELS.get(s, s)} for s in p.approval_line],
+                 "version": p.version, "approval_line": [{"step": s, "label": STEP_LABELS.get(s, s)} for s in svc.line_of(db, p)],
                  "current_step": p.current_step, "approvals": p.approvals, "requested_by": _name(db, p.requested_by_id),
                  "requested_at": p.requested_at, "request_note": p.request_note, "approved_at": p.approved_at,
                  "returned_reason": p.returned_reason, "approved_version": p.approved_version},
