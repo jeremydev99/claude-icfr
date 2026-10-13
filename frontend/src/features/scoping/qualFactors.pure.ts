@@ -13,3 +13,13 @@ export function qualRuleText(policy: { threshold: string; comparison: string }):
   const op = policy.comparison === 'gt' ? '초과' : '이상'
   return `H=3 · M=2 · L=1 점으로 환산해 10개 요소의 평균이 ${t} ${op}이면 질적으로 유의한 계정입니다. 양적(금액) 또는 질적 중 하나라도 유의하면 최종 유의(Y)입니다.`
 }
+
+/**
+ * 질적 10요소 접힌 표시(2026-10-13) — 요소 순서대로 등급 한 글자, 빈칸은 `·`. 예: `HMML··LLMH`.
+ * 표가 가로로 길어 접어 둘 때 한 칸에서 무엇이 비었는지 보이게 한다.
+ */
+export function ratingsSummary(ratings: Record<string, string | null | undefined>, factors: readonly string[]) {
+  const marks = factors.map((f) => ratings[f] || '·')
+  const filled = marks.filter((m) => m !== '·').length
+  return { text: marks.join(''), filled, total: factors.length }
+}

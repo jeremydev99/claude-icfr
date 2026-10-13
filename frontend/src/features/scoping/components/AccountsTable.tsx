@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { Check, ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ScopingAccount, ScopingDetail, ScopingMeta } from '../types'
-import { QUAL_SHORT, qualRuleText } from '../qualFactors.pure'
+import { QUAL_SHORT, qualRuleText, ratingsSummary } from '../qualFactors.pure'
 import QualFactorGuide from './QualFactorGuide'
 import {
   FILTER_LABELS, SORT_LABELS, filterRows, sortRows, type AccountFilter, type AccountSort,
@@ -12,6 +12,10 @@ import { groupRows, groupStatus, type GroupStatus } from '../accountGroups.pure'
 import {
   AutoTextarea, CommitInput, ConfirmToggle, JudgementBadge, TemplateBadge, changeText, originFieldClass, parseWon,
 } from './bits'
+
+const FACTORS_KEY = 'scoping.showQualFactors'
+/** 계정명 칸 고정 — 좌우로 스크롤해도 어느 계정인지 보이게(2026-10-13). 배경은 불투명해야 뒤 칸이 비치지 않는다 */
+const STICKY_COL = 'sticky left-0 z-10 shadow-[1px_0_0_0_hsl(var(--border))]'
 
 type Write = (method: 'post' | 'patch' | 'delete', path: string, body?: unknown) => void
 const wonFmt = (v: number | null) => (v === null ? '' : v.toLocaleString('ko-KR'))
@@ -37,6 +41,14 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
   const [filter, setFilter] = useState<AccountFilter>('all')
   const [sort, setSort] = useState<AccountSort>('default')
   const shown = useMemo(() => sortRows(filterRows(rows, filter, confirmed), sort), [rows, filter, sort, confirmed])
+  // 질적 10요소 펼침(2026-10-13 Regina "가로가 너무 길다") — 접으면 한 칸(등급 요약)으로. 보는 사람 편의라 브라우저에만 기억
+  const [showFactors, setShowFactorsState] = useState<boolean>(() => {
+    try { return localStorage.getItem(FACTORS_KEY) === '1' } catch { return false }
+  })
+  const setShowFactors = (v: boolean) => {
+    setShowFactorsState(v)
+    try { localStorage.setItem(FACTORS_KEY, v ? '1' : '0') } catch { /* 저장 못 해도 화면은 동작 */ }
+  }
   const grouped = sort === 'default'   // 정렬하면 재무제표 그룹 순서가 깨지므로 묶음 없이 평평하게
   // ── 묶음 카드(2026-10-03) — 상태는 필터와 무관하게 탭 전체 기준. 접힘은 화면 상태(새로고침 시 다시 '완료만 접힘')
   const statusByLabel = useMemo(() => {
@@ -124,6 +136,10 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
           {(Object.keys(SORT_LABELS) as AccountSort[]).map((k) => <option key={k} value={k}>{SORT_LABELS[k]}</option>)}
         </select>
         <span className="text-muted-foreground">{shown.length} / {rows.length}개 표시</span>
+        <button type="button" onClick={() => setShowFactors(!showFactors)}
+          className="rounded-md border px-2.5 py-1 text-xs hover:border-primary/40 hover:bg-accent">
+          질적 10요소 {showFactors ? '접기' : '펼치기'}
+        </button>
         {grouped && (
           <>
             <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-medium text-accent-foreground">
@@ -154,7 +170,7 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
         <table className="w-full text-xs">
           <thead className="bg-muted/40 text-muted-foreground">
             <tr>
-              <th className="min-w-[9rem] px-2 py-1 text-left">계정</th>
+              <th className={cn('min-w-[9rem] px-2 py-1 text-left', STICKY_COL, 'bg-muted')}>계정</th>
               {quantApplies && (
                 <>
                   <th className="min-w-[8.75rem] px-1 text-right">기준 금액<br />(FY{d.base_fiscal_year} 결산)</th>
@@ -163,7 +179,12 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
                 </>
               )}
               <th className="min-w-[3.5rem] px-1">양적</th>
-              {meta.qual_factors.map((f, i) => (
+              {!showFactors && (
+                <th className="min-w-[6.5rem] px-1" title="요소 순서대로 등급(H·M·L), 빈칸은 · — 누르면 10요소를 펼쳐 입력합니다">
+                  질적 10요소
+                </th>
+              )}
+              {showFactors && meta.qual_factors.map((f, i) => (
                 <th key={f.value} className="w-10 min-w-[2.9rem] px-0.5 align-bottom leading-tight" title={`${i + 1}. ${f.label}`}>
                   <span className="block text-sm font-bold text-foreground">{i + 1}</span>
                   <span className="block whitespace-nowrap text-[10px] font-medium">{QUAL_SHORT[f.value] ?? ''}</span>
@@ -190,13 +211,15 @@ export default function AccountsTable({ d, meta, write }: { d: ScopingDetail; me
                     onToggle={() => setCollapsed((c) => ({ ...c, [`${tab}:${g.label}`]: !closed }))} />
                   {!closed && g.rows.map((a) => (
                     <AccountRow key={a.id} a={a} d={d} meta={meta} write={write} quantApplies={quantApplies}
-                      showGroup={false} confirmed={confirmed} />
+                      showGroup={false} confirmed={confirmed} showFactors={showFactors}
+                      onExpandFactors={() => setShowFactors(true)} />
                   ))}
                 </Fragment>
               )
             }) : shown.map((a) => (
               <AccountRow key={a.id} a={a} d={d} meta={meta} write={write} quantApplies={quantApplies}
-                showGroup={false} confirmed={confirmed} />
+                showGroup={false} confirmed={confirmed} showFactors={showFactors}
+                      onExpandFactors={() => setShowFactors(true)} />
             ))}
           </tbody>
         </table>
@@ -257,10 +280,11 @@ function Chip({ tone, n, label }: { tone: 'y' | 'n' | 'na' | 'warn'; n: number; 
 }
 
 function AccountRow({
-  a, d, meta, write, quantApplies, showGroup, confirmed,
+  a, d, meta, write, quantApplies, showGroup, confirmed, showFactors, onExpandFactors,
 }: {
   a: ScopingAccount; d: ScopingDetail; meta: ScopingMeta; write: Write
   quantApplies: boolean; showGroup: boolean; confirmed: boolean
+  showFactors: boolean; onExpandFactors: () => void
 }) {
   const editable = d.can_edit
   const path = `/${d.id}/accounts/${a.id}`
@@ -305,7 +329,7 @@ function AccountRow({
         </tr>
       )}
       <tr className={cn('border-t align-top', a.not_applicable && 'bg-muted/30 text-muted-foreground')}>
-        <td className="px-2 py-1 font-medium">
+        <td className={cn('px-2 py-1 font-medium', STICKY_COL, a.not_applicable ? 'bg-muted' : 'bg-background')}>
           {a.name}
           {a.not_applicable && (
             <span className="mt-0.5 block text-[11px] font-normal" title={a.na_reason ?? ''}>해당 없음 · {a.na_reason}</span>
@@ -325,7 +349,20 @@ function AccountRow({
           </>
         )}
         <td className="px-1 py-1 text-center"><JudgementBadge value={a.quant} /></td>
-        {meta.qual_factors.map((f) => {
+        {!showFactors && (() => {
+          const sm = ratingsSummary(a.ratings, meta.qual_factors.map((f) => f.value))
+          return (
+            <td className="px-1 py-1 text-center">
+              <button type="button" onClick={onExpandFactors}
+                title={`${sm.filled}/${sm.total} 입력 — 누르면 10요소를 펼칩니다`}
+                className={cn('rounded border px-1.5 py-0.5 font-mono text-[11px] tracking-wider hover:bg-accent',
+                  sm.filled < sm.total && !a.not_applicable && 'border-warning/50 text-warning')}>
+                {sm.text}
+              </button>
+            </td>
+          )
+        })()}
+        {showFactors && meta.qual_factors.map((f) => {
           const origin = a.badges[`ratings.${f.value}`]
           return (
             <td key={f.value} className="px-0.5 py-1 text-center">
