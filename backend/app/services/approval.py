@@ -126,3 +126,13 @@ def can(db: Session, s: Scoping | ApprovalState, user_id: UUID) -> Can:
                     c.why["reopen"] = ("재오픈 요청자는 본인 요청을 승인할 수 없습니다" if me == p.requested_by_id
                                        else "마스터관리자가 재오픈을 승인합니다")
     return c
+
+
+def dept_approval_enabled(db) -> bool:
+    """업무 조직장(부서승인) 단계 사용 — 회사 정책 `dept_approval_enabled`, 미설정이면 사용(ADR-0031 §2.6).
+
+    평가 워크플로의 부서승인과 통제 변경 결재의 조직장 결재가 같은 토글을 본다(2026-10-14)."""
+    from app.models.role_assignment import POLICY_DEPT_APPROVAL_ENABLED, TenantPolicy
+    row = db.query(TenantPolicy).filter(TenantPolicy.policy_key == POLICY_DEPT_APPROVAL_ENABLED,
+                                        TenantPolicy.is_deleted == False).first()  # noqa: E712
+    return row is None or row.policy_value.lower() not in ("false", "0", "no")

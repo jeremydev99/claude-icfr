@@ -2,7 +2,7 @@
 
 export type RoleName = 'control_owner' | 'dept_approver' | 'assessor'
 export const ROLES: RoleName[] = ['control_owner', 'dept_approver', 'assessor']
-export const ROLE_LABEL: Record<RoleName, string> = { control_owner: '통제책임자', dept_approver: '부서승인자', assessor: '평가자' }
+export const ROLE_LABEL: Record<RoleName, string> = { control_owner: '통제책임자', dept_approver: '부서승인자(업무 조직장)', assessor: '평가자' }
 
 export interface ResolvedRole {
   role_name: RoleName

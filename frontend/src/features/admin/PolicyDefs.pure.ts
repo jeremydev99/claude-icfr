@@ -91,9 +91,9 @@ export const POLICY_GROUPS: { title: string; defs: PolicyDef[] }[] = [
       {
         key: 'dept_approval_enabled',
         kind: 'bool',
-        label: '부서승인 단계 사용',
+        label: '업무 조직장(부서승인자) 단계 사용',
         description:
-          '끄면 모든 통제에서 부서승인 단계를 건너뜁니다. 켜져 있어도 통제책임자가 부서장 본인이면 자동 스킵됩니다. (기본: 사용)',
+          '회사 선택 사항입니다. 끄면 평가 워크플로의 부서승인과 통제 변경 결재의 조직장 결재를 모두 건너뜁니다(통제책임자 → 평가자 → 내부회계관리자 3단계). 켜져 있어도 작성자·통제책임자가 그 조직장 본인이거나 조직장이 지정되지 않았으면 건너뜁니다. (기본: 사용)',
         defaultValue: true,
         parse: 'not-falsy',
       },
@@ -258,7 +258,7 @@ export function describeFiscalYear(startMonth: number): string {
 
 export const ASSIGNMENT_ROLES = [
   { value: 'control_owner', label: '통제책임자' },
-  { value: 'dept_approver', label: '부서승인자' },
+  { value: 'dept_approver', label: '부서승인자 (업무 조직장)' },
   { value: 'assessor', label: '평가자' },
 ] as const
 

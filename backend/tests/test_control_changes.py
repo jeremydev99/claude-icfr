@@ -129,3 +129,14 @@ def test_bulk_draft_and_submit_per_control(client: TestClient, env) -> None:
     # 바로 반영과 같은 값 검증 — 허용값 밖이면 422
     bad = client.post("/api/rcm-changes/bulk", headers=t.h["owner"], json={"control_ids": [cid], "changes": {"frequency": "S"}})
     assert bad.status_code == 422
+
+
+def test_dept_step_off_by_policy_skips_head(client: TestClient, env) -> None:
+    """업무 조직장 단계 끔(정책 dept_approval_enabled=false) — 조직장 결재 없이 내부회계 대기함으로(2026-10-14)."""
+    t, cid = env
+    assert client.put("/api/org/policies", headers=t.h["master"],
+                      json={"policy_key": "dept_approval_enabled", "policy_value": "false"}).status_code == 200
+    ch = client.put(f"/api/rcm-changes/control/{cid}", headers=t.h["owner"], json={"changes": {"name": "끔 테스트"}}).json()["id"]
+    d = client.post(f"/api/rcm-changes/{ch}/submit", headers=t.h["owner"]).json()
+    assert d["status"] == "dept_approved"
+    client.put("/api/org/policies", headers=t.h["master"], json={"policy_key": "dept_approval_enabled", "policy_value": "true"})
