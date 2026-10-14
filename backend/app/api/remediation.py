@@ -54,6 +54,25 @@ def _assert_plan_not_approved(plan: RemediationPlan) -> None:
         raise HTTPException(status_code=409, detail="승인된 개선계획은 수정·삭제할 수 없습니다")
 
 
+_PLAN_REQUIRED = ("owner_id", "target_date", "action_plan")
+_PLAN_OPTIONAL_TEXT = ("improvement_description", "owner_opinion", "reviewer_opinion")
+
+
+def _assert_reviewer_opinion_allowed(db: Session, user_id: UUID, value) -> None:
+    """검토자 의견은 내부회계 관리자(1~3단계)만 — 개선 책임자가 검토자 의견란을 채우지 못하게(13.9-126 Q4)."""
+    from app.services import approval
+    if value and approval.user_tier(db, user_id) < 1:
+        raise HTTPException(status_code=403, detail="검토자 의견은 내부회계 관리자만 입력할 수 있습니다")
+
+
+def _assert_owner_exists(db: Session, owner_id: UUID) -> None:
+    from app.models.tenant import UserTenantAccess
+    ok = db.query(UserTenantAccess).filter(UserTenantAccess.user_id == owner_id,
+                                           UserTenantAccess.is_deleted == False).first()  # noqa: E712
+    if ok is None:
+        raise HTTPException(status_code=422, detail="담당자를 찾을 수 없습니다")
+
+
 def _assert_not_self_approval(db: Session, plan: RemediationPlan, user_id: UUID) -> None:
     """개선 책임자(owner)·완료 처리자는 승인할 수 없다 — 자기 승인 금지(ADR-0038 §2.2)."""
     h = (db.query(RemediationStatusHistory)
@@ -295,6 +314,8 @@ def list_plans(skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Se
 
 @router.post("/plans", status_code=status.HTTP_201_CREATED, response_model=RemediationPlanRead)
 def create_plan(body: RemediationPlanCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> RemediationPlan:
+    _assert_reviewer_opinion_allowed(db, user.id, body.reviewer_opinion)
+    _assert_owner_exists(db, body.owner_id)
     obj = RemediationPlan(**body.model_dump())
     db.add(obj)
     db.flush()
@@ -325,7 +346,18 @@ def update_plan(plan_id: UUID, body: RemediationPlanUpdate, user: User = Depends
     if not obj:
         raise HTTPException(status_code=404, detail="RemediationPlan not found")
     _assert_plan_not_approved(obj)
-    for field, val in body.model_dump(exclude_none=True).items():
+    changes = body.model_dump(exclude_unset=True)
+    for f in _PLAN_REQUIRED:
+        if f in changes and (changes[f] is None or (isinstance(changes[f], str) and not changes[f].strip())):
+            raise HTTPException(status_code=422, detail="담당자·목표일·개선 조치는 비울 수 없습니다")
+    for f in _PLAN_OPTIONAL_TEXT:
+        if f in changes and isinstance(changes[f], str) and not changes[f].strip():
+            changes[f] = None    # 빈 문자열 = 비움
+    if "reviewer_opinion" in changes and changes["reviewer_opinion"] != obj.reviewer_opinion:
+        _assert_reviewer_opinion_allowed(db, user.id, changes["reviewer_opinion"] or "x")
+    if "owner_id" in changes:
+        _assert_owner_exists(db, changes["owner_id"])
+    for field, val in changes.items():
         setattr(obj, field, val)
     db.commit()
     db.refresh(obj)

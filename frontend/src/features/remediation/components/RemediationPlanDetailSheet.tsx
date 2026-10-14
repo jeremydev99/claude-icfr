@@ -1,4 +1,6 @@
-import { Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { Loader2, Pencil } from 'lucide-react'
+import RemediationPlanEditDialog from './RemediationPlanEditDialog'
 import {
   Sheet,
   SheetContent,
@@ -57,6 +59,8 @@ export default function RemediationPlanDetailSheet({ planId, open, onOpenChange 
   const { data: plan, isLoading } = usePlanDetail(planId)
   const { data: historyData } = usePlanHistory(planId)
   const transition = useTransitionPlan()
+  // 수정(13.9-126) — 승인 전까지
+  const [editOpen, setEditOpen] = useState(false)
 
   const { data: deficienciesData } = useDeficiencies({ limit: 200 })
   const { data: usersData } = useUsers({ limit: 200 })
@@ -117,7 +121,14 @@ export default function RemediationPlanDetailSheet({ planId, open, onOpenChange 
 
             <div className="mt-4 space-y-1">
               {/* 섹션 1 — 기본 정보 */}
-              <SectionTitle>기본 정보</SectionTitle>
+              <div className="flex items-center justify-between">
+                <SectionTitle>기본 정보</SectionTitle>
+                {canWrite && plan.status !== 'approved' && (
+                  <Button size="sm" variant="outline" className="mt-5 h-7" onClick={() => setEditOpen(true)}>
+                    <Pencil className="mr-1 h-3.5 w-3.5" />수정
+                  </Button>
+                )}
+              </div>
               <Separator />
               <InfoRow label="미비점" value={
                 <span className="font-mono text-sm">{deficiencyLabel(plan.deficiency_id)}</span>
@@ -194,6 +205,7 @@ export default function RemediationPlanDetailSheet({ planId, open, onOpenChange 
           </>
         ) : null}
       </SheetContent>
+      {plan && <RemediationPlanEditDialog plan={plan} open={editOpen} onOpenChange={setEditOpen} />}
     </Sheet>
   )
 }

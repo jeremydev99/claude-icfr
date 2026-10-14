@@ -99,6 +99,9 @@ class RemediationPlanCreate(RemediationPlanBase):
     pass
 
 class RemediationPlanUpdate(BaseModel):
+    """개선계획 수정(13.9-126) — **보낸 칸만 바꾼다**(exclude_unset). 선택 칸은 null/빈 문자열로 비울 수 있고,
+    개선 조치·목표일·담당자는 필수라 비울 수 없다(API 가 422). 검토자 의견은 내부회계 관리자만."""
+    owner_id: UUID | None = None
     target_date: date | None = None
     action_plan: str | None = None
     improvement_description: str | None = None

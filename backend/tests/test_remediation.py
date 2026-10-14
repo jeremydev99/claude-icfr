@@ -293,3 +293,67 @@ def test_approved_plan_is_locked(client: TestClient) -> None:
     assert client.patch(f"/api/remediation/plans/{plan_id}", json={"action_plan": "x"}, headers=h).status_code == 409
     assert client.delete(f"/api/remediation/plans/{plan_id}", headers=h).status_code == 409
     assert client.get(f"/api/remediation/plans/{plan_id}", headers=h).status_code == 200
+
+
+# ── 개선계획 수정(13.9-126) ────────────────────────────────
+
+def _user_headers(client: TestClient, email: str, roles: tuple[str, ...] = ()) -> dict:
+    """이 테스트 전용 사용자 — 공용 승인자 계정에 역할을 붙이면 다른 테스트에 번진다."""
+    from app.core.security import hash_password
+    from app.core.tenant_context import DEFAULT_TENANT_ID, reset_active_tenant, set_active_tenant
+    from app.models.tenant import UserTenantAccess
+    from app.models.user import User
+    from app.models.user_mgmt import UserRole
+    from tests.conftest import TestingSessionLocal
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        u = db.query(User).filter(User.email == email).first()
+        if u is None:
+            u = User(email=email, hashed_password=hash_password("pw123456"), display_name=email.split("@")[0],
+                     role="user", is_active=True)
+            db.add(u)
+            db.commit()
+        if db.query(UserTenantAccess).filter(UserTenantAccess.user_id == u.id).first() is None:
+            db.add(UserTenantAccess(user_id=u.id, tenant_id=DEFAULT_TENANT_ID, role="user"))
+        for r in roles:
+            if db.query(UserRole).filter(UserRole.user_id == u.id, UserRole.role_name == r).first() is None:
+                db.add(UserRole(user_id=u.id, role_name=r))
+        db.commit()
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+    resp = client.post("/api/auth/login", data={"username": email, "password": "pw123456"})
+    assert resp.status_code == 200, resp.text
+    return {"Authorization": "Bearer " + resp.json()["access_token"]}
+
+
+def test_plan_edit_owner_clear_and_required(client: TestClient) -> None:
+    """담당자 변경 가능, 선택 칸은 비울 수 있고, 필수 칸(개선 조치·목표일·담당자)은 비울 수 없다."""
+    from tests._approver import user_id_of
+    h, ah = _headers(client), approver_headers(client)
+    _, plan_id = _create_deficiency_and_plan(client, "EDIT1")
+    other = user_id_of(client, ah)
+    r = client.patch(f"/api/remediation/plans/{plan_id}", headers=h,
+                     json={"owner_id": other, "improvement_description": "개선 내용", "priority": "High"})
+    assert r.status_code == 200, r.text
+    assert r.json()["owner_id"] == other and r.json()["improvement_description"] == "개선 내용"
+    r = client.patch(f"/api/remediation/plans/{plan_id}", headers=h, json={"improvement_description": ""})
+    assert r.status_code == 200 and r.json()["improvement_description"] is None      # 빈 문자열 = 비움
+    for bad in ({"action_plan": " "}, {"target_date": None}, {"owner_id": None}):
+        assert client.patch(f"/api/remediation/plans/{plan_id}", headers=h, json=bad).status_code == 422
+    assert client.patch(f"/api/remediation/plans/{plan_id}", headers=h,
+                        json={"owner_id": "00000000-0000-0000-0000-000000000000"}).status_code == 422
+
+
+def test_reviewer_opinion_only_by_icfr_staff(client: TestClient) -> None:
+    """검토자 의견은 내부회계 관리자만 — 역할 없는 사용자는 403, 담당자 의견은 누구나."""
+    plain = _user_headers(client, "rem-plain@acme.example")
+    staff = _user_headers(client, "rem-staff@acme.example", ("icfr_staff",))
+    _, plan_id = _create_deficiency_and_plan(client, "EDIT2")
+    assert client.patch(f"/api/remediation/plans/{plan_id}", headers=plain,
+                        json={"owner_opinion": "담당자 의견"}).status_code == 200
+    assert client.patch(f"/api/remediation/plans/{plan_id}", headers=plain,
+                        json={"reviewer_opinion": "검토 의견"}).status_code == 403
+    r = client.patch(f"/api/remediation/plans/{plan_id}", headers=staff, json={"reviewer_opinion": "검토 의견"})
+    assert r.status_code == 200 and r.json()["reviewer_opinion"] == "검토 의견"

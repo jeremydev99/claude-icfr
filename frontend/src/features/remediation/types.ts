@@ -100,6 +100,7 @@ export interface RemediationPlanCreatePayload {
 }
 
 export interface RemediationPlanUpdatePayload {
+  owner_id?: string
   target_date?: string
   action_plan?: string
   improvement_description?: string | null
