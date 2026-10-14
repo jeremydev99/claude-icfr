@@ -65,12 +65,14 @@ def _accept_and_enroll(client, token: str, pw="Ext-pass-1") -> tuple[dict, str]:
 
 def test_invite_requires_other_approver_and_link_once(client: TestClient, t: T) -> None:
     iid = _invite(client, t)
-    # 요청자(lead)는 승인 불가(마스터 아님), 마스터가 요청하면 본인 승인 불가
+    # 요청자(lead)는 승인 불가(마스터 아님)
     assert client.post(f"/api/external/invitations/{iid}/approve", headers=t.h["lead"]).status_code == 403
     r = client.post("/api/external/invitations", headers=t.h["master"], json={
         "email": "x@f.example", "display_name": "x", "user_type": "auditor", "organization": "감사인",
         "valid_until": str(date.today() + timedelta(days=30))})
-    assert client.post(f"/api/external/invitations/{r.json()['id']}/approve", headers=t.h["master"]).status_code == 409
+    # 마스터는 본인 요청도 승인할 수 있다(2026-10-14) — 요청 뒤 따로 승인
+    assert r.json()["status"] == "pending_approval"
+    assert client.post(f"/api/external/invitations/{r.json()['id']}/approve", headers=t.h["master"]).status_code == 200
     token = _approve(client, t, iid)
     listed = client.get("/api/external/invitations", headers=t.h["lead"]).json()
     assert all(i["invite_url"] is None for i in listed)   # 링크는 승인 응답에서 한 번만
