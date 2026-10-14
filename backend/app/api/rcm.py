@@ -1411,10 +1411,13 @@ async def upload_excel(
     live = _excel_live(db)
     known = _known_assertion_codes(db)
     if mode == "preview":
+        sync = rcm_excel_sync.preview(live, parsed, set(known))
         return {
             "summary": summary,
             "preview": parsed.controls[:20],
-            "sync": rcm_excel_sync.preview(live, parsed, set(known)),
+            "sync": sync,
+            # 감사 로그 '대상' — 반영과 구분되게(스코핑 엑셀과 같은 표기, 13.9-119 ③)
+            "summary_text": f"미리보기 — {sync['summary_text']}",
         }
 
     # mode == "commit" — 현재 RCM 에 회사 수정분으로 반영(2026-10-08, 13.9-109). 예전 테이블에 쓰지 않는다.

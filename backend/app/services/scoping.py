@@ -432,11 +432,13 @@ def evaluate(db: Session, s: Scoping) -> dict:
                         f"({_pct(lo)}~{_pct(hi)})를 벗어났습니다")
     if not (s.rationale or "").strip():
         warnings.append("중요성 설정근거가 비어 있습니다 — 검토 요청·확정 전에 입력해야 합니다")
-    # 재무제표 기반 생성(8-E) — 템플릿 링크가 없는 계정은 질적 평가가 비어 있다
-    unlinked = [a.name for a in accounts if a.fs_account_id is not None and not a.ratings]
+    # 재무제표 기반 생성(8-E) — 템플릿 링크가 없어 질적 평가가 비었고 **그 때문에 판정이 안 난** 계정만 센다.
+    # 양적 Y·수동 판정·해당 없음으로 이미 결론이 난 계정까지 세면 할 일이 없는데 경고가 남는다(13.9-119 ②)
+    unlinked = [r["account"].name for r in acc_rows
+                if r["account"].fs_account_id is not None and not r["account"].ratings and r["final"] is None]
     if unlinked:
-        warnings.append(f"재무제표 계정 {len(unlinked)}개는 스코핑 템플릿 연결이 없어 질적 평가가 비어 있습니다 "
-                        f"(재무제표 > 스코핑 템플릿 연결에서 연결하거나 직접 평가) — 예: {', '.join(unlinked[:5])}")
+        warnings.append(f"재무제표 계정 {len(unlinked)}개는 질적 평가가 비어 판정이 나지 않았습니다 "
+                        f"(질적 10요소 입력·수동 판정·해당 없음 중 하나, 또는 스코핑 엑셀 업로드) — 예: {', '.join(unlinked[:5])}")
 
     return {
         "policy": {"threshold": _rate_str(threshold), "comparison": comparison},

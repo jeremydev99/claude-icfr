@@ -83,7 +83,18 @@ def test_rows_amounts_groups_and_fallbacks(client: TestClient) -> None:
     assert sum(1 for a in d["accounts"] if a["statement_type"] == "NOTE") == 38
     assert all(a["fs_account_id"] is None for a in d["accounts"] if a["statement_type"] in ("CF", "NOTE"))
     # 링크 없는 재무제표 계정은 질적 평가가 비어 있고 경고한다
-    assert cash["ratings"] == {} and any("템플릿 연결이 없어" in w for w in d["warnings"])
+    # 링크 없는 재무제표 계정은 질적 평가가 비어 있다. 경고는 **그 때문에 판정이 안 난 계정만** 센다(13.9-119 ②) —
+    # 여기서는 전부 양적 Y 라 결론이 났으므로 경고가 없다
+    assert cash["ratings"] == {} and cash["final"] == "Y"
+    assert not any("판정이 나지 않았습니다" in w for w in d["warnings"])
+    sid = d["id"]
+    # 금액을 비우면 양적 판정 불가 + 질적 빈칸 = 미평가 → 경고에 나온다
+    d1 = client.patch(f"/api/scoping/{sid}/accounts/{cash['id']}", headers=h, json={"current_amount": None}).json()
+    assert any("현금및현금성자산" in w for w in d1["warnings"] if "판정이 나지 않았습니다" in w)
+    # 해당 없음으로 판정에서 빼면 경고에서 빠진다
+    d2 = client.patch(f"/api/scoping/{sid}/accounts/{cash['id']}", headers=h,
+                      json={"not_applicable": True, "na_reason": "테스트"}).json()
+    assert not any("현금및현금성자산" in w for w in d2["warnings"] if "판정이 나지 않았습니다" in w)
 
 
 def test_linked_accounts_get_template_defaults_with_badges(client: TestClient) -> None:

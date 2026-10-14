@@ -101,6 +101,7 @@ def test_preview_shows_diff_against_live_and_missing(client: TestClient) -> None
     assert got == {"owner_name": ("갑", "병"), "assertions": ("E", "C, E")}   # 평가 주기는 엑셀에 없어 비교하지 않는다
     assert sync["missing"]["controls"] == ["XP-010-10-20"] and sync["missing_count"] == 1
     assert sync["summary_text"] == "통제 1건 변경·1건 추가"
+    assert r.json()["summary_text"] == "미리보기 — 통제 1건 변경·1건 추가"   # 감사 로그 대상(13.9-119 ③)
     # 미리보기는 아무것도 바꾸지 않는다
     items = {c["code"]: c for c in client.get("/api/rcm/controls", headers=t.h["master"], params={"limit": 50}).json()["items"]}
     assert items["XP-010-10-10"]["owner_name"] == "갑" and "XP-010-10-30" not in items
