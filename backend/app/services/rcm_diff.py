@@ -21,6 +21,16 @@ FIELD_LABELS = {
     "risk": "위험", "risk_level": "위험 수준", "sub_process_code": "하위프로세스", "process_code": "프로세스",
     "assertions": "어서션", "assessment_level": "평가 수준", "process": "프로세스", "sub_process": "하위프로세스",
 }
+# 코드 값 → 화면 표시(2026-10-14) — 결재자가 "quarterly → annual" 대신 "분기 → 연"을 본다
+_FREQ = {"O": "수시", "D": "일", "W": "주", "M": "월", "Q": "분기", "A": "연"}
+_LEVEL = {"LR": "낮음", "MR": "보통", "HR": "높음", "SR": "유의"}
+VALUE_LABELS = {
+    "assessment_frequency": {"weekly": "주", "monthly": "월", "quarterly": "분기", "semiannual": "반기", "annual": "연"},
+    "frequency": _FREQ, "preventive_detective": {"P": "예방", "D": "적발"},
+    "auto_manual": {"A": "자동", "M": "수동", "IT": "IT의존 수동"},
+    "risk_level": _LEVEL, "assessment_level": _LEVEL,
+    "is_key_control": {True: "예", False: "아니오"}, "ipe_relevant": {"Y": "예", "N": "아니오", "N/A": "해당 없음"},
+}
 # 상위 연결 칸 → (비교에 쓸 이름, 부모 계층)
 PARENT_REFS = {"process_id": ("process", "processes"), "sub_process_id": ("sub_process", "sub_processes"),
                "risk_id": ("risk", "risks")}
@@ -54,7 +64,10 @@ def _normalize(snapshot: dict) -> dict[str, dict[str, dict]]:
     return out
 
 
-def _fmt(v):
+def _fmt(v, field: str | None = None):
+    labels = VALUE_LABELS.get(field or "")
+    if labels and not isinstance(v, list) and v in labels:
+        return labels[v]
     if isinstance(v, list):
         return ", ".join(str(x) for x in v) if v else ""
     return v
@@ -77,7 +90,7 @@ def diff(base: dict, target: dict) -> dict:
                 before, after = ra[i].get(k), rb[i].get(k)
                 if before == after:
                     continue
-                f = {"field": k, "label": FIELD_LABELS.get(k, k), "before": _fmt(before), "after": _fmt(after)}
+                f = {"field": k, "label": FIELD_LABELS.get(k, k), "before": _fmt(before, k), "after": _fmt(after, k)}
                 if k == "assertions":
                     f["added"] = sorted(set(after or []) - set(before or []))
                     f["removed"] = sorted(set(before or []) - set(after or []))

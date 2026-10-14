@@ -63,3 +63,11 @@ def test_compare_api_and_review_summary(client: TestClient) -> None:
     assert d["diff_summary"] == "직전 확정본(v1) 대비 통제 1건 변경"
     assert client.get(f"{Y}/compare", headers=t.h["lead"], params={"base": "x"}).status_code == 422
     assert client.get(f"{Y}/compare", headers=t.h["lead"], params={"base": f"{rid}:9"}).status_code == 404
+
+
+def test_coded_values_shown_in_korean() -> None:
+    """결재자가 코드 대신 한글 값을 본다(2026-10-14)."""
+    from app.services.rcm_diff import _fmt
+    assert (_fmt("quarterly", "assessment_frequency"), _fmt("annual", "assessment_frequency")) == ("분기", "연")
+    assert _fmt("Q", "frequency") == "분기" and _fmt("MR", "risk_level") == "보통"
+    assert _fmt(True, "is_key_control") == "예" and _fmt("자유 문장", "description") == "자유 문장"
