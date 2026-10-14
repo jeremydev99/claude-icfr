@@ -26,6 +26,8 @@ export interface RcmYear {
   pending_changes: number
   /** 재오픈 후 검토 중 — 직전 확정본 대비 변경 한 줄 */
   diff_summary: string | null
+  /** 이번 판 수정자(13.9-127) — 이 사람들은 이 판을 승인할 수 없다 */
+  editors?: string[]
   governance: GovernanceInfo
 }
 
@@ -156,6 +158,11 @@ export default function RcmYearView() {
           </div>
           {y.is_latest && (
             <ApprovalPanel status={y.approval_status} g={y.governance} pending={busy} onAction={(a) => act(y, a)} />
+          )}
+          {y.is_latest && (y.editors?.length ?? 0) > 0 && y.approval_status !== 'confirmed' && (
+            <p className="text-xs text-muted-foreground">
+              이번 판 수정자: <span className="font-medium text-foreground">{y.editors!.join(', ')}</span> — 이 판을 승인할 수 없습니다(작성자·승인자 분리)
+            </p>
           )}
           {y.diff_summary && y.snapshots.length > 0 && (
             <ChangesBlock summary={y.diff_summary} base={`${y.id}:${y.snapshots[0].version}`}

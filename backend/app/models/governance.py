@@ -142,3 +142,6 @@ class ApprovalState(AuditedBase):
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     legacy_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    # 이번 판 수정자(13.9-127) — 사용자 id 문자열 목록. 작성 중일 때 문서를 바로 고친 사람이 쌓이고 재오픈 때 비운다.
+    # 이 사람은 이 판을 승인할 수 없다. NULL = 기록 전 판(수정자 없음). 지금은 회계연도 RCM 만 쓴다
+    editor_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)

@@ -14,7 +14,13 @@ from sqlalchemy.orm import Session
 
 from app.core.governance_log import _json
 from app.models.control_change import CH_DEPT_APPROVED, CH_DEPT_REVIEW, CH_IN_BATCH, ControlChange
-from app.models.governance import AS_DRAFT, ENTITY_RCM_YEAR
+from app.models.governance import (
+    AS_DRAFT,
+    ENTITY_RCM_YEAR,
+    PATH_EXTERNAL,
+    PATH_LEAD_THEN_MASTER,
+    PATH_MASTER,
+)
 from app.models.rcm_governance import RcmFiscalYear, RcmSnapshot
 from app.services import approval_flow, control_resolver
 from app.services.approval_flow import DocHooks, FlowError
@@ -54,12 +60,61 @@ def hooks(db: Session, y: RcmFiscalYear) -> DocHooks:
     def confirm(uid, _reason: str) -> None:
         st = approval_flow.get_state(db, ENTITY_RCM_YEAR, y.id)
         version = st.version if st is not None else 1
+        editors = list((st.editor_ids if st is not None else None) or [])
+        # 이번 판을 바로 고친 사람은 그 판을 승인할 수 없다(13.9-127) — 작성자·승인자 분리
+        if str(uid) in editors:
+            raise FlowError(409, "이번 판 RCM 을 직접 수정한 사람은 승인할 수 없습니다 — 다른 마스터관리자 또는 대표이사·이사회 승인 증빙으로 확정하세요")
         snap = build_snapshot(db, y.fiscal_year, version)
+        snap["editor_ids"] = editors
         db.add(RcmSnapshot(rcm_year_id=y.id, fiscal_year=y.fiscal_year, version=version, snapshot=snap,
                            control_count=len(snap["controls"]), confirmed_by_id=uid, confirmed_at=datetime.now(UTC)))
 
+    def reopen(_uid, _reason: str) -> None:
+        st = approval_flow.get_state(db, ENTITY_RCM_YEAR, y.id)
+        if st is not None:
+            st.editor_ids = None    # 새 판 — 수정자를 처음부터 모은다
+
+    def adjust_path(path: str) -> str:
+        """승인할 마스터가 모두 이번 판 수정자면 대표이사·이사회 승인 증빙으로(마스터 작성분과 같은 경로)."""
+        if path not in (PATH_MASTER, PATH_LEAD_THEN_MASTER):
+            return path
+        st = approval_flow.get_state(db, ENTITY_RCM_YEAR, y.id)
+        editors = set((st.editor_ids if st is not None else None) or [])
+        if editors and not (_master_ids(db) - editors):
+            return PATH_EXTERNAL
+        return path
+
     return DocHooks(entity_type=ENTITY_RCM_YEAR, entity_id=y.id, is_confirmed=lambda: False,
-                    check_submit=check_submit, confirm=confirm, reopen=lambda _uid, _reason: None)
+                    check_submit=check_submit, confirm=confirm, reopen=reopen, adjust_path=adjust_path)
+
+
+def _master_ids(db: Session) -> set[str]:
+    from app.models.role_assignment import ROLE_ICFR_MANAGER
+    from app.models.user_mgmt import UserRole
+    return {str(r.user_id) for r in db.query(UserRole).filter(UserRole.role_name == ROLE_ICFR_MANAGER,
+                                                              UserRole.is_deleted == False).all()}  # noqa: E712
+
+
+def mark_editors(db: Session, user_ids) -> None:
+    """작성 중인 가장 최근 회계연도 RCM 에 '이번 판 수정자'를 더한다(13.9-127). 회계연도 RCM 이 없으면 아무것도 안 한다.
+    호출하는 쪽이 커밋한다 — 쓰기가 실패해 롤백되면 기록도 함께 사라진다."""
+    y = latest_year(db)
+    if y is None:
+        return
+    h = hooks(db, y)
+    if approval_flow.view_state(db, h).status != AS_DRAFT:
+        return
+    st = approval_flow._ensure_state(db, h)
+    cur = list(st.editor_ids or [])
+    for u in user_ids:
+        if u and str(u) not in cur:
+            cur.append(str(u))
+    st.editor_ids = cur     # JSON 은 새 객체를 넣어야 변경이 감지된다
+
+
+def editor_ids(db: Session, y: RcmFiscalYear) -> list[str]:
+    st = approval_flow.get_state(db, ENTITY_RCM_YEAR, y.id)
+    return list((st.editor_ids if st is not None else None) or [])
 
 
 def lock_reason(db: Session) -> str | None:

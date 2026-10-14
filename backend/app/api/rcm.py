@@ -125,10 +125,12 @@ def require_rcm_editable(user: CurrentUser, db: Session = Depends(get_db)) -> No
 
     **`user` 를 먼저 받는 이유**: 활성 회사(tenant)는 로그인 사용자 의존성이 정한다. 그 전에 조회하면 회사 필터가
     걸리지 않아 다른 회사의 확정 RCM 으로 잠긴다(2026-10-07 테스트에서 발견)."""
-    from app.services.rcm_approval import lock_reason
+    from app.services.rcm_approval import lock_reason, mark_editors
     why = lock_reason(db)
     if why:
         raise HTTPException(status_code=409, detail=why)
+    # RCM 을 바로 고치는 경로는 모두 여기를 지난다 — 이번 판 수정자로 남긴다(13.9-127). 쓰기가 실패하면 함께 롤백된다
+    mark_editors(db, [user.id])
 
 
 def require_direct_control_edit(user: User = Depends(require_write), db: Session = Depends(get_db)) -> User:

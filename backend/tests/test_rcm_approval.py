@@ -104,8 +104,18 @@ def test_confirm_snapshot_and_lock(client: TestClient) -> None:
     assert up.status_code == 409
 
 
+def _reopen(client, t, rid, requester="lead", decider="master"):
+    r = client.post(f"{Y}/{rid}/reopen-requests", headers=t.h[requester], json={"reason": "설계변경 반영"})
+    assert r.status_code == 201, r.text
+    req = r.json()["governance"]["pending_reopen"]["id"]
+    r = client.post(f"{Y}/{rid}/reopen-requests/{req}/decide", headers=t.h[decider], json={"approve": True})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
 def test_reopen_bumps_version_and_keeps_old_snapshot(client: TestClient) -> None:
-    t = T(client, {"lead": ("icfr_lead",), "master": ("icfr_manager",)})
+    """재오픈 → 판 +1, 옛 스냅샷 보존. 이번 판을 고친 마스터는 승인하지 못하고 다른 마스터가 승인한다(13.9-127)."""
+    t = T(client, {"lead": ("icfr_lead",), "master": ("icfr_manager",), "master2": ("icfr_manager",)})
     cid = _control(t)
     rid = _start(client, t)
     _confirm(client, t, rid)
@@ -117,10 +127,45 @@ def test_reopen_bumps_version_and_keeps_old_snapshot(client: TestClient) -> None
     assert r.status_code == 200 and r.json()["version"] == 2 and r.json()["approval_status"] == "draft"
     pr = client.patch(f"/api/rcm/controls/{cid}", headers=t.h["master"], json={"name": "개정 통제"})
     assert pr.status_code == 200, pr.text
-    d = _confirm(client, t, rid)
+    assert _to(client, t, "lead", rid, "review").status_code == 200
+    d = client.get(f"{Y}/{rid}", headers=t.h["master"]).json()
+    assert d["governance"]["review_path"] == "master" and len(d["editors"]) == 1       # 다른 마스터가 있으니 경로는 그대로
+    assert d["governance"]["can"]["approve"] is False and "직접 수정" in d["governance"]["can"]["why"]["approve"]
+    no = _to(client, t, "master", rid, "confirmed", "본인 수정분 승인 시도")
+    assert no.status_code == 409 and "직접 수정한 사람은 승인할 수 없습니다" in no.text
+    ok = _to(client, t, "master2", rid, "confirmed", "2026 RCM v2")
+    assert ok.status_code == 200, ok.text
+    d = ok.json()
     assert [s["version"] for s in d["snapshots"]] == [2, 1]
     assert client.get(f"{Y}/{rid}/snapshots/1", headers=t.h["lead"]).json()["controls"][0]["name"] == "통제"
-    assert client.get(f"{Y}/{rid}/snapshots/2", headers=t.h["lead"]).json()["controls"][0]["name"] == "개정 통제"
+    snap2 = client.get(f"{Y}/{rid}/snapshots/2", headers=t.h["lead"]).json()
+    assert snap2["controls"][0]["name"] == "개정 통제" and len(snap2["editor_ids"]) == 1
+    # 다시 재오픈하면 새 판 — 수정자를 처음부터 모은다
+    assert _reopen(client, t, rid, decider="master2")["editors"] == []
+
+
+def test_only_master_edited_goes_external(client: TestClient) -> None:
+    """마스터가 1명뿐이고 그 마스터가 이번 판을 고쳤으면 검토 요청이 대표이사·이사회 승인 증빙 경로로 간다(13.9-127)."""
+    t = T(client, {"lead": ("icfr_lead",), "master": ("icfr_manager",)})
+    cid = _control(t)
+    rid = _start(client, t)
+    _confirm(client, t, rid)
+    _reopen(client, t, rid)
+    assert client.patch(f"/api/rcm/controls/{cid}", headers=t.h["master"], json={"name": "개정"}).status_code == 200
+    assert _to(client, t, "lead", rid, "review").status_code == 200
+    d = client.get(f"{Y}/{rid}", headers=t.h["lead"]).json()
+    assert d["governance"]["review_path"] == "external"
+    assert _to(client, t, "master", rid, "confirmed", "x").status_code != 200
+
+
+def test_lock_rejection_does_not_mark_editor(client: TestClient) -> None:
+    """잠긴 동안 시도한 쓰기(409)는 수정자로 남지 않는다 — 쓰기와 같은 트랜잭션."""
+    t = T(client, {"lead": ("icfr_lead",), "master": ("icfr_manager",)})
+    cid = _control(t)
+    rid = _start(client, t)
+    assert _to(client, t, "lead", rid, "review").status_code == 200
+    assert client.patch(f"/api/rcm/controls/{cid}", headers=t.h["master"], json={"name": "x"}).status_code == 409
+    assert client.get(f"{Y}/{rid}", headers=t.h["lead"]).json()["editors"] == []
 
 
 def test_pending_control_changes_block_submit(client: TestClient) -> None:

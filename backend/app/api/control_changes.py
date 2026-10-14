@@ -10,6 +10,7 @@ from app.core.deps import CurrentUser
 from app.core.permissions import require_write, tenant_roles
 from app.models.control_change import (
     B_REVIEW,
+    CH_APPLIED,
     CH_DEPT_APPROVED,
     CH_DEPT_REVIEW,
     STATUS_LABELS,
@@ -208,8 +209,19 @@ def decide_batch(bid: UUID, body: DecideBody, user: User = Depends(require_write
     if b is None:
         raise HTTPException(status_code=404, detail="묶음을 찾을 수 없습니다")
     decisions = {d.id: (d.approve, d.note) for d in body.decisions}
+    from app.services.rcm_approval import lock_reason, mark_editors
     if any(a for a, _ in decisions.values()):
-        from app.api.rcm import require_rcm_editable
-        require_rcm_editable(user, db)   # 승인 = 라이브 RCM 반영 — 회계연도 RCM 이 확정·검토 중이면 409(ADR-0038 2-5)
-    return _run(db, lambda: svc.decide_batch(db, b, user.id, decisions, body.note, _apply_control_update))
+        # 승인 = 라이브 RCM 반영 — 회계연도 RCM 이 확정·검토 중이면 409(ADR-0038 2-5). 잠금만 본다 —
+        # 결재한 마스터는 '수정자'가 아니다(13.9-127). 수정자는 아래에서 신청자로 남긴다
+        why = lock_reason(db)
+        if why:
+            raise HTTPException(status_code=409, detail=why)
+
+    def go():
+        res = svc.decide_batch(db, b, user.id, decisions, body.note, _apply_control_update)
+        authors = {i.author_id for i in db.query(ControlChange).filter(ControlChange.batch_id == b.id,
+                                                                     ControlChange.status == CH_APPLIED).all()}
+        mark_editors(db, authors)
+        return res
+    return _run(db, go)
 

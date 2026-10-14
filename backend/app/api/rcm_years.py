@@ -51,6 +51,8 @@ class RcmYearRead(BaseModel):
     pending_changes: int            # 상신된 통제 변경 결재 — 남아 있으면 검토 요청 불가
     # 재오픈 후 검토 중일 때 — 직전 확정본 대비 변경 한 줄(승인자가 무엇을 승인하는지)
     diff_summary: str | None = None
+    # 이번 판 수정자 이름(13.9-127) — 이 사람들은 이 판을 승인할 수 없다
+    editors: list[str] = []
     governance: GovernanceInfo
 
 
@@ -79,6 +81,11 @@ def _read(db: Session, y: RcmFiscalYear, user_id: UUID) -> RcmYearRead:
     if st.status == "review" and snaps:
         diff_summary = "직전 확정본(v{}) 대비 {}".format(snaps[0].version, rcm_diff.summary_text(
             rcm_diff.diff(snaps[0].snapshot, rap.build_snapshot(db, y.fiscal_year, st.version or 1))))
+    eids = rap.editor_ids(db, y)
+    gov = av.governance_info(db, st, user_id)
+    if str(user_id) in eids and gov.can.approve:
+        gov.can.approve = False
+        gov.can.why["approve"] = "이번 판 RCM 을 직접 수정해서 승인할 수 없습니다 — 작성자·승인자 분리"
     return RcmYearRead(
         id=y.id, fiscal_year=y.fiscal_year, approval_status=st.status, version=st.version or 1,
         is_latest=latest is not None and latest.id == y.id,
@@ -86,7 +93,8 @@ def _read(db: Session, y: RcmFiscalYear, user_id: UUID) -> RcmYearRead:
                                 confirmed_by=(av.person(db, s.confirmed_by_id).name if s.confirmed_by_id else None),
                                 confirmed_at=s.confirmed_at.isoformat()) for s in snaps],
         pending_changes=rap.pending_changes(db), diff_summary=diff_summary,
-        governance=av.governance_info(db, st, user_id))
+        editors=[av.person(db, UUID(e)).name for e in eids if av.person(db, UUID(e))],
+        governance=gov)
 
 
 def _flow(db: Session, fn) -> None:

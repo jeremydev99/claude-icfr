@@ -67,6 +67,8 @@ class DocHooks:
     confirm: Callable[[UUID, str], None]
     # 재오픈 승인 → 문서를 작성 중으로
     reopen: Callable[[UUID, str], None]
+    # 검토 요청 때 정한 승인 경로를 문서가 바꿀 기회(13.9-127) — 승인할 마스터가 모두 이번 판 수정자면 외부 승인 등
+    adjust_path: Callable[[str], str] | None = None
 
 
 def get_state(db: Session, entity_type: str, entity_id: UUID) -> ApprovalState | None:
@@ -121,6 +123,8 @@ def submit(db: Session, h: DocHooks, user_id: UUID, reason: str | None) -> None:
     st = _ensure_state(db, h)
     t = approval.user_tier(db, user_id)
     st.review_path = approval.path_for(t, approval.has_lead(db))
+    if h.adjust_path is not None:
+        st.review_path = h.adjust_path(st.review_path)
     st.review_requested_by_id, st.review_requested_at = user_id, datetime.now(UTC)
     st.reviewed_by_id = st.reviewed_at = None
     st.status = AS_REVIEW
