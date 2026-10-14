@@ -154,12 +154,12 @@ export default function RcmYearView() {
               <span className="text-xs text-amber-700">상신된 통제 변경 결재 {y.pending_changes}건 — 끝내야 검토 요청할 수 있습니다</span>
             )}
           </div>
+          {y.is_latest && (
+            <ApprovalPanel status={y.approval_status} g={y.governance} pending={busy} onAction={(a) => act(y, a)} />
+          )}
           {y.diff_summary && y.snapshots.length > 0 && (
             <ChangesBlock summary={y.diff_summary} base={`${y.id}:${y.snapshots[0].version}`}
               defaultOpen={y.approval_status === 'review'} />
-          )}
-          {y.is_latest && (
-            <ApprovalPanel status={y.approval_status} g={y.governance} pending={busy} onAction={(a) => act(y, a)} />
           )}
           {y.snapshots.length > 0 && (
             <div className="text-sm">
@@ -178,7 +178,7 @@ export default function RcmYearView() {
   )
 }
 
-/** 검토 중 변경 요약 — 누르면(검토 중이면 처음부터) 직전 확정본 → 현재 RCM 의 통제별 전·후가 결재 버튼 바로 위에 펼쳐진다 */
+/** 검토 중 변경 요약 — 누르면(검토 중이면 처음부터) 직전 확정본 → 현재 RCM 의 통제별 전·후가 결재 버튼 바로 아래에 펼쳐진다 */
 function ChangesBlock({ summary, base, defaultOpen }: { summary: string; base: string; defaultOpen: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
