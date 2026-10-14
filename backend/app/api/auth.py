@@ -56,12 +56,28 @@ def _is_external(db: Session, user: User) -> bool:
                                             ExternalProfile.is_deleted == False).first() is not None  # noqa: E712
 
 
+def mfa_enforced(db: Session, user_id) -> bool:
+    """회사 정책 `mfa_enforced`(2026-10-14) — 사용자가 속한 회사 중 하나라도 켜면 적용. 기본 끔(1단계만).
+
+    로그인 시점엔 활성 회사가 없으므로 회사 필터를 직접 건다."""
+    from app.models.role_assignment import POLICY_MFA_ENFORCED, TenantPolicy
+    from app.models.tenant import UserTenantAccess
+    tids = [a.tenant_id for a in db.query(UserTenantAccess).filter(UserTenantAccess.user_id == user_id).all()]
+    if not tids:
+        return False
+    return db.query(TenantPolicy).filter(TenantPolicy.tenant_id.in_(tids), TenantPolicy.policy_key == POLICY_MFA_ENFORCED,
+                                         TenantPolicy.policy_value == "true",
+                                         TenantPolicy.is_deleted == False).first() is not None  # noqa: E712
+
+
 def _mfa_required(db: Session, user: User) -> bool:
     """MFA 의무 — 외부 사용자는 처음부터, 내부 마스터·책임관리자는 유예일부터 (ADR-0039 §2.4)."""
     from datetime import date
 
     from app.models.role_assignment import ROLE_ICFR_LEAD, ROLE_ICFR_MANAGER
     from app.models.user_mgmt import UserRole
+    if not mfa_enforced(db, user.id):
+        return False
     if _is_external(db, user):
         return True
     if date.today() < date.fromisoformat(get_settings().mfa_internal_required_from):

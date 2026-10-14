@@ -14,7 +14,26 @@ from tests.test_governance import T, template  # noqa: F401
 
 @pytest.fixture()
 def t(client: TestClient) -> T:
-    return T(client, {"lead": ("icfr_lead",), "master": ("icfr_manager",)})
+    """2단계 인증을 켠 회사 — 이 파일은 MFA 규칙을 본다(기본은 꺼짐, 2026-10-14)."""
+    tt = T(client, {"lead": ("icfr_lead",), "master": ("icfr_manager",)})
+    r = client.put("/api/org/policies", headers=tt.h["master"], json={"policy_key": "mfa_enforced", "policy_value": "true"})
+    assert r.status_code == 200, r.text
+    return tt
+
+
+def test_mfa_off_by_default_password_only(client: TestClient) -> None:
+    """2단계 인증 꺼짐(기본) — 외부 사용자도 비밀번호만으로 가입·로그인. 켜면 다음 로그인부터 등록을 요구한다."""
+    tt = T(client, {"lead": ("icfr_lead",), "master": ("icfr_manager",)})
+    token = _approve(client, tt, _invite(client, tt, email="off@firm.example"))
+    r = client.post(f"/api/invite/{token}/accept", json={"password": "Ext-pass-1", "confidentiality": True}).json()
+    assert r["login_ready"] is True and r["mfa_token"] is None
+    login = client.post("/api/auth/login", data={"username": "off@firm.example", "password": "Ext-pass-1"}).json()
+    assert login.get("access_token") and not login.get("mfa_setup_required")
+    assert client.put("/api/org/policies", headers=tt.h["master"],
+                      json={"policy_key": "mfa_enforced", "policy_value": "maybe"}).status_code == 422
+    client.put("/api/org/policies", headers=tt.h["master"], json={"policy_key": "mfa_enforced", "policy_value": "true"})
+    login = client.post("/api/auth/login", data={"username": "off@firm.example", "password": "Ext-pass-1"}).json()
+    assert login.get("mfa_setup_required") is True
 
 
 def _invite(client, t: T, user_type="advisor", email="ext@firm.example", **kw) -> str:

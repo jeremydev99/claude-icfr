@@ -151,6 +151,10 @@ ROLE_EXTERNAL_ADVISOR = "external_advisor"
 ROLE_EXTERNAL_SPECIALIST = "external_specialist"
 # 이 역할만 가진 계정은 조회 전용 — 외부감사인·감사위원회
 READ_ONLY_ROLES = frozenset({ROLE_EXTERNAL_AUDITOR, ROLE_AUDITOR})
+# 직원 초대와 함께 줄 수 있는 역할(2026-10-14) — 외부 역할은 외부 사용자 초대(ADR-0039)로만
+INVITE_ROLES = (ROLE_ICFR_STAFF, ROLE_ICFR_LEAD, ROLE_ICFR_MANAGER, ROLE_CEO, ROLE_AUDITOR, ROLE_SYS_ADMIN)
+INVITE_ROLE_LABELS = {ROLE_ICFR_STAFF: "일반관리자", ROLE_ICFR_LEAD: "책임관리자", ROLE_ICFR_MANAGER: "마스터관리자(내부회계관리자)",
+                      ROLE_CEO: "대표이사", ROLE_AUDITOR: "감사(상근감사·감사위원회 위원)", ROLE_SYS_ADMIN: "시스템관리자"}
 TENANT_ROLES = (
     ROLE_ICFR_STAFF, ROLE_ICFR_LEAD,
     ROLE_ICFR_MANAGER, ROLE_CEO, ROLE_AUDITOR, ROLE_EXTERNAL_AUDITOR, ROLE_SYS_ADMIN,
@@ -170,6 +174,10 @@ CROSS_LAYER_CONFLICT_PAIRS = (
 # 금지 토글의 대상은 CONFLICT_PAIRS + CROSS_LAYER_CONFLICT_PAIRS 뿐이다 —
 # control_owner=dept_approver 는 충돌이 아니므로 금지 설정 대상도 아니다(위 정정).
 POLICY_DEPT_APPROVAL_ENABLED = "dept_approval_enabled"
+
+# 2단계 인증(MFA) 적용 — "true" 면 ADR-0039 규칙대로(외부 즉시·내부 마스터·책임 유예일부터), 그 밖이면 비밀번호(1단계)만.
+# 기본 끔(2026-10-14 마스터 결정: 지금은 1단계로만 가입, 관리자가 켜면 반영). 스스로 등록한 사람은 꺼져 있어도 코드를 묻는다.
+POLICY_MFA_ENFORCED = "mfa_enforced"
 
 # **회계연도가 시작하는 달** (1~12, 기본 1). 결산월이 아니라 시작월이다.
 #   12월 결산 회사 → 1  (회계연도 1/1~12/31. 한국 상장사 대부분)

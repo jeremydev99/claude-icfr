@@ -72,6 +72,20 @@ export function parseBool(raw: string | undefined, def: BoolDef): boolean {
 
 export const POLICY_GROUPS: { title: string; defs: PolicyDef[] }[] = [
   {
+    title: '보안',
+    defs: [
+      {
+        key: 'mfa_enforced',
+        kind: 'bool',
+        label: '2단계 인증(휴대폰 인증 앱) 적용',
+        description:
+          '끄면 비밀번호(1단계)만으로 가입·로그인합니다. 켜면 외부 사용자는 바로, 마스터·책임관리자는 정해진 날짜부터 다음 로그인 때 2단계 인증 등록을 요구합니다. 꺼져 있어도 스스로 등록한 사람은 코드를 입력합니다. (기본: 끔)',
+        defaultValue: false,
+        parse: 'truthy',
+      },
+    ],
+  },
+  {
     title: '평가 워크플로',
     defs: [
       {

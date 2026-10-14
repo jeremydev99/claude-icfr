@@ -232,8 +232,9 @@ class AcceptBody(BaseModel):
 
 
 class AcceptOut(BaseModel):
-    mfa_token: str | None = None       # 이어서 MFA 등록(외부 필수)
+    mfa_token: str | None = None       # 이어서 MFA 등록(2단계 인증 적용 중일 때)
     mfa_required: bool = False         # 이미 MFA 가 있는 기존 계정 — 로그인 화면으로
+    login_ready: bool = False          # 2단계 인증 꺼짐 — 비밀번호만으로 바로 로그인(2026-10-14)
 
 
 def _by_token(db: Session, token: str) -> Invitation:
@@ -299,6 +300,9 @@ def invite_accept(token: str, body: AcceptBody, db: Session = Depends(get_db)) -
             db.commit()
             if u.mfa_enabled_at is not None:
                 return AcceptOut(mfa_required=True)
+            from app.api.auth import mfa_enforced
+            if not mfa_enforced(db, u.id):
+                return AcceptOut(login_ready=True)
             return AcceptOut(mfa_token=create_mfa_token(str(u.id), "setup"))
     finally:
         reset_active_tenant(tok)

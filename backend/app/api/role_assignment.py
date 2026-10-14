@@ -22,6 +22,7 @@ from app.models.role_assignment import (
     EVIDENCE_RETENTION_MIN_YEARS,
     EVIDENCE_RETENTION_PERMANENT,
     POLICY_EVIDENCE_RETENTION_YEARS,
+    POLICY_MFA_ENFORCED,
     SCOPE_CONTROL,
     SCOPE_PROCESS,
     ConflictAcknowledgement,
@@ -283,6 +284,10 @@ def _assert_policy_value_valid(body: TenantPolicyUpsert) -> None:
             raise HTTPException(status_code=422, detail="질적 판정 기준값은 숫자여야 합니다") from None
         if not (Decimal(1) <= v <= Decimal(3)):
             raise HTTPException(status_code=422, detail="질적 판정 기준값은 1 이상 3 이하여야 합니다")
+        return
+    if body.policy_key == POLICY_MFA_ENFORCED:
+        if body.policy_value not in ("true", "false"):
+            raise HTTPException(status_code=422, detail="2단계 인증 적용은 true 또는 false 여야 합니다")
         return
     if body.policy_key == POLICY_SCHEDULE_APPROVAL_LINE:
         # 일정안 결재선(2026-10-06) — 목록 밖 값이면 결재가 조용히 기본값으로 돈다. 저장 시 막는다

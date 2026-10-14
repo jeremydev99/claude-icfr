@@ -70,7 +70,21 @@ export interface UserCreatePayload {
   password?: string
   display_name: string
   role: string
+  /** 초대와 함께 줄 ICFR 역할(2026-10-14) — 마스터관리자만. 외부 사람은 외부 사용자 초대로 */
+  tenant_roles?: string[]
 }
+
+/** 직원 초대 때 줄 수 있는 ICFR 역할 — 관리자 단계는 하나만 */
+export const INVITE_TIER_OPTIONS = [
+  { value: '', label: '없음' },
+  { value: 'icfr_staff', label: '일반관리자' },
+  { value: 'icfr_lead', label: '책임관리자' },
+  { value: 'icfr_manager', label: '마스터관리자' },
+] as const
+export const INVITE_EXTRA_OPTIONS = [
+  { value: 'ceo', label: '대표이사' },
+  { value: 'auditor', label: '감사(상근감사·감사위원회 위원) — 조회 전용' },
+] as const
 
 export interface UserUpdatePayload {
   display_name?: string

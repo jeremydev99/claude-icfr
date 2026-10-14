@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { PASSWORD_RULE_TEXT, passwordPolicyError } from '@/features/auth/password.pure'
+import { useAuthStore } from '@/features/auth/store'
+import { isIcfrManagerForUser } from '@/features/auth/permissions.pure'
+import { INVITE_EXTRA_OPTIONS, INVITE_TIER_OPTIONS } from '../types'
 import {
   Dialog,
   DialogContent,
@@ -52,6 +55,9 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
   // 기본은 초대(설정 링크). 비상용으로만 관리자가 비밀번호를 정한다 — 다음 로그인 때 본인이 바꿔야 한다(ADR-0041)
   const [emergency, setEmergency] = useState(false)
   const [created, setCreated] = useState<UserCreated | null>(null)
+  const [tier, setTier] = useState('')
+  const [extras, setExtras] = useState<string[]>([])
+  const canGiveRoles = isIcfrManagerForUser(useAuthStore((st) => st.user))
 
   useEffect(() => {
     if (open) {
@@ -63,6 +69,8 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
       setError(null)
       setEmergency(false)
       setCreated(null)
+      setTier('')
+      setExtras([])
     }
   }, [open, editTarget])
 
@@ -87,6 +95,7 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
       } else {
         const u = await createUser.mutateAsync({
           email, display_name: displayName, role, ...(emergency ? { password } : {}),
+          ...(canGiveRoles ? { tenant_roles: [...(tier ? [tier] : []), ...extras] } : {}),
         })
         onSuccess?.()
         if (u.setup_url) {
@@ -181,6 +190,35 @@ export default function UserFormDialog({ open, onOpenChange, editTarget, onSucce
               </SelectContent>
             </Select>
           </div>
+          {!isEdit && (
+            <div className="space-y-2 rounded-lg border p-3">
+              <Label>ICFR 역할 (선택)</Label>
+              {canGiveRoles ? (
+                <>
+                  <Select value={tier || 'none'} onValueChange={(v) => setTier(v === 'none' ? '' : v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {INVITE_TIER_OPTIONS.map((o) => (
+                        <SelectItem key={o.value || 'none'} value={o.value || 'none'}>관리자 단계: {o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {INVITE_EXTRA_OPTIONS.map((o) => (
+                    <label key={o.value} className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" className="h-4 w-4" checked={extras.includes(o.value)}
+                        onChange={(e) => setExtras((x) => e.target.checked ? [...x, o.value] : x.filter((v) => v !== o.value))} />
+                      {o.label}
+                    </label>
+                  ))}
+                  <p className="text-xs text-muted-foreground">
+                    링크로 비밀번호를 정하면 바로 이 역할로 씁니다. 외부감사인·사외이사 등 외부 사람은 '외부 사용자' 탭에서 초대하세요.
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">역할은 마스터관리자가 함께 지정하거나, 가입 뒤 역할 탭에서 배정합니다.</p>
+              )}
+            </div>
+          )}
           {isEdit && (
             <div className="flex items-center gap-3">
               <input
