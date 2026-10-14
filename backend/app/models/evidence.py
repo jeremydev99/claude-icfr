@@ -24,6 +24,9 @@ class EvidenceFile(AuditedBase):
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     minio_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # 문서명·비고(13.9-122) — 운영평가 엑셀 내보내기의 "문서명 | 비고" 칸. 비면 문서명은 파일명으로 보인다
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
     uploaded_by_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
     )

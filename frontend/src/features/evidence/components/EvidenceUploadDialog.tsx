@@ -37,6 +37,9 @@ export default function EvidenceUploadDialog({ open, onOpenChange }: Props) {
   const [cycleId, setCycleId] = useState<string | null>(null)
   const [controlId, setControlId] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  // 문서명·비고(13.9-122) — 엑셀 내보내기 시트의 "문서명 | 비고" 칸
+  const [title, setTitle] = useState('')
+  const [note, setNote] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
   const [serverError, setServerError] = useState<string | null>(null)
 
@@ -69,7 +72,7 @@ export default function EvidenceUploadDialog({ open, onOpenChange }: Props) {
     if (!selectedFile || validationError || !cycleId || !controlId) return
     setServerError(null)
     upload(
-      { file: selectedFile, cycleId, controlId },
+      { file: selectedFile, cycleId, controlId, title, note },
       {
         onSuccess: () => handleClose(),
         onError: (error) => setServerError(resolveEvidenceError(error)),
@@ -81,6 +84,8 @@ export default function EvidenceUploadDialog({ open, onOpenChange }: Props) {
     setCycleId(null)
     setControlId(null)
     setSelectedFile(null)
+    setTitle('')
+    setNote('')
     setValidationError(null)
     setServerError(null)
     if (inputRef.current) inputRef.current.value = ''
@@ -148,6 +153,20 @@ export default function EvidenceUploadDialog({ open, onOpenChange }: Props) {
                     </SelectContent>
                   </Select>
                 )}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="evidence-title">문서명</Label>
+                  <input id="evidence-title" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)}
+                    placeholder="예: 급여대장 승인" className="h-9 w-full rounded-md border bg-background px-3 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="evidence-note">비고</Label>
+                  <input id="evidence-note" value={note} onChange={(e) => setNote(e.target.value)}
+                    placeholder="예: 전용남 CFO, 대표이사 승인" className="h-9 w-full rounded-md border bg-background px-3 text-sm" />
+                </div>
+                <p className="text-xs text-muted-foreground sm:col-span-2">엑셀 내보내기에서 시트의 "문서명 | 비고"가 됩니다. 비우면 파일명과 올린 사람이 들어갑니다. 캡처(PNG·JPG)와 PDF는 시트에 그림으로 붙습니다.</p>
               </div>
 
               <div className="space-y-1">

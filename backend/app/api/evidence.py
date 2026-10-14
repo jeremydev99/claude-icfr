@@ -182,6 +182,8 @@ async def create_file(
     cycle_id: UUID = Form(...),
     control_id: UUID = Form(...),
     file: UploadFile = File(...),
+    title: str | None = Form(default=None),
+    note: str | None = Form(default=None),
     user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ) -> EvidenceFile:
@@ -218,6 +220,8 @@ async def create_file(
         uploaded_by_id=user.id,
         cycle_id=cycle_id,
         control_id=control_id,
+        title=(title or "").strip()[:200] or None,
+        note=(note or "").strip() or None,
     )
     db.add(obj)
     db.flush()   # id 확보 — 경로가 내부 식별자를 쓴다(§2.3)
@@ -274,6 +278,8 @@ def update_file(file_id: UUID, body: EvidenceFileUpdate, user: User = Depends(re
         raise HTTPException(status_code=404, detail="EvidenceFile not found")
     _assert_can_edit_file(db, user, obj)
     for field, val in body.model_dump(exclude_none=True).items():
+        if field in ("title", "note"):
+            val = val.strip() or None   # 빈 문자열 = 비움
         setattr(obj, field, val)
     db.commit()
     db.refresh(obj)

@@ -39,3 +39,6 @@ pytest-cov==5.0.*
 
 # Linting
 ruff==0.7.*
+# 운영평가 엑셀 내보내기 — 증빙 이미지 붙이기(openpyxl 이 Pillow 필요), PDF 페이지 이미지화(Apache/BSD, 13.9-122)
+Pillow>=10.0
+pypdfium2>=4.30

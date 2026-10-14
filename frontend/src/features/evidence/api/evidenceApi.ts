@@ -14,12 +14,14 @@ export async function fetchEvidenceFiles(params: EvidenceFileSearchParams = {}):
   return res.data
 }
 
-export async function uploadEvidenceFile({ file, cycleId, controlId }: EvidenceUploadPayload): Promise<EvidenceFile> {
+export async function uploadEvidenceFile({ file, cycleId, controlId, title, note }: EvidenceUploadPayload): Promise<EvidenceFile> {
   // cycle_id·control_id 는 서버 필수(ADR-0032 §2.7) — 증빙은 통제 × 회차에 붙는다
   const formData = new FormData()
   formData.append('cycle_id', cycleId)
   formData.append('control_id', controlId)
   formData.append('file', file)
+  if (title?.trim()) formData.append('title', title.trim())
+  if (note?.trim()) formData.append('note', note.trim())
   const res = await apiClient.post<EvidenceFile>('/api/evidence/files', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })

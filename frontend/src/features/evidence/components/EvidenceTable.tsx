@@ -110,7 +110,11 @@ export default function EvidenceTable({ files, canDelete = false }: Props) {
         <TableBody>
           {files.map((file) => (
             <TableRow key={file.id}>
-              <TableCell className="font-medium">{file.filename}</TableCell>
+              <TableCell className="font-medium">
+                {file.title || file.filename}
+                {file.title && <div className="text-xs font-normal text-muted-foreground">{file.filename}</div>}
+                {file.note && <div className="text-xs font-normal text-muted-foreground">{file.note}</div>}
+              </TableCell>
               <TableCell>
                 {file.cycle_id
                   ? (cycleName.get(file.cycle_id) ?? '—')

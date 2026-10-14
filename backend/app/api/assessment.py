@@ -248,6 +248,27 @@ def get_cycle(cycle_id: UUID, user: CurrentUser = None,
     return _to_cycle_read(db, _get_cycle_or_404(db, cycle_id))
 
 
+@router.get("/cycles/{cycle_id}/export")
+def export_cycle(cycle_id: UUID, mine: bool = False, user: CurrentUser = None, db: Session = Depends(get_db)):
+    """회차 엑셀 내보내기(13.9-122) — 통제 1건 = 시트 1장, 증빙 이미지(PDF 는 페이지 이미지)를 붙인다.
+    `mine=true` 면 내가 통제책임자인 통제만. 규칙은 `services/assessment_export`."""
+    from urllib.parse import quote
+
+    from fastapi.responses import Response
+
+    from app.services import assessment_export as ax
+
+    cycle = _get_cycle_or_404(db, cycle_id)
+    try:
+        data, n = ax.build(db, cycle, owner_id=user.id if mine else None)
+    except ax.ExportError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    fname = f"{cycle.name}{'_내담당' if mine else ''}_운영평가_{n}건.xlsx"
+    return Response(content=data,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}"})
+
+
 @router.patch("/cycles/{cycle_id}", response_model=CycleRead)
 def update_cycle(cycle_id: UUID, body: CycleUpdate, user: User = Depends(require_write),
                  db: Session = Depends(get_db)) -> CycleRead:

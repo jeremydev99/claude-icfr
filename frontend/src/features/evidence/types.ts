@@ -9,6 +9,9 @@ export interface EvidenceFile {
   cycle_id: string | null
   control_id: string | null
   uploaded_by_id: string
+  /** 문서명·비고(13.9-122) — 운영평가 엑셀 내보내기의 "문서명 | 비고". 비면 문서명은 파일명 */
+  title?: string | null
+  note?: string | null
   created_at: string
   updated_at: string
 }
@@ -45,6 +48,8 @@ export interface EvidenceUploadPayload {
   file: File
   cycleId: string
   controlId: string
+  title?: string
+  note?: string
 }
 
 export interface CycleTarget {

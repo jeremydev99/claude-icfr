@@ -22,6 +22,9 @@ class EvidenceFileUpdate(BaseModel):
     """
     model_config = ConfigDict(extra="forbid")
     filename: str | None = Field(None, min_length=1, max_length=255)
+    # 문서명·비고(13.9-122) — 빈 문자열은 비움으로 저장한다(API 가 정리)
+    title: str | None = Field(None, max_length=200)
+    note: str | None = None
 
 class EvidenceFileRead(EvidenceFileBase):
     id: UUID
@@ -29,6 +32,8 @@ class EvidenceFileRead(EvidenceFileBase):
     cycle_id: UUID | None = None
     control_id: UUID | None = None
     uploaded_by_id: UUID
+    title: str | None = None
+    note: str | None = None
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
