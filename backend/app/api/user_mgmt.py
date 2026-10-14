@@ -10,7 +10,7 @@ from app.core.permissions import require_role_assigner
 from app.core.security import hash_password
 from app.core.tenant_context import get_active_tenant
 from app.models.login_event import LoginEvent
-from app.models.role_assignment import TIER_ROLES
+from app.models.role_assignment import INVITE_ROLE_LABELS, TIER_ROLES
 from app.models.tenant import UserTenantAccess
 from app.models.user import User
 from app.models.user_mgmt import UserRole
@@ -81,6 +81,7 @@ class UserCreated(UserRead):
     setup_expires_at: datetime | None = None
     mail_sent: bool | None = None   # None = 메일 설정 없음(링크 복사로 전달)
     mail_error: str | None = None
+    tenant_roles: list[str] = []    # 초대와 함께 준 ICFR 역할
 
 
 class SetupLinkOut(BaseModel):
@@ -103,6 +104,11 @@ def create_user(body: UserCreate, request: Request, admin: User = Depends(requir
     existing = db.query(User).filter(User.email == body.email, User.is_deleted == False).first()  # noqa: E712
     if existing:
         raise HTTPException(status_code=409, detail="이미 사용 중인 이메일입니다")
+    if body.tenant_roles:
+        # 역할을 함께 주려면 역할 배정 권한이 있어야 한다(ADR-0031 §3.3 — 마스터관리자, 첫 배정만 시스템관리자)
+        require_role_assigner(admin, db)
+        if len(set(body.tenant_roles) & set(TIER_ROLES)) > 1:
+            raise HTTPException(status_code=409, detail="관리자 단계(일반·책임·마스터)는 한 사람에 하나만 줄 수 있습니다")
     invite = not body.password
     obj = User(
         email=body.email,
@@ -116,15 +122,19 @@ def create_user(body: UserCreate, request: Request, admin: User = Depends(requir
     db.flush()  # obj.id 확보
     # 신규 사용자에게 현재 활성 회사(tenant) 접근 권한 부여 — 없으면 로그인 불가
     db.add(UserTenantAccess(user_id=obj.id, tenant_id=get_active_tenant(), role=body.role))
+    for r in body.tenant_roles:
+        db.add(UserRole(user_id=obj.id, role_name=r))
     raw = row = None
     if invite:
         raw, row = setup_svc.issue(db, obj, admin.id)
     db.commit()
     db.refresh(obj)
     out = UserCreated.model_validate(obj)
+    out.tenant_roles = body.tenant_roles
     if raw:
         out.setup_url, out.setup_expires_at = setup_svc.setup_url(_origin(request), raw), row.expires_at
-        m = mailer.setup_link_mail(obj.email, obj.display_name, out.setup_url, invite=True, hours=setup_svc.TOKEN_HOURS)
+        m = mailer.setup_link_mail(obj.email, obj.display_name, out.setup_url, invite=True, hours=setup_svc.TOKEN_HOURS,
+                                   roles=[INVITE_ROLE_LABELS.get(r, r) for r in body.tenant_roles])
         out.mail_sent, out.mail_error = m.sent, m.error
     return out
 

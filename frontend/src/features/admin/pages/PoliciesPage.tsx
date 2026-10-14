@@ -20,6 +20,7 @@ import PolicyField from '../components/PolicyField'
 
 /** 정책 묶음 제목 → 도움말 항목 */
 const GROUP_HELP: Record<string, string> = {
+  '보안': 'screen.admin.policies.security',
   '평가 워크플로': 'screen.admin.policies.workflow',
   '이해상충(겸직) 조합': 'screen.admin.policies.conflict',
   '증빙': 'screen.admin.policies.evidence',

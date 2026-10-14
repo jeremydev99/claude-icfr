@@ -80,11 +80,23 @@ class UserCreate(BaseModel):
     password: str | None = None
     display_name: str
     role: str = "user"
+    # 초대와 함께 줄 ICFR 역할(2026-10-14) — 링크로 비밀번호를 정하면 바로 그 역할로 쓴다.
+    # 외부 사람(외부감사인·감사위원회 사외이사·PA·세무)은 외부 사용자 초대로만(접근 기간·2단계 인증이 함께 걸려야 함)
+    tenant_roles: list[str] = []
 
     @field_validator("password")
     @classmethod
     def _strong(cls, v: str | None) -> str | None:
         return None if v in (None, "") else validate_password(v)
+
+    @field_validator("tenant_roles")
+    @classmethod
+    def _internal_roles(cls, v: list[str]) -> list[str]:
+        from app.models.role_assignment import INVITE_ROLES
+        bad = [r for r in v if r not in INVITE_ROLES]
+        if bad:
+            raise ValueError(f"초대와 함께 줄 수 없는 역할입니다: {', '.join(bad)} — 외부 사람은 외부 사용자 초대로 하세요")
+        return list(dict.fromkeys(v))
 
 
 class UserUpdate(BaseModel):

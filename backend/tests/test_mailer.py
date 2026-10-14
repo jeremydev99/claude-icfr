@@ -99,3 +99,54 @@ def test_mail_test_endpoint_admin_only(client: TestClient, smtp) -> None:
     assert client.get("/api/notification/mail/status", headers=h).json() == {"configured": True}
     r = client.post("/api/notification/mail/test", headers=h).json()
     assert r == {"to": "admin@acme.example", "sent": True, "error": None}
+
+
+def _grant_manager() -> None:
+    from app.core.tenant_context import reset_active_tenant, set_active_tenant
+    from app.models.user import User
+    from app.models.user_mgmt import UserRole
+    from tests.conftest import DEFAULT_TENANT_ID, TestingSessionLocal
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        admin = db.query(User).filter(User.email == "admin@acme.example").one()
+        if db.query(UserRole).filter(UserRole.user_id == admin.id, UserRole.role_name == "icfr_manager",
+                                     UserRole.is_deleted == False).first() is None:  # noqa: E712
+            db.add(UserRole(user_id=admin.id, role_name="icfr_manager"))
+            db.commit()
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_invite_with_icfr_roles(client: TestClient, smtp) -> None:
+    """초대와 함께 ICFR 역할(2026-10-14) — 링크로 가입하면 바로 그 역할. 메일에 역할이 적힌다."""
+    _grant_manager()
+    h = _h(client)
+    r = client.post("/api/users/", headers={**h, "Origin": "https://icfr.example"},
+                    json={"email": "lead1@acme.example", "display_name": "책임1", "tenant_roles": ["icfr_lead", "auditor"]})
+    assert r.status_code == 201, r.text
+    d = r.json()
+    assert d["tenant_roles"] == ["icfr_lead", "auditor"]
+    from uuid import UUID
+
+    from app.core.tenant_context import reset_active_tenant, set_active_tenant
+    from app.models.user_mgmt import UserRole
+    from tests.conftest import DEFAULT_TENANT_ID, TestingSessionLocal
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        roles = {r.role_name for r in db.query(UserRole).filter(UserRole.user_id == UUID(d["id"]),
+                                                                UserRole.is_deleted == False).all()}  # noqa: E712
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+    assert roles == {"icfr_lead", "auditor"}
+    assert "부여된 역할: 책임관리자, 감사" in smtp.sent[-1][0].get_content()
+    # 관리자 단계 둘은 안 되고, 외부 역할은 외부 사용자 초대로만
+    bad = client.post("/api/users/", headers=h, json={"email": "x2@acme.example", "display_name": "x",
+                                                      "tenant_roles": ["icfr_staff", "icfr_lead"]})
+    assert bad.status_code == 409
+    ext = client.post("/api/users/", headers=h, json={"email": "x3@acme.example", "display_name": "x",
+                                                      "tenant_roles": ["external_auditor"]})
+    assert ext.status_code == 422

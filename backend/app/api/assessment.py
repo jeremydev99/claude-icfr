@@ -45,10 +45,8 @@ from app.models.governance import (
     GovernanceFile,
 )
 from app.models.role_assignment import (
-    POLICY_DEPT_APPROVAL_ENABLED,
     ROLE_ASSESSOR,
     ROLE_DEPT_APPROVER,
-    TenantPolicy,
 )
 from app.models.user import User
 from app.schemas.assessment import (
@@ -134,14 +132,9 @@ def _assert_open(cycle: AssessmentCycle) -> None:
 
 
 def _dept_approval_enabled(db: Session) -> bool:
-    """정책 토글. 미설정이면 켜짐이 기본이다(ADR-0031 §2.6 — 부서승인은 선택 단계)."""
-    row = db.query(TenantPolicy).filter(
-        TenantPolicy.policy_key == POLICY_DEPT_APPROVAL_ENABLED,
-        TenantPolicy.is_deleted == False,  # noqa: E712
-    ).first()
-    if row is None:
-        return True
-    return row.policy_value.lower() not in ("false", "0", "no")
+    """정책 토글. 미설정이면 켜짐이 기본이다(ADR-0031 §2.6 — 부서승인은 선택 단계). 판정은 공용 함수 하나."""
+    from app.services.approval import dept_approval_enabled
+    return dept_approval_enabled(db)
 
 
 def _role_holder(db: Session, control_id: UUID, role_name: str) -> UUID | None:

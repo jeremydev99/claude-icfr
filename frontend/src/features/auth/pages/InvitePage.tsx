@@ -41,14 +41,16 @@ export default function InvitePage() {
   const [agree, setAgree] = useState(false)
   const [mfaToken, setMfaToken] = useState<string | null>(null)
   const [alreadyMfa, setAlreadyMfa] = useState(false)
+  const [loginReady, setLoginReady] = useState(false)
 
   const accept = useMutation({
     mutationFn: async () =>
-      (await apiClient.post<{ mfa_token: string | null; mfa_required: boolean }>(`/api/invite/${token}/accept`,
+      (await apiClient.post<{ mfa_token: string | null; mfa_required: boolean; login_ready?: boolean }>(`/api/invite/${token}/accept`,
         { password: pw, confidentiality: agree })).data,
     onSuccess: (r) => {
       if (r.mfa_token) setMfaToken(r.mfa_token)
       else if (r.mfa_required) setAlreadyMfa(true)
+      else if (r.login_ready) setLoginReady(true)
     },
   })
 
@@ -65,6 +67,13 @@ export default function InvitePage() {
   }
   const d = info.data
 
+  if (loginReady) {
+    return (
+      <Shell title="가입이 끝났습니다" desc={`${d.company} 에 접근할 수 있습니다. 방금 정한 비밀번호로 로그인하세요.`}>
+        <Button asChild className="h-11 w-full"><Link to="/login">로그인</Link></Button>
+      </Shell>
+    )
+  }
   if (alreadyMfa) {
     return (
       <Shell title="접근이 추가됐습니다" desc={`${d.company} 접근 권한이 기존 계정에 추가됐습니다.`}>
@@ -74,7 +83,7 @@ export default function InvitePage() {
   }
   if (mfaToken) {
     return (
-      <Shell title="2단계 인증 등록" desc="외부 사용자는 2단계 인증이 필수입니다. 처음 한 번만 등록하면 됩니다.">
+      <Shell title="2단계 인증 등록" desc="이 회사는 2단계 인증을 사용합니다. 처음 한 번만 등록하면 됩니다.">
         <MfaEnroll mfaToken={mfaToken} onDone={(r) => {
           if (r.access_token && r.refresh_token) void finish(r.access_token, r.refresh_token)
         }} />

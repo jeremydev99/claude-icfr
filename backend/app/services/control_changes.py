@@ -97,11 +97,14 @@ def submit(db: Session, ch: ControlChange, user_id: UUID) -> None:
         raise ChangeError("이미 상신한 변경입니다")
     if not ch.changes:
         raise ChangeError("바뀐 내용이 없습니다")
-    approver = dept_approver_for(db, ch.control_id)
+    from app.services.approval import dept_approval_enabled
+    use_dept = dept_approval_enabled(db)
+    approver = dept_approver_for(db, ch.control_id) if use_dept else None
     ch.submitted_at, ch.dept_note, ch.admin_note, ch.batch_id = _now(), None, None, None
     if approver is None or approver == user_id:
         ch.dept_approver_id = approver
-        ch.dept_skipped = "조직장 미지정" if approver is None else "작성자가 조직장"
+        ch.dept_skipped = ("업무 조직장 단계 사용 안 함(정책)" if not use_dept
+                           else "조직장 미지정" if approver is None else "작성자가 조직장")
         ch.status, ch.dept_decided_at = CH_DEPT_APPROVED, _now()
     else:
         ch.dept_approver_id, ch.dept_skipped, ch.status = approver, None, CH_DEPT_REVIEW

@@ -72,14 +72,28 @@ export function parseBool(raw: string | undefined, def: BoolDef): boolean {
 
 export const POLICY_GROUPS: { title: string; defs: PolicyDef[] }[] = [
   {
+    title: '보안',
+    defs: [
+      {
+        key: 'mfa_enforced',
+        kind: 'bool',
+        label: '2단계 인증(휴대폰 인증 앱) 적용',
+        description:
+          '끄면 비밀번호(1단계)만으로 가입·로그인합니다. 켜면 외부 사용자는 바로, 마스터·책임관리자는 정해진 날짜부터 다음 로그인 때 2단계 인증 등록을 요구합니다. 꺼져 있어도 스스로 등록한 사람은 코드를 입력합니다. (기본: 끔)',
+        defaultValue: false,
+        parse: 'truthy',
+      },
+    ],
+  },
+  {
     title: '평가 워크플로',
     defs: [
       {
         key: 'dept_approval_enabled',
         kind: 'bool',
-        label: '부서승인 단계 사용',
+        label: '업무 조직장(부서승인자) 단계 사용',
         description:
-          '끄면 모든 통제에서 부서승인 단계를 건너뜁니다. 켜져 있어도 통제책임자가 부서장 본인이면 자동 스킵됩니다. (기본: 사용)',
+          '회사 선택 사항입니다. 끄면 평가 워크플로의 부서승인과 통제 변경 결재의 조직장 결재를 모두 건너뜁니다(통제책임자 → 평가자 → 내부회계관리자 3단계). 켜져 있어도 작성자·통제책임자가 그 조직장 본인이거나 조직장이 지정되지 않았으면 건너뜁니다. (기본: 사용)',
         defaultValue: true,
         parse: 'not-falsy',
       },
@@ -244,7 +258,7 @@ export function describeFiscalYear(startMonth: number): string {
 
 export const ASSIGNMENT_ROLES = [
   { value: 'control_owner', label: '통제책임자' },
-  { value: 'dept_approver', label: '부서승인자' },
+  { value: 'dept_approver', label: '부서승인자 (업무 조직장)' },
   { value: 'assessor', label: '평가자' },
 ] as const
 

@@ -69,8 +69,8 @@ export default function ExternalAccessPanel() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-3xl text-sm text-muted-foreground">
           PA회계법인·외부감사인·감사위원회·세무/기장대리인을 <b>초대</b>합니다. 요청은 책임·마스터관리자가 하고,
-          <b> 마스터관리자가 승인</b>하면(요청자 본인 승인 불가) 72시간짜리 초대 링크가 <b>한 번만</b> 표시됩니다.
-          외부 사용자는 2단계 인증이 필수이고, 접근 기간이 지나면 자동으로 막힙니다.
+          <b> 마스터관리자가 따로 승인</b>하면(마스터 본인 요청도 승인 가능) 72시간짜리 초대 링크가 <b>한 번만</b> 표시되고 메일로도 갑니다.
+          2단계 인증은 정책 설정에서 켠 경우에만 요구하며, 접근 기간이 지나면 자동으로 막힙니다.
         </p>
         <Button size="sm" onClick={() => setInviteOpen(true)}><MailPlus className="mr-1.5 h-4 w-4" />초대 요청</Button>
       </div>
@@ -228,7 +228,7 @@ function InviteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>외부 사용자 초대 요청</DialogTitle>
-          <DialogDescription>마스터관리자가 승인하면 초대 링크가 발급됩니다. 요청자 본인은 승인할 수 없습니다.</DialogDescription>
+          <DialogDescription>요청 후 마스터관리자가 '승인·링크 발급'을 따로 누르면 초대 링크가 발급되고 메일로 갑니다.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="grid gap-1.5">

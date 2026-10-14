@@ -1,6 +1,7 @@
 """외부 사용자 — 초대(요청·승인·취소), 수락(공개), 접근 범위(연장·해지), 정기 재확인 (ADR-0039).
 
-- 초대 요청: 책임·마스터관리자. 승인: 마스터관리자, **요청자 본인 불가**(ADR-0038 자기 승인 금지).
+- 초대 요청: 책임·마스터관리자. 승인: 마스터관리자 — 요청과 승인은 따로 누른다. 마스터는 본인 요청도 승인할 수 있다
+  (2026-10-14 마스터 결정: 시스템 사용자 초대는 RCM 통제 항목이 아님). 본인 요청 승인은 이력에 표시한다.
 - 승인 시 1회용 토큰을 만들어 **링크를 한 번만** 돌려준다(토큰은 SHA-256 해시만 저장, 72시간).
 - 수락은 로그인 없이(공개). 같은 이메일 계정이 있으면 그 비밀번호를 확인해 연결하고, 없으면 만든다.
   수락 후 MFA 등록(외부는 필수)으로 이어진다 — 수락 응답이 `mfa_token`(setup)을 준다.
@@ -184,13 +185,12 @@ def approve_invitation(iid: UUID, request: Request, user: CurrentUser, db: Sessi
         raise HTTPException(status_code=404, detail="초대를 찾을 수 없습니다")
     if i.status != INV_PENDING:
         raise HTTPException(status_code=409, detail=f"승인할 수 없는 상태입니다({INV_LABELS.get(i.status)})")
-    if i.requested_by_id == user.id:
-        raise HTTPException(status_code=409, detail="초대 요청자는 본인 요청을 승인할 수 없습니다 — 자기 승인 금지")
+    own = i.requested_by_id == user.id   # 마스터 본인 요청 승인 허용(2026-10-14) — 이력에 남긴다
     token = secrets.token_urlsafe(32)
     i.token_hash, i.token_expires_at = _h(token), datetime.now(UTC) + timedelta(hours=TOKEN_HOURS)
     i.status, i.approved_by_id, i.approved_at = INV_APPROVED, user.id, datetime.now(UTC)
     glog.record(db, i.id, "invite_approve", version=None, entity_type=ENTITY, target=f"{i.organization} {i.display_name}",
-                after={"링크 만료": i.token_expires_at.isoformat()})
+                after={"링크 만료": i.token_expires_at.isoformat(), **({"승인": "본인 요청 승인"} if own else {})})
     db.commit()
     origin = request.headers.get("origin") or f"{request.url.scheme}://{request.headers.get('host', '')}"
     out = _inv_out(db, i, url=f"{origin}/invite/{token}")
@@ -232,8 +232,9 @@ class AcceptBody(BaseModel):
 
 
 class AcceptOut(BaseModel):
-    mfa_token: str | None = None       # 이어서 MFA 등록(외부 필수)
+    mfa_token: str | None = None       # 이어서 MFA 등록(2단계 인증 적용 중일 때)
     mfa_required: bool = False         # 이미 MFA 가 있는 기존 계정 — 로그인 화면으로
+    login_ready: bool = False          # 2단계 인증 꺼짐 — 비밀번호만으로 바로 로그인(2026-10-14)
 
 
 def _by_token(db: Session, token: str) -> Invitation:
@@ -299,6 +300,9 @@ def invite_accept(token: str, body: AcceptBody, db: Session = Depends(get_db)) -
             db.commit()
             if u.mfa_enabled_at is not None:
                 return AcceptOut(mfa_required=True)
+            from app.api.auth import mfa_enforced
+            if not mfa_enforced(db, u.id):
+                return AcceptOut(login_ready=True)
             return AcceptOut(mfa_token=create_mfa_token(str(u.id), "setup"))
     finally:
         reset_active_tenant(tok)

@@ -12,6 +12,7 @@ import ApprovalPanel, { type ApprovalAction } from '@/features/governance/Approv
 import GovernanceHistory from '@/features/governance/GovernanceHistory'
 import type { GovernanceInfo } from '@/features/governance/types'
 import RcmCompare from './RcmCompare'
+import InlineDiff from './InlineDiff'
 
 const BASE = '/api/rcm-years'
 
@@ -153,8 +154,9 @@ export default function RcmYearView() {
               <span className="text-xs text-amber-700">상신된 통제 변경 결재 {y.pending_changes}건 — 끝내야 검토 요청할 수 있습니다</span>
             )}
           </div>
-          {y.diff_summary && (
-            <p className="rounded-md bg-accent px-3 py-2 text-sm text-accent-foreground">{y.diff_summary} — 아래 확정본 비교에서 자세히 볼 수 있습니다</p>
+          {y.diff_summary && y.snapshots.length > 0 && (
+            <ChangesBlock summary={y.diff_summary} base={`${y.id}:${y.snapshots[0].version}`}
+              defaultOpen={y.approval_status === 'review'} />
           )}
           {y.is_latest && (
             <ApprovalPanel status={y.approval_status} g={y.governance} pending={busy} onAction={(a) => act(y, a)} />
@@ -163,10 +165,8 @@ export default function RcmYearView() {
             <div className="text-sm">
               <div className="mb-1 font-medium">확정본</div>
               <ul className="space-y-1 text-muted-foreground">
-                {y.snapshots.map((s) => (
-                  <li key={s.version} className="tabular-nums">
-                    v{s.version} · 통제 {s.control_count}건 · {s.confirmed_at.slice(0, 10)}{s.confirmed_by ? ` · 승인 ${s.confirmed_by}` : ''}
-                  </li>
+                {y.snapshots.map((s, i) => (
+                  <SnapshotRow key={s.version} yearId={y.id} s={s} prev={y.snapshots[i + 1]?.version ?? null} />
                 ))}
               </ul>
             </div>
@@ -175,5 +175,39 @@ export default function RcmYearView() {
         </div>
       ))}
     </div>
+  )
+}
+
+/** 검토 중 변경 요약 — 누르면(검토 중이면 처음부터) 직전 확정본 → 현재 RCM 의 통제별 전·후가 결재 버튼 바로 위에 펼쳐진다 */
+function ChangesBlock({ summary, base, defaultOpen }: { summary: string; base: string; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between rounded-md bg-accent px-3 py-2 text-left text-sm text-accent-foreground hover:bg-accent/80">
+        <span>{summary}</span>
+        <span className="shrink-0 text-xs underline-offset-2 hover:underline">{open ? '변경 내용 접기' : '변경 내용 보기'}</span>
+      </button>
+      {open && <InlineDiff base={base} target="live" />}
+    </div>
+  )
+}
+
+/** 확정본 한 줄 — 누르면 그 직전 확정본과 비교(v1 은 비교 대상이 없다) */
+function SnapshotRow({ yearId, s, prev }: {
+  yearId: string
+  s: { version: number; control_count: number; confirmed_by: string | null; confirmed_at: string }
+  prev: number | null
+}) {
+  const [open, setOpen] = useState(false)
+  const text = `v${s.version} · 통제 ${s.control_count}건 · ${s.confirmed_at.slice(0, 10)}${s.confirmed_by ? ` · 승인 ${s.confirmed_by}` : ''}`
+  if (prev === null) return <li className="tabular-nums">{text}</li>
+  return (
+    <li className="space-y-2">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="tabular-nums text-left hover:text-foreground hover:underline">
+        {text} <span className="text-xs text-primary">{open ? '· 접기' : `· v${prev} 대비 변경 보기`}</span>
+      </button>
+      {open && <InlineDiff base={`${yearId}:${prev}`} target={`${yearId}:${s.version}`} />}
+    </li>
   )
 }

@@ -64,14 +64,16 @@ def _footer() -> str:
     return "\n\n— ICFR 내부회계관리 시스템 (발신 전용 메일입니다)"
 
 
-def setup_link_mail(to: str, name: str, url: str, invite: bool, hours: int) -> MailResult:
+def setup_link_mail(to: str, name: str, url: str, invite: bool, hours: int,
+                    roles: list[str] | None = None) -> MailResult:
     if invite:
         subject = "[ICFR] 계정 설정 안내"
         lead = "ICFR 내부회계관리 시스템 계정이 만들어졌습니다. 아래 링크에서 비밀번호를 정해 주세요."
     else:
         subject = "[ICFR] 비밀번호 재설정 안내"
         lead = "비밀번호 재설정 링크입니다. 요청하지 않았다면 이 메일을 무시해 주세요(기존 비밀번호는 그대로입니다)."
-    body = f"{name} 님,\n\n{lead}\n\n{url}\n\n링크는 {hours}시간 동안 한 번만 쓸 수 있습니다." + _footer()
+    role_line = f"\n\n부여된 역할: {', '.join(roles)}" if roles else ""
+    body = f"{name} 님,\n\n{lead}{role_line}\n\n{url}\n\n링크는 {hours}시간 동안 한 번만 쓸 수 있습니다." + _footer()
     return send(to, subject, body)
 
 

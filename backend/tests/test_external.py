@@ -14,7 +14,26 @@ from tests.test_governance import T, template  # noqa: F401
 
 @pytest.fixture()
 def t(client: TestClient) -> T:
-    return T(client, {"lead": ("icfr_lead",), "master": ("icfr_manager",)})
+    """2단계 인증을 켠 회사 — 이 파일은 MFA 규칙을 본다(기본은 꺼짐, 2026-10-14)."""
+    tt = T(client, {"lead": ("icfr_lead",), "master": ("icfr_manager",)})
+    r = client.put("/api/org/policies", headers=tt.h["master"], json={"policy_key": "mfa_enforced", "policy_value": "true"})
+    assert r.status_code == 200, r.text
+    return tt
+
+
+def test_mfa_off_by_default_password_only(client: TestClient) -> None:
+    """2단계 인증 꺼짐(기본) — 외부 사용자도 비밀번호만으로 가입·로그인. 켜면 다음 로그인부터 등록을 요구한다."""
+    tt = T(client, {"lead": ("icfr_lead",), "master": ("icfr_manager",)})
+    token = _approve(client, tt, _invite(client, tt, email="off@firm.example"))
+    r = client.post(f"/api/invite/{token}/accept", json={"password": "Ext-pass-1", "confidentiality": True}).json()
+    assert r["login_ready"] is True and r["mfa_token"] is None
+    login = client.post("/api/auth/login", data={"username": "off@firm.example", "password": "Ext-pass-1"}).json()
+    assert login.get("access_token") and not login.get("mfa_setup_required")
+    assert client.put("/api/org/policies", headers=tt.h["master"],
+                      json={"policy_key": "mfa_enforced", "policy_value": "maybe"}).status_code == 422
+    client.put("/api/org/policies", headers=tt.h["master"], json={"policy_key": "mfa_enforced", "policy_value": "true"})
+    login = client.post("/api/auth/login", data={"username": "off@firm.example", "password": "Ext-pass-1"}).json()
+    assert login.get("mfa_setup_required") is True
 
 
 def _invite(client, t: T, user_type="advisor", email="ext@firm.example", **kw) -> str:
@@ -46,12 +65,14 @@ def _accept_and_enroll(client, token: str, pw="Ext-pass-1") -> tuple[dict, str]:
 
 def test_invite_requires_other_approver_and_link_once(client: TestClient, t: T) -> None:
     iid = _invite(client, t)
-    # 요청자(lead)는 승인 불가(마스터 아님), 마스터가 요청하면 본인 승인 불가
+    # 요청자(lead)는 승인 불가(마스터 아님)
     assert client.post(f"/api/external/invitations/{iid}/approve", headers=t.h["lead"]).status_code == 403
     r = client.post("/api/external/invitations", headers=t.h["master"], json={
         "email": "x@f.example", "display_name": "x", "user_type": "auditor", "organization": "감사인",
         "valid_until": str(date.today() + timedelta(days=30))})
-    assert client.post(f"/api/external/invitations/{r.json()['id']}/approve", headers=t.h["master"]).status_code == 409
+    # 마스터는 본인 요청도 승인할 수 있다(2026-10-14) — 요청 뒤 따로 승인
+    assert r.json()["status"] == "pending_approval"
+    assert client.post(f"/api/external/invitations/{r.json()['id']}/approve", headers=t.h["master"]).status_code == 200
     token = _approve(client, t, iid)
     listed = client.get("/api/external/invitations", headers=t.h["lead"]).json()
     assert all(i["invite_url"] is None for i in listed)   # 링크는 승인 응답에서 한 번만
