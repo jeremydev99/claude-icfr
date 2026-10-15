@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   canDeleteSample,
+  matchesOwner,
+  matchesRole,
+  OWNER_ALL,
+  OWNER_NONE,
+  ownerOptions,
   listToMethods,
   methodsLabel,
   progressText,
@@ -67,5 +72,23 @@ describe('목록 집계', () => {
   it('진행 표시 — 추가 샘플은 필요 수를 넘겨 보이지 않는다', () => {
     expect(progressText({ state: 'draft', samples_done: 3, required_samples: 2 })).toBe('2/2')
     expect(progressText({ state: 'not_started', samples_done: 0, required_samples: 5 })).toBe('0/5')
+  })
+})
+
+describe('역할·통제책임자 거르기', () => {
+  const r = (my_roles: string[], owner_id: string | null = 'u1', owner_name: string | null = '갑') => ({ my_roles, owner_id, owner_name })
+  it('작성할 것 = 통제책임자, 승인할 것 = 평가자·부서승인자', () => {
+    expect(matchesRole(r(['control_owner']), 'write')).toBe(true)
+    expect(matchesRole(r(['assessor']), 'write')).toBe(false)
+    expect(matchesRole(r(['assessor']), 'approve')).toBe(true)
+    expect(matchesRole(r(['dept_approver']), 'approve')).toBe(true)
+    expect(matchesRole(r(['control_owner']), 'all')).toBe(true)
+  })
+  it('통제책임자 선택지 — 이름순·건수, 미배정은 따로', () => {
+    const rows = [r([], 'u2', '을'), r([], 'u1', '갑'), r([], 'u2', '을'), r([], null, null)]
+    expect(ownerOptions(rows)).toEqual([{ id: 'u1', name: '갑', count: 1 }, { id: 'u2', name: '을', count: 2 }])
+    expect(rows.filter((x) => matchesOwner(x, OWNER_NONE))).toHaveLength(1)
+    expect(rows.filter((x) => matchesOwner(x, 'u2'))).toHaveLength(2)
+    expect(rows.filter((x) => matchesOwner(x, OWNER_ALL))).toHaveLength(4)
   })
 })

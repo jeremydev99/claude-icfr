@@ -93,6 +93,43 @@ export function summarize(rows: WorklistRow[]) {
   return { total: rows.length, by, samples, unassigned: rows.filter((r) => !r.owner_id).length }
 }
 
+export type RoleFilter = 'all' | 'write' | 'approve'
+
+export const ROLE_FILTER_LABEL: Record<RoleFilter, string> = {
+  write: '작성할 통제',
+  approve: '승인할 통제',
+  all: '전체',
+}
+
+/** 작성할 것 = 내가 통제책임자, 승인할 것 = 내가 평가자·부서승인자. 둘 다면 양쪽에 나온다 */
+export function matchesRole(r: Pick<WorklistRow, 'my_roles'>, f: RoleFilter): boolean {
+  if (f === 'write') return r.my_roles.includes('control_owner')
+  if (f === 'approve') return r.my_roles.includes('assessor') || r.my_roles.includes('dept_approver')
+  return true
+}
+
+export const OWNER_ALL = '__all__'
+export const OWNER_NONE = '__none__'
+
+/** 전체 보기의 통제책임자 고르기 — 미배정은 OWNER_NONE */
+export function matchesOwner(r: Pick<WorklistRow, 'owner_id'>, owner: string): boolean {
+  if (owner === OWNER_ALL) return true
+  if (owner === OWNER_NONE) return !r.owner_id
+  return r.owner_id === owner
+}
+
+/** 통제책임자 선택지 — 이름순, 건수 포함 */
+export function ownerOptions(rows: Pick<WorklistRow, 'owner_id' | 'owner_name'>[]) {
+  const m = new Map<string, { id: string; name: string; count: number }>()
+  for (const r of rows) {
+    if (!r.owner_id) continue
+    const o = m.get(r.owner_id) ?? { id: r.owner_id, name: r.owner_name ?? '(이름 없음)', count: 0 }
+    o.count += 1
+    m.set(r.owner_id, o)
+  }
+  return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+}
+
 export function progressText(r: Pick<WorklistRow, 'samples_done' | 'required_samples' | 'state'>): string {
   if (r.state === 'not_started') return `0/${r.required_samples}`
   return `${Math.min(r.samples_done, r.required_samples)}/${r.required_samples}`
