@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { isAxiosError } from 'axios'
 import { toast } from 'sonner'
 import { ChevronsUpDown, X } from 'lucide-react'
-import ControlSelector from '@/features/test/components/ControlSelector'
+import ControlSelector from './ControlSelector'
 import type { ControlOption } from '@/features/rcm/types'
 import {
   Dialog,

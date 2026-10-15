@@ -24,7 +24,7 @@ def test_module_counts_follow_data_and_tenant(client: TestClient) -> None:
     assert before.status_code == 200, before.text
     b = before.json()
     assert b["/financial-statements"] == 0 and b["/scoping"] == 0 and b["/users"] == 1
-    assert {"/rcm", "/euc", "/iuc", "/test", "/remediation", "/evidence", "/schedule", "/admin/departments",
+    assert {"/rcm", "/euc", "/iuc", "/my-assessment", "/remediation", "/evidence", "/schedule", "/admin/departments",
             "/admin/role-assignments", "/admin/policies", "/admin/fiscal-year"} <= set(b)
     assert _post(client, h, bs_wb(), mode="commit").status_code == 200
     assert client.post("/api/scoping", headers=h, json={"fiscal_year": 2026}).status_code == 201

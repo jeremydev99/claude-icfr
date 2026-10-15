@@ -2,12 +2,11 @@
 import { describe, it, expect } from 'vitest'
 import {
   DASH, DEFICIENCY_CLASS_LABEL, buildReportCards, classifyDeficiency, computeFacts, display, evaluationDate,
-  readinessOf, selectAuditCommitteeConclusion, selectConclusion,
+  readinessOf, selectAuditCommitteeConclusion, selectConclusion, type TestRecord,
 } from './reportModel'
-import type { TestRun } from '@/features/test/types'
 import type { Deficiency, RemediationPlan } from '@/features/remediation/types'
 
-const run = (p: Partial<TestRun>) => ({ fiscal_year: 2026, status: 'planned', result: null, ...p }) as TestRun
+const run = (p: Partial<TestRecord>) => ({ fiscal_year: 2026, status: 'planned', result: null, ...p }) as TestRecord
 const def = (p: Partial<Deficiency>) => ({ fiscal_year: 2026, severity: 'low', status: 'open', ...p }) as Deficiency
 
 describe('readinessOf', () => {

@@ -88,6 +88,8 @@ PREVENTIVE_DETECTIVE_VALUES = ("P", "D")
 AUTO_MANUAL_VALUES = ("A", "M", "IT")
 FREQUENCY_VALUES = ("O", "D", "W", "M", "Q", "A")
 IPE_RELEVANT_VALUES = ("Y", "N", "N/A")
+# 테스트 방법 4종 — 원천 엑셀 순서(질문·관찰·문서검사·재수행). 통제 test_methods 는 이 코드의 콤마 구분 문자열
+TEST_METHODS = ("inquiry", "observation", "inspection", "reperformance")
 RISK_LEVEL_VALUES = ("LR", "MR", "HR", "SR")
 
 ASSERTION_ACTION_ADD = "add"
@@ -244,6 +246,13 @@ class BaselineControl(AuditedBase):
     ipe_relevant: Mapped[str] = mapped_column(String(5), nullable=False, default="N/A")
     related_systems: Mapped[str | None] = mapped_column(Text, nullable=True)
     euc_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # 그룹 6: 테스트 방법(원천 엑셀 '테스트방법' 영역, 2026-10-15) — 표본수는 감사인과 협의한 값.
+    # 운영평가 회차의 통제별 필요 샘플 수가 이 값이다(services/sampling).
+    test_methods: Mapped[str | None] = mapped_column(String(60), nullable=True)   # TEST_METHODS 콤마 구분
+    population: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    test_procedure: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # baseline 콘텐츠 개정 회차 (row_version 낙관적 잠금과 별개 개념 — 모듈 docstring 참조)
     baseline_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
@@ -474,6 +483,10 @@ class ControlInstance(AuditedBase):
     ipe_relevant: Mapped[str | None] = mapped_column(String(5), nullable=True)
     related_systems: Mapped[str | None] = mapped_column(Text, nullable=True)
     euc_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    test_methods: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    population: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    test_procedure: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     baseline_control: Mapped["BaselineControl | None"] = relationship(
         "BaselineControl", back_populates="instances"

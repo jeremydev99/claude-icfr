@@ -22,20 +22,29 @@ from app.core.permissions import (
     require_icfr_manager,
     require_icfr_staff,
     require_write,
+    tenant_roles,
 )
 from app.models.assessment import (
+    ACTIVITY_DESIGN,
+    ACTIVITY_DRAFT,
     ACTIVITY_RULES,
+    ACTIVITY_SUBMITTED,
+    ACTIVITY_TEST,
+    APPROVAL_ASSESSOR,
     APPROVAL_DEPT,
     CYCLE_APPROVED,
     CYCLE_CLOSED,
     CYCLE_DESIGN,
     CYCLE_OPEN,
     CYCLE_OPERATION,
+    SAMPLE_ACTIVITY_KINDS,
     ActivityApproval,
+    ActivitySample,
     AssessmentActivity,
     AssessmentCycle,
     CycleTarget,
 )
+from app.models.evidence import LINK_TARGET_SAMPLE, EvidenceFile, EvidenceLink
 from app.models.governance import (
     ENTITY_ASSESSMENT_CYCLE,
     EV_APPROVE,
@@ -45,13 +54,18 @@ from app.models.governance import (
     GovernanceFile,
 )
 from app.models.role_assignment import (
+    READ_ONLY_ROLES,
     ROLE_ASSESSOR,
+    ROLE_CONTROL_OWNER,
     ROLE_DEPT_APPROVER,
+    ROLE_EXTERNAL_ADVISOR,
+    TIER_ROLES,
 )
 from app.models.user import User
 from app.schemas.assessment import (
     ActivityCreate,
     ActivityRead,
+    ActivityUpdate,
     ApprovalCreate,
     ApprovalRead,
     CycleCloseRequest,
@@ -63,9 +77,13 @@ from app.schemas.assessment import (
     CycleUpdate,
     IncompleteControl,
     PeriodSuggestion,
+    SampleEvidence,
+    SampleRead,
+    SampleWrite,
+    WorklistRow,
 )
 from app.schemas.scoping import ExternalApprovalRead, ExternalFileRead, GovernanceEventRead
-from app.services import approval_flow
+from app.services import approval_flow, sampling
 from app.services import cycle_approval as cap
 from app.services.assessment_period import (
     current_fiscal_year,
@@ -73,8 +91,9 @@ from app.services.assessment_period import (
     fiscal_year_start_month,
     suggest_period,
 )
-from app.services.control_resolver import resolve_controls
+from app.services.control_resolver import resolve_controls, resolve_processes
 from app.services.role_resolver import (
+    _assignments_by_target,
     is_dept_approval_skipped,
     resolve_control_process_id,
     resolve_roles_for_control,
@@ -309,6 +328,8 @@ def _to_activity_read(db: Session, obj: AssessmentActivity,
         r.approved_by_name = ap_names.get(a.approved_by_id)
         rows.append(r)
     row.approvals = rows
+    if obj.activity_kind in SAMPLE_ACTIVITY_KINDS:
+        row.samples = _sample_reads(db, [obj.id]).get(obj.id, [])
     return row
 
 
@@ -363,12 +384,34 @@ def create_activity(cycle_id: UUID, body: ActivityCreate, user: User = Depends(r
             detail=f"이 통제의 {required_role} 만 '{body.activity_kind}' 을 기록할 수 있습니다",
         )
 
+    now = datetime.now(UTC)
+    if body.activity_kind not in SAMPLE_ACTIVITY_KINDS:
+        obj = AssessmentActivity(
+            cycle_id=cycle_id, control_id=body.control_id, activity_kind=body.activity_kind,
+            result=body.result, note=body.note, performed_by_id=user.id, performed_at=now,
+            status=ACTIVITY_SUBMITTED, submitted_at=now,
+        )
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return _to_activity_read(db, obj, approvals=[])
+
+    # 샘플 활동(설계·테스트) — 작성 중으로 시작, 필요 수만큼 빈 샘플 줄을 만든다(§2.10)
+    if _draft_of(db, cycle_id, body.control_id, body.activity_kind) is not None:
+        raise HTTPException(status_code=409, detail="이 통제에 작성 중인 기록이 이미 있습니다 — 그 기록을 이어서 작성하세요")
+    control = _control(db, body.control_id)
     obj = AssessmentActivity(
         cycle_id=cycle_id, control_id=body.control_id, activity_kind=body.activity_kind,
-        result=body.result, note=body.note,
-        performed_by_id=user.id, performed_at=datetime.now(UTC),
+        result=body.result, note=body.note, performed_by_id=user.id, performed_at=now,
+        status=ACTIVITY_DRAFT,
+        test_methods=body.test_methods or (control or {}).get("test_methods"),
+        population=body.population or (control or {}).get("population"),
+        procedure=body.procedure or (control or {}).get("test_procedure"),
     )
     db.add(obj)
+    db.flush()
+    for i in range(1, sampling.required_samples(cycle.kind, control) + 1):
+        db.add(ActivitySample(activity_id=obj.id, seq=i))
     db.commit()
     db.refresh(obj)
     return _to_activity_read(db, obj, approvals=[])
@@ -421,6 +464,9 @@ def approve_activity(activity_id: UUID, body: ApprovalCreate,
         raise HTTPException(
             status_code=403, detail=f"이 통제의 {required_role} 만 승인할 수 있습니다")
 
+    if activity.status != ACTIVITY_SUBMITTED:
+        raise HTTPException(status_code=409, detail="제출되지 않은 기록은 승인할 수 없습니다")
+
     dup = db.query(ActivityApproval).filter(
         ActivityApproval.activity_id == activity_id,
         ActivityApproval.stage == body.stage,
@@ -456,6 +502,7 @@ def _incomplete_controls(db: Session, cycle: AssessmentCycle) -> list[Incomplete
     done: dict[UUID, set[str]] = {}
     for a in db.query(AssessmentActivity).filter(
         AssessmentActivity.cycle_id == cycle.id,
+        AssessmentActivity.status == ACTIVITY_SUBMITTED,   # 작성 중은 완료가 아니다(§2.10)
         AssessmentActivity.is_deleted == False,  # noqa: E712
     ).all():
         done.setdefault(a.control_id, set()).add(a.activity_kind)
@@ -606,3 +653,292 @@ def external_approve_cycle(cycle_id: UUID, approver_body: str = Form(...), appro
 def list_cycle_events(cycle_id: UUID, user: CurrentUser, db: Session = Depends(get_db)) -> list[GovernanceEventRead]:
     """마감·최종승인 이력(최신순) — 지울 수 없는 기록."""
     return av.events(db, ENTITY_ASSESSMENT_CYCLE, _get_cycle_or_404(db, cycle_id).id)
+
+
+# ── 작성·샘플·제출 (ADR-0032 §2.10, 2026-10-15) ────────────
+# 설계·테스트 활동은 작성 중(draft)으로 시작한다. 수행자 본인만 고치고, 필요 샘플을 다 채워야 제출된다.
+# 제출 후에는 고칠 수 없다 — 다시 하려면 새 활동(재수행). 판정은 전부 서버가 한다.
+
+def _control(db: Session, control_id: UUID) -> dict | None:
+    return next((c for c in resolve_controls(db) if c["id"] == control_id), None)
+
+
+def _draft_of(db: Session, cycle_id: UUID, control_id: UUID, kind: str) -> AssessmentActivity | None:
+    return db.query(AssessmentActivity).filter(
+        AssessmentActivity.cycle_id == cycle_id, AssessmentActivity.control_id == control_id,
+        AssessmentActivity.activity_kind == kind, AssessmentActivity.status == ACTIVITY_DRAFT,
+        AssessmentActivity.is_deleted == False,  # noqa: E712
+    ).first()
+
+
+def _sample_links(db: Session, sample_ids: list[UUID]) -> dict[str, list[tuple[EvidenceLink, EvidenceFile]]]:
+    """샘플 id(문자열) → [(연결, 파일)] — 지워진 연결·파일은 뺀다."""
+    if not sample_ids:
+        return {}
+    rows = db.query(EvidenceLink, EvidenceFile).join(EvidenceFile, EvidenceFile.id == EvidenceLink.file_id).filter(
+        EvidenceLink.linked_entity_type == LINK_TARGET_SAMPLE,
+        EvidenceLink.linked_entity_id.in_([str(i) for i in sample_ids]),
+        EvidenceLink.is_deleted == False,  # noqa: E712
+        EvidenceFile.is_deleted == False,  # noqa: E712
+    ).order_by(EvidenceFile.created_at).all()
+    out: dict[str, list] = {}
+    for link, f in rows:
+        out.setdefault(link.linked_entity_id, []).append((link, f))
+    return out
+
+
+def _samples(db: Session, activity_ids: list[UUID]) -> list[ActivitySample]:
+    if not activity_ids:
+        return []
+    return db.query(ActivitySample).filter(
+        ActivitySample.activity_id.in_(activity_ids),
+        ActivitySample.is_deleted == False,  # noqa: E712
+    ).order_by(ActivitySample.seq).all()
+
+
+def _sample_reads(db: Session, activity_ids: list[UUID]) -> dict[UUID, list[SampleRead]]:
+    samples = _samples(db, activity_ids)
+    links = _sample_links(db, [s.id for s in samples])
+    out: dict[UUID, list[SampleRead]] = {}
+    for smp in samples:
+        r = SampleRead.model_validate(smp)
+        r.evidence = [SampleEvidence(link_id=lk.id, file_id=f.id, filename=f.filename, title=f.title)
+                      for lk, f in links.get(str(smp.id), [])]
+        out.setdefault(smp.activity_id, []).append(r)
+    return out
+
+
+def _sample_done(r: SampleRead) -> bool:
+    """제출 조건을 채운 샘플 — 샘플 식별·결과·증빙 1개 이상."""
+    return bool((r.label or "").strip()) and r.result is not None and bool(r.evidence)
+
+
+def _get_activity_or_404(db: Session, activity_id: UUID) -> AssessmentActivity:
+    obj = db.query(AssessmentActivity).filter(
+        AssessmentActivity.id == activity_id,
+        AssessmentActivity.is_deleted == False,  # noqa: E712
+    ).first()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="AssessmentActivity not found")
+    return obj
+
+
+def _editable_draft(db: Session, activity: AssessmentActivity, user: User) -> AssessmentCycle:
+    """작성 중 활동을 고칠 수 있는가 — 회차 진행 중 + 작성 중 + **수행자 본인 + 지금도 이 통제의 수행 역할**."""
+    cycle = _get_cycle_or_404(db, activity.cycle_id)
+    _assert_open(cycle)
+    if activity.status != ACTIVITY_DRAFT:
+        raise HTTPException(status_code=409, detail="제출된 기록은 고칠 수 없습니다 — 다시 하려면 새 기록(재수행)을 만드세요")
+    required_role, _ = ACTIVITY_RULES[activity.activity_kind]
+    if activity.performed_by_id != user.id or _role_holder(db, activity.control_id, required_role) != user.id:
+        raise HTTPException(status_code=403, detail="작성한 통제책임자 본인만 고칠 수 있습니다")
+    return cycle
+
+
+def _get_sample_or_404(db: Session, sample_id: UUID) -> ActivitySample:
+    obj = db.query(ActivitySample).filter(
+        ActivitySample.id == sample_id,
+        ActivitySample.is_deleted == False,  # noqa: E712
+    ).first()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="ActivitySample not found")
+    return obj
+
+
+def _sample_read(db: Session, smp: ActivitySample) -> SampleRead:
+    return next(r for r in _sample_reads(db, [smp.activity_id]).get(smp.activity_id, []) if r.id == smp.id)
+
+
+@router.get("/activities/{activity_id}", response_model=ActivityRead)
+def get_activity(activity_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> ActivityRead:
+    return _to_activity_read(db, _get_activity_or_404(db, activity_id))
+
+
+@router.patch("/activities/{activity_id}", response_model=ActivityRead)
+def update_activity(activity_id: UUID, body: ActivityUpdate, user: User = Depends(require_write),
+                    db: Session = Depends(get_db)) -> ActivityRead:
+    obj = _get_activity_or_404(db, activity_id)
+    _editable_draft(db, obj, user)
+    for f, v in body.model_dump(exclude_unset=True).items():
+        setattr(obj, f, (v.strip() or None) if isinstance(v, str) else v)
+    db.commit()
+    db.refresh(obj)
+    return _to_activity_read(db, obj)
+
+
+@router.delete("/activities/{activity_id}", status_code=status.HTTP_204_NO_CONTENT)
+def discard_draft(activity_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
+    """작성 중 기록 버리기 — 샘플·샘플 증빙 연결도 함께(소프트 삭제). 증빙 파일은 회차 × 통제에 그대로 남는다."""
+    obj = _get_activity_or_404(db, activity_id)
+    _editable_draft(db, obj, user)
+    samples = _samples(db, [obj.id])
+    for lst in _sample_links(db, [s.id for s in samples]).values():
+        for link, _f in lst:
+            link.is_deleted = True
+    for smp in samples:
+        smp.is_deleted = True
+    obj.is_deleted = True
+    db.commit()
+
+
+@router.post("/activities/{activity_id}/samples", status_code=status.HTTP_201_CREATED, response_model=SampleRead)
+def add_sample(activity_id: UUID, body: SampleWrite, user: User = Depends(require_write),
+               db: Session = Depends(get_db)) -> SampleRead:
+    """샘플 추가 — 필요 수보다 **더** 보는 것은 허용한다."""
+    obj = _get_activity_or_404(db, activity_id)
+    _editable_draft(db, obj, user)
+    seq = max((s.seq for s in _samples(db, [obj.id])), default=0) + 1
+    smp = ActivitySample(activity_id=obj.id, seq=seq, **body.model_dump())
+    db.add(smp)
+    db.commit()
+    db.refresh(smp)
+    return _sample_read(db, smp)
+
+
+@router.patch("/samples/{sample_id}", response_model=SampleRead)
+def update_sample(sample_id: UUID, body: SampleWrite, user: User = Depends(require_write),
+                  db: Session = Depends(get_db)) -> SampleRead:
+    smp = _get_sample_or_404(db, sample_id)
+    _editable_draft(db, _get_activity_or_404(db, smp.activity_id), user)
+    for f, v in body.model_dump(exclude_unset=True).items():
+        setattr(smp, f, (v.strip() or None) if isinstance(v, str) else v)
+    db.commit()
+    db.refresh(smp)
+    return _sample_read(db, smp)
+
+
+@router.delete("/samples/{sample_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_sample(sample_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
+    """샘플 줄 삭제 — **필요 수 아래로는 줄일 수 없다**(마스터 결정: 적게 제출 불가)."""
+    smp = _get_sample_or_404(db, sample_id)
+    activity = _get_activity_or_404(db, smp.activity_id)
+    cycle = _editable_draft(db, activity, user)
+    need = sampling.required_samples(cycle.kind, _control(db, activity.control_id))
+    if len(_samples(db, [activity.id])) <= need:
+        raise HTTPException(status_code=409, detail=f"필요 샘플 수({need}건)보다 줄일 수 없습니다")
+    for lst in _sample_links(db, [smp.id]).values():
+        for link, _f in lst:
+            link.is_deleted = True
+    smp.is_deleted = True
+    db.commit()
+
+
+@router.post("/activities/{activity_id}/submit", response_model=ActivityRead)
+def submit_activity(activity_id: UUID, user: User = Depends(require_write),
+                    db: Session = Depends(get_db)) -> ActivityRead:
+    """제출 — 필요 샘플 수만큼 **샘플 식별·결과·증빙**이 다 채워져야 한다. 적게는 제출할 수 없다."""
+    obj = _get_activity_or_404(db, activity_id)
+    cycle = _editable_draft(db, obj, user)
+    need = sampling.required_samples(cycle.kind, _control(db, obj.control_id))
+    reads = _sample_reads(db, [obj.id]).get(obj.id, [])
+    done = sum(1 for r in reads if _sample_done(r))
+    if done < need:
+        raise HTTPException(status_code=409, detail=(
+            f"필요 샘플 {need}건 중 {done}건만 완료됐습니다 — 샘플마다 식별·결과·증빙을 채워야 제출할 수 있습니다"))
+    partial = [r.seq for r in reads if not _sample_done(r)]
+    if partial:
+        raise HTTPException(status_code=409, detail=(
+            f"샘플 {', '.join(map(str, partial))}번이 비어 있습니다 — 채우거나 줄을 지우세요"))
+    if obj.result not in ("pass", "fail", "na"):
+        raise HTTPException(status_code=409, detail="테스트 결론(적정·미흡·해당 없음)을 선택해야 제출할 수 있습니다")
+    obj.status = ACTIVITY_SUBMITTED
+    obj.submitted_at = datetime.now(UTC)
+    obj.required_samples = need
+    db.commit()
+    db.refresh(obj)
+    return _to_activity_read(db, obj)
+
+
+# ── 내 평가 목록 (2026-10-15) ─────────────────────────────
+
+_FULL_VIEW_ROLES = set(TIER_ROLES) | set(READ_ONLY_ROLES) | {ROLE_EXTERNAL_ADVISOR}
+_OWNER_KIND = {CYCLE_DESIGN: ACTIVITY_DESIGN, CYCLE_OPERATION: ACTIVITY_TEST}
+
+
+@router.get("/cycles/{cycle_id}/worklist", response_model=list[WorklistRow])
+def get_worklist(cycle_id: UUID, mine: bool = True, user: CurrentUser = None,
+                 db: Session = Depends(get_db)) -> list[WorklistRow]:
+    """회차 대상 통제 + 내 역할 + 진행 상태.
+
+    `mine=true`(기본) — 내가 통제책임자·평가자·부서승인자인 통제만.
+    `mine=false` — 전체. 내부회계 관리자(1~3단계)·외부감사인·외부자문만(마스터 결정 Q3: 통제책임자는 본인 담당만).
+    """
+    cycle = _get_cycle_or_404(db, cycle_id)
+    if not mine and not (tenant_roles(db, user.id) & _FULL_VIEW_ROLES):
+        raise HTTPException(status_code=403, detail="전체 보기는 내부회계 관리자·외부감사인만 할 수 있습니다")
+    kind = _OWNER_KIND[cycle.kind]
+    targets = db.query(CycleTarget).filter(CycleTarget.cycle_id == cycle_id,
+                                           CycleTarget.is_deleted == False).order_by(  # noqa: E712
+        CycleTarget.control_code).all()
+    controls = {c["id"]: c for c in resolve_controls(db)}
+    proc_ids = {p["code"]: p["id"] for p in resolve_processes(db)}
+    assignments = _assignments_by_target(db)
+    dept_on = _dept_approval_enabled(db)
+
+    rows: list[tuple[CycleTarget, dict | None, dict[str, UUID], bool]] = []
+    for t in targets:
+        c = controls.get(t.control_id)
+        resolved = resolve_roles_for_control(db, t.control_id, proc_ids.get((c or {}).get("process_code")),
+                                             assignments=assignments)
+        holders = {r["role_name"]: r["user_id"] for r in resolved}
+        if mine and user.id not in {holders.get(ROLE_CONTROL_OWNER), holders.get(ROLE_ASSESSOR),
+                                    holders.get(ROLE_DEPT_APPROVER)}:
+            continue
+        rows.append((t, c, holders, dept_on and not is_dept_approval_skipped(resolved)))
+
+    ids = [t.control_id for t, *_ in rows]
+    acts = db.query(AssessmentActivity).filter(
+        AssessmentActivity.cycle_id == cycle_id, AssessmentActivity.control_id.in_(ids),
+        AssessmentActivity.activity_kind == kind, AssessmentActivity.is_deleted == False,  # noqa: E712
+    ).order_by(AssessmentActivity.performed_at).all() if ids else []
+    by_control: dict[UUID, list[AssessmentActivity]] = {}
+    for a in acts:
+        by_control.setdefault(a.control_id, []).append(a)
+    latest = {cid: lst[-1] for cid, lst in by_control.items()}
+    samples = _sample_reads(db, [a.id for a in latest.values()])
+    stages: dict[UUID, set[str]] = {}
+    if latest:
+        for ap in db.query(ActivityApproval).filter(
+                ActivityApproval.activity_id.in_([a.id for a in latest.values()]),
+                ActivityApproval.is_deleted == False).all():  # noqa: E712
+            stages.setdefault(ap.activity_id, set()).add(ap.stage)
+    ev_count: dict[UUID, int] = {}
+    if ids:
+        for (cid,) in db.query(EvidenceFile.control_id).filter(
+                EvidenceFile.cycle_id == cycle_id, EvidenceFile.control_id.in_(ids),
+                EvidenceFile.is_deleted == False).all():  # noqa: E712
+            ev_count[cid] = ev_count.get(cid, 0) + 1
+    owner_names = _names(db, {h[ROLE_CONTROL_OWNER] for _, _, h, _ in rows if h.get(ROLE_CONTROL_OWNER)})
+    role_of = {APPROVAL_DEPT: ROLE_DEPT_APPROVER, APPROVAL_ASSESSOR: ROLE_ASSESSOR}
+
+    out = []
+    for t, c, holders, dept_needed in rows:
+        c = c or {}
+        a = latest.get(t.control_id)
+        need_stages = ([APPROVAL_DEPT] if dept_needed else []) + [APPROVAL_ASSESSOR]
+        state, pending, can = "not_started", [], []
+        if a is not None and a.status == ACTIVITY_DRAFT:
+            state = "draft"
+        elif a is not None:
+            pending = [s for s in need_stages if s not in stages.get(a.id, set())]
+            state = "submitted" if pending else "approved"
+            if cycle.status == CYCLE_OPEN:
+                can = [s for s in pending if holders.get(role_of[s]) == user.id]
+        owner_id = holders.get(ROLE_CONTROL_OWNER)
+        out.append(WorklistRow(
+            control_id=t.control_id, control_code=t.control_code or c.get("code"),
+            control_name=c.get("name"), process_code=c.get("process_code"),
+            frequency=c.get("frequency"), auto_manual=c.get("auto_manual"),
+            owner_id=owner_id, owner_name=owner_names.get(owner_id) if owner_id else None,
+            my_roles=[r for r in (ROLE_CONTROL_OWNER, ROLE_ASSESSOR, ROLE_DEPT_APPROVER) if holders.get(r) == user.id],
+            activity_kind=kind,
+            required_samples=(a.required_samples if a is not None and a.required_samples
+                              else sampling.required_samples(cycle.kind, c or None)),
+            sample_basis=sampling.basis(cycle.kind, c or None),
+            rcm_test_methods=c.get("test_methods"), rcm_population=c.get("population"),
+            rcm_test_procedure=c.get("test_procedure"),
+            state=state, activity_id=a.id if a else None, activity_count=len(by_control.get(t.control_id, [])),
+            samples_done=sum(1 for r in samples.get(a.id, []) if _sample_done(r)) if a else 0,
+            evidence_count=ev_count.get(t.control_id, 0), pending_stages=pending, can_approve=can,
+        ))
+    return out

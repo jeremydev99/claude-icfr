@@ -11,6 +11,7 @@ from app.models.rcm_baseline import (
     IPE_RELEVANT_VALUES,
     PREVENTIVE_DETECTIVE_VALUES,
     RISK_LEVEL_VALUES,
+    TEST_METHODS,
 )
 
 
@@ -18,6 +19,10 @@ def _one_of(values: tuple[str, ...]) -> str:
     """허용 값 목록 → 정규식. **목록을 두 번 적지 않기 위해서다** — 정규식에 직접 쓰면
     상수와 어긋나도 알 방법이 없다. `N/A` 처럼 메타문자가 섞인 값이 있어 escape 한다."""
     return "^(" + "|".join(re.escape(v) for v in values) + ")$"
+
+
+# 테스트 방법 — TEST_METHODS 코드의 콤마 구분(예: "inquiry,inspection")
+_TEST_METHODS_PATTERN = "^(" + "|".join(TEST_METHODS) + ")(,(" + "|".join(TEST_METHODS) + "))*$"
 
 # ── Process ──────────────────────────────────────────────
 
@@ -154,6 +159,12 @@ class ControlBase(BaseModel):
     related_systems: str | None = None
     euc_description: str | None = None
 
+    # 그룹 6: 테스트 방법 — 표본수는 감사인과 협의한 값(운영평가 필요 샘플 수)
+    test_methods: str | None = Field(None, pattern=_TEST_METHODS_PATTERN)
+    population: str | None = None
+    sample_size: int | None = Field(None, ge=1, le=999)
+    test_procedure: str | None = None
+
 class ControlCreate(ControlBase):
     pass
 
@@ -177,6 +188,10 @@ class ControlUpdate(BaseModel):
     ipe_relevant: str | None = Field(None, pattern=_one_of(IPE_RELEVANT_VALUES))
     related_systems: str | None = None
     euc_description: str | None = None
+    test_methods: str | None = Field(None, pattern=_TEST_METHODS_PATTERN)
+    population: str | None = None
+    sample_size: int | None = Field(None, ge=1, le=999)
+    test_procedure: str | None = None
 
 class ControlRead(ControlBase):
     id: UUID

@@ -1141,6 +1141,73 @@ class _ParsedRCM:
     warnings: list = dc_field(default_factory=list)
 
 
+# 테스트 방법 영역 헤더 (2026-10-15) — 양식마다 열 위치가 달라(2026-10-13 판은 한 칸 왼쪽) **헤더 이름으로** 찾는다
+_TEST_METHOD_HEADERS = (
+    ("inquiry", ("inquiry", "질문")), ("observation", ("observation", "관찰")),
+    ("inspection", ("examination", "inspection", "문서검사")), ("reperformance", ("reperformance", "재수행")),
+)
+# '샘플수'(A열, 감사인 협의 값 — 2026-10-15 마스터 결정)가 있으면 그것이 표본수다. '표본수'(테스트방법 영역)는
+# 샘플수 열이 없는 양식의 대체값이며, 둘 다 있고 값이 다르면 경고한다.
+_TEST_TEXT_HEADERS = {"샘플수": "sample_count", "표본수": "sample_size", "모집단": "population",
+                      "테스트절차": "test_procedure"}
+
+
+def _test_columns(ws, data_start: int) -> dict[str, int]:
+    """데이터 시작행 바로 위 헤더 4행에서 테스트 방법 영역 열을 찾는다.
+
+    위에서 아래로 훑어 **아래쪽(더 구체적인) 헤더가 이긴다** — '테스트절차'는 묶음 머리글과
+    실제 열 머리글에 두 번 나온다. 없으면 빈 dict(그 칸은 파싱하지 않고 비교도 하지 않는다)."""
+    cols: dict[str, int] = {}
+    top = max(1, data_start - 4)
+    for row in ws.iter_rows(min_row=top, max_row=data_start - 1, values_only=True):
+        for j, v in enumerate(row):
+            if v is None:
+                continue
+            text = "".join(str(v).split())
+            key = _TEST_TEXT_HEADERS.get(text)
+            if key:
+                cols[key] = j
+                continue
+            low = text.lower()
+            for method, words in _TEST_METHOD_HEADERS:
+                if any(w in low for w in words) and len(low) <= 30:
+                    cols[f"method:{method}"] = j
+    return cols
+
+
+def _test_values(row, cols: dict[str, int], row_idx: int, warnings: list) -> dict:
+    """테스트 방법 영역 값 — 찾은 열만 키로 넣는다."""
+    def cell(j):
+        return row[j] if len(row) > j else None
+
+    def number(key: str, label: str) -> int | None:
+        v = cell(cols[key])
+        n = None
+        if isinstance(v, int | float) and not isinstance(v, bool):
+            n = int(v)
+        elif v is not None and str(v).strip().isdigit():
+            n = int(str(v).strip())
+        elif v not in (None, ""):
+            warnings.append(f"Row {row_idx}: {label} '{v}' 가 숫자가 아님 → 비움")
+        return n if n and n > 0 else None
+
+    out: dict = {}
+    primary = number("sample_count", "샘플수") if "sample_count" in cols else None
+    fallback = number("sample_size", "표본수") if "sample_size" in cols else None
+    if "sample_count" in cols or "sample_size" in cols:
+        if "sample_count" in cols and "sample_size" in cols and primary and fallback and primary != fallback:
+            warnings.append(f"Row {row_idx}: 샘플수 {primary} 와 표본수 {fallback} 가 다름 → 샘플수 {primary} 사용")
+        out["sample_size"] = primary if "sample_count" in cols and primary else fallback
+    for key in ("population", "test_procedure"):
+        if key in cols:
+            out[key] = str(cell(cols[key]) or "").strip() or None
+    methods = [m for m, _ in _TEST_METHOD_HEADERS if f"method:{m}" in cols]
+    if methods:
+        picked = [m for m in methods if str(cell(cols[f"method:{m}"]) or "").strip().upper() == "O"]
+        out["test_methods"] = ",".join(picked) or None
+    return out
+
+
 def _parse_rcm_sheet(ws, header_row: int, mapping: dict[str, int]) -> _ParsedRCM:
     """헤더 위치가 결정된 시트에서 RCM 데이터 파싱.
 
@@ -1162,6 +1229,7 @@ def _parse_rcm_sheet(ws, header_row: int, mapping: dict[str, int]) -> _ParsedRCM
     controls: list = []
     errors: list = []
     warnings: list = []
+    test_cols = _test_columns(ws, header_row + 1)
 
     for row_idx, row in enumerate(ws.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
         if not row or row[p_col] is None:
@@ -1250,6 +1318,7 @@ def _parse_rcm_sheet(ws, header_row: int, mapping: dict[str, int]) -> _ParsedRCM
                 "ipe_relevant": ipe_val,
                 "related_systems": str(row[37] or "").strip() or None,
                 "euc_description": str(row[38] or "").strip() or None,
+                **_test_values(row, test_cols, row_idx, warnings),
             })
         except Exception as e:
             errors.append(f"Row {row_idx}: {e}")

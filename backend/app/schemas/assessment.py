@@ -14,6 +14,8 @@ _KIND = "^(design|operation)$"
 _FREQ = "^(weekly|monthly|quarterly|semiannual|annual)$"
 _ACTIVITY = "^(design|design_change|design_assessment|test|operation_assessment)$"
 _STAGE = "^(dept|assessor)$"
+_RESULT = "^(pass|fail|na)$"
+_METHODS = "^(inquiry|observation|inspection|reperformance)(,(inquiry|observation|inspection|reperformance))*$"
 
 
 # ── 회차 ──────────────────────────────────────────────────
@@ -86,6 +88,45 @@ class ActivityCreate(BaseModel):
     activity_kind: str = Field(pattern=_ACTIVITY)
     result: str | None = Field(None, max_length=20)
     note: str | None = None
+    # 설계·테스트(샘플 활동)만 — 비우면 RCM 값으로 채운다
+    test_methods: str | None = Field(None, pattern=_METHODS)
+    population: str | None = None
+    procedure: str | None = None
+
+
+class ActivityUpdate(BaseModel):
+    """작성 중(draft) 활동만 고친다. 보낸 칸만 반영(exclude_unset) — null 은 비우기."""
+    result: str | None = Field(None, pattern=_RESULT)
+    note: str | None = None
+    test_methods: str | None = Field(None, pattern=_METHODS)
+    population: str | None = None
+    procedure: str | None = None
+
+
+class SampleWrite(BaseModel):
+    label: str | None = Field(None, max_length=200)
+    sampled_on: date | None = None
+    result: str | None = Field(None, pattern=_RESULT)
+    note: str | None = None
+
+
+class SampleEvidence(BaseModel):
+    link_id: UUID
+    file_id: UUID
+    filename: str
+    title: str | None = None
+
+
+class SampleRead(BaseModel):
+    id: UUID
+    activity_id: UUID
+    seq: int
+    label: str | None = None
+    sampled_on: date | None = None
+    result: str | None = None
+    note: str | None = None
+    evidence: list[SampleEvidence] = []
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ActivityRead(BaseModel):
@@ -99,9 +140,44 @@ class ActivityRead(BaseModel):
     performed_at: datetime
     created_at: datetime
     performed_by_name: str | None = None
+    # 작성·제출 (ADR-0032 §2.10)
+    status: str = "submitted"
+    submitted_at: datetime | None = None
+    required_samples: int | None = None
+    test_methods: str | None = None
+    population: str | None = None
+    procedure: str | None = None
+    samples: list[SampleRead] = []
     # 이 활동에 붙은 승인 단계들
     approvals: list["ApprovalRead"] = []
     model_config = ConfigDict(from_attributes=True)
+
+
+class WorklistRow(BaseModel):
+    """'내 평가' 목록 한 줄 — 회차 대상 통제 + 내 역할 + 진행 상태."""
+    control_id: UUID
+    control_code: str | None = None
+    control_name: str | None = None
+    process_code: str | None = None
+    frequency: str | None = None
+    auto_manual: str | None = None
+    owner_id: UUID | None = None
+    owner_name: str | None = None          # 배정된 통제책임자(계정). 없으면 미배정
+    my_roles: list[str] = []
+    activity_kind: str                     # 이 회차에서 통제책임자가 남기는 활동(design | test)
+    required_samples: int
+    sample_basis: str
+    # RCM 테스트 방법 — 작성 시 미리 채우는 값
+    rcm_test_methods: str | None = None
+    rcm_population: str | None = None
+    rcm_test_procedure: str | None = None
+    state: str                             # not_started | draft | submitted | approved
+    activity_id: UUID | None = None        # 최신 활동
+    activity_count: int = 0                # 재수행 포함
+    samples_done: int = 0                  # 결과·증빙까지 채운 샘플
+    evidence_count: int = 0                # 이 통제 × 회차 증빙 파일 수
+    pending_stages: list[str] = []         # 제출 후 남은 승인 단계
+    can_approve: list[str] = []            # 내가 지금 승인할 수 있는 단계
 
 
 # ── 승인 ──────────────────────────────────────────────────

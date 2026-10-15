@@ -14,7 +14,7 @@ import FinancialStatementsPage from '@/features/financial-statements/pages/Finan
 import RcmPage from '@/features/rcm/pages/RcmPage'
 import EucPage from '@/features/euc/pages/EucPage'
 import IucPage from '@/features/iuc/pages/IucPage'
-import TestPage from '@/features/test/pages/TestPage'
+import MyAssessmentPage from '@/features/my-assessment/pages/MyAssessmentPage'
 import RemediationPage from '@/features/remediation/pages/RemediationPage'
 import ReportPage from '@/features/report/pages/ReportPage'
 import EvidencePage from '@/features/evidence/pages/EvidencePage'
@@ -61,7 +61,9 @@ export const router = createBrowserRouter([
       { path: 'rcm/links', element: <ControlLinksPage /> },
       { path: 'euc', element: <EucPage /> },
       { path: 'iuc', element: <IucPage /> },
-      { path: 'test', element: <TestPage /> },
+      { path: 'my-assessment', element: <MyAssessmentPage /> },
+      // 옛 Test 메뉴(TestRun) 주소 — 내 평가로 옮겼다(2026-10-15)
+      { path: 'test', element: <Navigate to="/my-assessment" replace /> },
       { path: 'remediation', element: <RemediationPage /> },
       { path: 'report', element: <ReportPage /> },
       { path: 'evidence', element: <EvidencePage /> },

@@ -200,3 +200,47 @@ def test_lead_can_commit_only_while_reopened_draft(client: TestClient) -> None:
     assert client.post(f"/api/rcm-years/{rid}/transition", headers=t.h["lead"], json={"to_status": "review"}).status_code == 200
     assert post("lead").status_code == 409
     assert lock("lead")["can_upload_excel"] is False
+
+
+def _excel_with_tests(rows) -> bytes:
+    """테스트 방법 영역이 있는 양식 — 머리글 위치는 원천과 다르게(헤더 이름으로 찾는지 본다)."""
+    wb = Workbook()
+    ws = wb.active
+    for i in range(6):
+        r = [None] * 60
+        if i == 4:
+            r[50], r[51], r[52], r[53] = "질문(Inquiry)", "관찰(Observation)", "문서검사(Examination)", "재수행(Reperformance)"
+        ws.append(r)
+    hdr = [None] * 60
+    hdr[1], hdr[6], hdr[16] = "프로세스번호", "통제활동번호", "통제활동이름"
+    hdr[54], hdr[56], hdr[57] = "모집단", "표본수", "테스트절차"
+    ws.append(hdr)
+    for r in rows:
+        ws.append(r + [None] * (60 - len(r)))
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_sample_size_from_excel_is_a_change(client: TestClient) -> None:
+    """표본수·모집단·테스트 방법(2026-10-15) — 엑셀에 그 칸이 있으면 비교·반영, 없으면(위 ROWS) 건드리지 않는다."""
+    t = T(client, {"master": ("icfr_manager",)})
+    _seed(t)
+    row = _row("XP-010-10-10", "통제1", "갑", e=True) + [None] * 15
+    row[52], row[54], row[56], row[57] = "O", "매출 전표", 7, "전표 승인 확인"
+    rows = [row, _row("XP-010-10-20", "통제2", "을", freq="A", desc=None, obj=None)]
+    data = _excel_with_tests(rows)
+    r = client.post(U, headers=t.h["master"], data={"mode": "preview"}, files={"file": ("rcm.xlsx", data, XLSX)})
+    assert r.status_code == 200, r.text
+    (ch,) = r.json()["sync"]["diff"]["layers"]["controls"]["changed"]
+    got = {f["field"]: (f["before"], f["after"]) for f in ch["changes"]}
+    assert got == {"test_methods": (None, "문서검사"), "population": (None, "매출 전표"),
+                   "sample_size": (None, 7), "test_procedure": (None, "전표 승인 확인")}
+    assert client.post(U, headers=t.h["master"], data={"mode": "commit"},
+                       files={"file": ("rcm.xlsx", data, XLSX)}).status_code == 200
+    items = {c["code"]: c for c in client.get("/api/rcm/controls", headers=t.h["master"], params={"limit": 50}).json()["items"]}
+    assert items["XP-010-10-10"]["sample_size"] == 7 and items["XP-010-10-10"]["test_methods"] == "inspection"
+    # 그 칸이 없는 엑셀을 다시 올려도 지우지 않는다
+    again = _post(client, t, [_row("XP-010-10-10", "통제1", "갑", e=True),
+                              _row("XP-010-10-20", "통제2", "을", freq="A", desc=None, obj=None)], "preview")
+    assert again.json()["sync"]["summary_text"] == "변경 없음"

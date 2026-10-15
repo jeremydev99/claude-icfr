@@ -31,15 +31,7 @@ WRITE_ROUTES = [
     ("POST", "/api/test/rawc"),
     ("PATCH", f"/api/test/rawc/{_ID}"),
     ("DELETE", f"/api/test/rawc/{_ID}"),
-    # test_module — 테스트 실행
-    ("POST", "/api/test/runs"),
-    ("POST", f"/api/test/runs/{_ID}/transition"),
-    ("PATCH", f"/api/test/runs/{_ID}"),
-    ("DELETE", f"/api/test/runs/{_ID}"),
-    # test_module — 테스트 단계
-    ("POST", "/api/test/steps"),
-    ("PATCH", f"/api/test/steps/{_ID}"),
-    ("DELETE", f"/api/test/steps/{_ID}"),
+    # test_module — 테스트 실행·단계(/runs·/steps)는 폐지(2026-10-15). 평가 회차 쪽 쓰기 가드는 test_my_assessment
     # remediation — 미비점
     ("POST", "/api/remediation/deficiencies"),
     ("PATCH", f"/api/remediation/deficiencies/{_ID}"),
@@ -107,7 +99,7 @@ def test_external_auditor_cannot_use_approval_routes(client: TestClient, method:
 
 def test_external_auditor_can_still_read(client: TestClient) -> None:
     h = _external_auditor_headers(client)
-    for path in ("/api/test/runs", "/api/test/rawc", "/api/remediation/deficiencies",
+    for path in ("/api/test/rawc", "/api/remediation/deficiencies",
                  "/api/remediation/plans", "/api/remediation/design-assessments"):
         assert client.get(path, headers=h).status_code == 200, path
 

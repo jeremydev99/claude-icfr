@@ -33,6 +33,10 @@ export interface Control {
   related_accounts: string | null
   related_systems: string | null
   euc_description: string | null
+  test_methods: string | null
+  population: string | null
+  sample_size: number | null
+  test_procedure: string | null
   assertions: AssertionCode[] | null
   process_code: string | null
   sub_process_code: string | null

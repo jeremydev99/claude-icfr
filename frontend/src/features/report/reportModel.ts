@@ -6,7 +6,6 @@
 import { fiscalRange } from '@/lib/fiscalYear'
 import type { ScopingSummary } from '@/features/scoping/types'
 import type { RcmSummary } from '@/features/dashboard/api/types'
-import type { TestRun } from '@/features/test/types'
 import type { Deficiency, RemediationPlan } from '@/features/remediation/types'
 import type { StatementListItem } from '@/features/financial-statements/types'
 
@@ -51,10 +50,18 @@ export function classifyDeficiency(severity: string | null | undefined): Deficie
 
 // ── 입력·사실 ────────────────────────────────────────────────
 
+/** 테스트 기록 1건 — 평가 회차 활동(test)에서 만든다(TestRun 폐지, 2026-10-15). completed = 제출됨 */
+export interface TestRecord {
+  fiscal_year: number
+  status: string
+  result: string | null
+  wtt_summary?: string | null
+}
+
 export interface ReportInputs {
   scoping?: ScopingSummary | null
   rcm?: RcmSummary | null
-  testRuns?: TestRun[]
+  testRuns?: TestRecord[]
   deficiencies?: Deficiency[]
   plans?: RemediationPlan[]
   evidenceTotal?: number

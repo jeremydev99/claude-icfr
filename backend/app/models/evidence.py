@@ -68,7 +68,9 @@ class EvidenceFile(AuditedBase):
 # 지금은 통제뿐이다. 새 종류(13.9-49 스코핑 첨부 등)는 쓰는 곳이 생길 때 여기에 더하고
 # 그때 업로드 판정과 함께 권한을 정한다.
 LINK_TARGET_CONTROL = "control"
-LINK_TARGET_LABELS = {LINK_TARGET_CONTROL: "통제"}
+# 샘플(2026-10-15) — 이 증빙이 어느 테스트 샘플의 근거인지. 권한은 업로드와 같은 판정 + 작성 중 활동만
+LINK_TARGET_SAMPLE = "sample"
+LINK_TARGET_LABELS = {LINK_TARGET_CONTROL: "통제", LINK_TARGET_SAMPLE: "테스트 샘플"}
 LINK_TARGET_TYPES = tuple(LINK_TARGET_LABELS)
 
 

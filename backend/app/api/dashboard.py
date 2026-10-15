@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.core.tenant_context import get_active_tenant
-from app.models.assessment import AssessmentCycle
+from app.models.assessment import AssessmentActivity, AssessmentCycle
 from app.models.euc import EucFile
 from app.models.evidence import EvidenceFile
 from app.models.financial_statement import FsStatement
@@ -26,7 +26,6 @@ from app.models.remediation import Deficiency
 from app.models.role_assignment import RoleAssignment, TenantPolicy
 from app.models.scoping import Scoping
 from app.models.tenant import UserTenantAccess
-from app.models.test_module import TestRun
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -36,7 +35,7 @@ MODULE_TABLES = {
     "/scoping": Scoping,
     "/euc": EucFile,
     "/iuc": InformationItem,
-    "/test": TestRun,
+    "/my-assessment": AssessmentActivity,
     "/remediation": Deficiency,
     "/evidence": EvidenceFile,
     "/schedule": AssessmentCycle,

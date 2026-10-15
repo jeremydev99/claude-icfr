@@ -126,11 +126,11 @@ export const navigation: NavGroup[] = [
     groupLabel: '평가',
     items: [
       {
-        label: 'Test',
-        path: '/test',
+        label: '내 평가',
+        path: '/my-assessment',
         status: 'ready',
         icon: CheckCircle2,
-        description: '설계·운영평가 계획·샘플링·결과 입력·검토 워크플로',
+        description: '내가 맡은 통제의 설계·운영평가 — 샘플별 결과·증빙 입력, 제출·승인',
       },
       {
         label: '개선계획',

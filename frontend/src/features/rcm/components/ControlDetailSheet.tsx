@@ -1,4 +1,5 @@
 import { CheckCircle2, Circle, Star } from 'lucide-react'
+import { methodsLabel } from '@/features/my-assessment/myAssessment.pure'
 import {
   Sheet,
   SheetContent,
@@ -172,6 +173,13 @@ export default function ControlDetailSheet({ control, open, onOpenChange, onEdit
               ) : (
                 <p className="text-sm text-muted-foreground py-2">정보 없음</p>
               )}
+
+              <SectionTitle>테스트 방법</SectionTitle>
+              <Separator />
+              <InfoRow label="표본수" value={control.sample_size ?? '— (수행 주기 기준 적용)'} />
+              <InfoRow label="테스트 방법" value={methodsLabel(control.test_methods)} />
+              <InfoRow label="모집단" value={control.population} />
+              <InfoRow label="테스트 절차" value={control.test_procedure ? <span className="whitespace-pre-wrap">{control.test_procedure}</span> : null} />
 
               <SectionTitle>위험평가 (RAWC) — {fiscalYear}년</SectionTitle>
               <Separator />

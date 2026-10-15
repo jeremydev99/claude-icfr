@@ -42,7 +42,7 @@ export default function WelcomeHero() {
             {[
               { to: '/scoping', label: '스코핑' },
               { to: '/rcm', label: 'RCM 관리' },
-              { to: '/test', label: '평가(Test)' },
+              { to: '/my-assessment', label: '내 평가' },
               { to: '/report', label: 'Report' },
             ].map((l) => (
               <Link key={l.to} to={l.to}

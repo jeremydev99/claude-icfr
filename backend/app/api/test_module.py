@@ -1,4 +1,3 @@
-from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,58 +6,21 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.core.permissions import require_write
-from app.models.test_module import ControlRiskAssessment, TestRun, TestStatusHistory, TestStep
+from app.models.test_module import ControlRiskAssessment
 from app.models.user import User
 from app.schemas.test_module import (
     ControlRiskAssessmentCreate,
     ControlRiskAssessmentRead,
     ControlRiskAssessmentUpdate,
-    TestRunCreate,
-    TestRunRead,
-    TestRunUpdate,
-    TestStatusHistoryRead,
-    TestStepCreate,
-    TestStepRead,
-    TestStepUpdate,
-    TransitionRequest,
 )
 from app.services.control_resolver import resolve_assertion_target
 
 router = APIRouter(prefix="/api/test", tags=["test_module"])
 
-# 허용 전이 — 하드코딩 dict. WorkflowEngine·StateMachine 금지 (ADR-0020 원칙).
-ALLOWED_TRANSITIONS: dict = {
-    "planned": {"in_progress"},
-    "in_progress": {"completed"},
-    "completed": {"approved"},
-    "approved": set(),
-}
-
-
-# ── 승인 후 잠금·본인 승인 금지 (13.9-94, ADR-0038 2단계 선행 조치) ──
-# 승인된 테스트는 결론이 확정된 감사 증거다 — 그 뒤 수정·삭제가 되면 승인이 무의미하다.
-# 결재선(검토 요청→검토→승인)은 ADR-0038 2단계에서 붙인다. 여기서는 최소한의 두 규칙만 둔다.
-APPROVED_LOCKED = "승인된 테스트는 수정·삭제할 수 없습니다"
-
-
-def _assert_run_not_approved(run: TestRun | None) -> None:
-    if run is not None and run.status == "approved":
-        raise HTTPException(status_code=409, detail=APPROVED_LOCKED)
-
-
-def _completed_by(db: Session, run_id: UUID) -> UUID | None:
-    """마지막으로 '완료'로 전이한 사람 — 이력에서 읽는다."""
-    h = (db.query(TestStatusHistory)
-         .filter(TestStatusHistory.test_run_id == run_id, TestStatusHistory.to_status == "completed")
-         .order_by(TestStatusHistory.changed_at.desc()).first())
-    return h.changed_by_id if h else None
-
-
-def _assert_not_self_approval(db: Session, run: TestRun, user_id: UUID) -> None:
-    """수행자(tester)·완료 처리자는 승인할 수 없다 — 자기 승인 금지(ADR-0038 §2.2)."""
-    if user_id in (run.tester_id, _completed_by(db, run.id)):
-        raise HTTPException(status_code=409,
-                            detail="테스트 수행자·완료 처리자는 승인할 수 없습니다 — 자기 승인 금지")
+# TestRun(/runs·/steps)은 폐지했다(2026-10-15, ADR-0032 §2.10) — 테스트는 평가 회차 활동(test)과
+# 샘플(activity_samples)로 기록한다(api/assessment). 운영 test_runs 0건이라 이관 없음.
+# 테이블(test_runs·test_steps·test_status_history)은 남겨 둔다 — 삭제는 별도 마이그레이션.
+# 이 라우터에는 통제 위험평가(RAWC)만 남는다 — RCM 상세 화면이 쓴다.
 
 
 @router.get("/info")
@@ -66,7 +28,7 @@ def get_module_info(user: CurrentUser) -> dict:
     return {
         "module": "test_module",
         "name_kr": "Test (평가)",
-        "phase_0_status": "Phase 1 풀 확장 완료",
+        "phase_0_status": "RAWC 만 — 테스트는 /api/assessment(내 평가)로 이전",
         "phase_1_features": [
             "RAWC 평가 (그룹 6)", "Test 워크플로 (그룹 7)",
             "4단계 워크플로 (planned→approved)", "상태 변경 이력",
@@ -164,209 +126,5 @@ def delete_rawc(rawc_id: UUID, user: User = Depends(require_write), db: Session 
     ).first()
     if not obj:
         raise HTTPException(status_code=404, detail="ControlRiskAssessment not found")
-    obj.is_deleted = True
-    db.commit()
-
-
-# ── TestRun — 정적 경로 먼저 ─────────────────────────────
-
-@router.get("/runs")
-def list_runs(
-    fiscal_year: int | None = None,
-    status_filter: str | None = None,
-    skip: int = 0,
-    limit: int = 100,
-    user: CurrentUser = None,
-    db: Session = Depends(get_db),
-) -> dict:
-    q = db.query(TestRun).filter(TestRun.is_deleted == False)  # noqa: E712
-    if fiscal_year:
-        q = q.filter(TestRun.fiscal_year == fiscal_year)
-    if status_filter:
-        q = q.filter(TestRun.status == status_filter)
-    total = q.count()
-    items = q.offset(skip).limit(limit).all()
-    ids = {i.tester_id for i in items if i.tester_id}
-    names = {u.id: u.display_name for u in db.query(User).filter(User.id.in_(ids)).all()} if ids else {}
-    out = []
-    for i in items:
-        r = TestRunRead.model_validate(i)
-        r.tester_name = names.get(i.tester_id)
-        out.append(r)
-    return {"items": out, "total": total, "skip": skip, "limit": limit}
-
-
-@router.post("/runs", status_code=status.HTTP_201_CREATED, response_model=TestRunRead)
-def create_run(body: TestRunCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> TestRun:
-    target = resolve_assertion_target(db, body.control_id)
-    if target is None:
-        raise HTTPException(status_code=404, detail="Control not found")
-    baseline_control_id, instance_control_id = target
-    data = body.model_dump()
-    # 평가자를 고르지 않으면 만든 사람이 평가자다 — 본인 승인 금지(13.9-94)가 평가자에게도 걸린다
-    data["tester_id"] = data.get("tester_id") or user.id
-    obj = TestRun(
-        **data,
-        status="planned",
-        baseline_control_id=baseline_control_id,
-        instance_control_id=instance_control_id,
-    )
-    db.add(obj)
-    db.flush()
-    # 생성 시 자동 이력 1건 (from_status=None → "planned")
-    history = TestStatusHistory(
-        test_run_id=obj.id,
-        from_status=None,
-        to_status="planned",
-        changed_by_id=user.id,
-        reason="Initial creation",
-    )
-    db.add(history)
-    db.commit()
-    db.refresh(obj)
-    return obj
-
-
-@router.get("/runs/{run_id}/history")
-def get_run_history(run_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
-    """상태 변경 이력 조회 — 조회 전용, 삭제·수정 불가 (ICFR 무결성)."""
-    run = db.query(TestRun).filter(TestRun.id == run_id, TestRun.is_deleted == False).first()  # noqa: E712
-    if not run:
-        raise HTTPException(status_code=404, detail="TestRun not found")
-    items = (
-        db.query(TestStatusHistory)
-        .filter(TestStatusHistory.test_run_id == run_id)
-        .order_by(TestStatusHistory.changed_at.asc())
-        .all()
-    )
-    return {"items": [TestStatusHistoryRead.model_validate(i) for i in items]}
-
-
-@router.post("/runs/{run_id}/transition")
-def transition_test_run(
-    run_id: UUID,
-    body: TransitionRequest,
-    user: User = Depends(require_write),
-    db: Session = Depends(get_db),
-) -> dict:
-    """워크플로 전이 — 단일 함수, 하드코딩 dict. WorkflowEngine 금지 (ADR-0020)."""
-    run = db.query(TestRun).filter(TestRun.id == run_id, TestRun.is_deleted == False).first()  # noqa: E712
-    if not run:
-        raise HTTPException(status_code=404, detail="TestRun not found")
-
-    current = run.status
-    target = body.to_status
-
-    if target not in ALLOWED_TRANSITIONS.get(current, set()):
-        raise HTTPException(
-            status_code=422,
-            detail=f"'{current}' → '{target}' 전이는 허용되지 않습니다",
-        )
-    if target == "approved":
-        _assert_not_self_approval(db, run, user.id)
-
-    history = TestStatusHistory(
-        test_run_id=run.id,
-        from_status=current,
-        to_status=target,
-        changed_by_id=user.id,
-        reason=body.reason,
-    )
-    db.add(history)
-
-    run.status = target
-    if target == "approved":
-        run.approved_by_id = user.id
-        run.approved_at = datetime.now(UTC)
-
-    db.commit()
-    db.refresh(run)
-    db.refresh(history)
-    return {
-        "test_run": TestRunRead.model_validate(run),
-        "history_entry": TestStatusHistoryRead.model_validate(history),
-    }
-
-
-@router.get("/runs/{run_id}", response_model=TestRunRead)
-def get_run(run_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> TestRun:
-    obj = db.query(TestRun).filter(TestRun.id == run_id, TestRun.is_deleted == False).first()  # noqa: E712
-    if not obj:
-        raise HTTPException(status_code=404, detail="TestRun not found")
-    return obj
-
-
-@router.patch("/runs/{run_id}", response_model=TestRunRead)
-def update_run(run_id: UUID, body: TestRunUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> TestRun:
-    obj = db.query(TestRun).filter(TestRun.id == run_id, TestRun.is_deleted == False).first()  # noqa: E712
-    if not obj:
-        raise HTTPException(status_code=404, detail="TestRun not found")
-    _assert_run_not_approved(obj)
-    for f, v in body.model_dump(exclude_none=True).items():
-        setattr(obj, f, v)
-    db.commit()
-    db.refresh(obj)
-    return obj
-
-
-@router.delete("/runs/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_run(run_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
-    obj = db.query(TestRun).filter(TestRun.id == run_id, TestRun.is_deleted == False).first()  # noqa: E712
-    if not obj:
-        raise HTTPException(status_code=404, detail="TestRun not found")
-    _assert_run_not_approved(obj)
-    obj.is_deleted = True
-    db.commit()
-
-
-# ── Test Steps ────────────────────────────────────────────
-
-@router.get("/steps")
-def list_steps(run_id: UUID | None = None, skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
-    q = db.query(TestStep).filter(TestStep.is_deleted == False)  # noqa: E712
-    if run_id:
-        q = q.filter(TestStep.test_run_id == run_id)
-    total = q.count()
-    items = q.offset(skip).limit(limit).all()
-    return {"items": [TestStepRead.model_validate(i) for i in items], "total": total, "skip": skip, "limit": limit}
-
-
-@router.post("/steps", status_code=status.HTTP_201_CREATED, response_model=TestStepRead)
-def create_step(body: TestStepCreate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> TestStep:
-    _assert_run_not_approved(db.get(TestRun, body.test_run_id))
-    obj = TestStep(**body.model_dump())
-    db.add(obj)
-    db.commit()
-    db.refresh(obj)
-    return obj
-
-
-@router.get("/steps/{step_id}", response_model=TestStepRead)
-def get_step(step_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> TestStep:
-    obj = db.query(TestStep).filter(TestStep.id == step_id, TestStep.is_deleted == False).first()  # noqa: E712
-    if not obj:
-        raise HTTPException(status_code=404, detail="TestStep not found")
-    return obj
-
-
-@router.patch("/steps/{step_id}", response_model=TestStepRead)
-def update_step(step_id: UUID, body: TestStepUpdate, user: User = Depends(require_write), db: Session = Depends(get_db)) -> TestStep:
-    obj = db.query(TestStep).filter(TestStep.id == step_id, TestStep.is_deleted == False).first()  # noqa: E712
-    if not obj:
-        raise HTTPException(status_code=404, detail="TestStep not found")
-    _assert_run_not_approved(db.get(TestRun, obj.test_run_id))
-    for f, v in body.model_dump(exclude_none=True).items():
-        setattr(obj, f, v)
-    db.commit()
-    db.refresh(obj)
-    return obj
-
-
-@router.delete("/steps/{step_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_step(step_id: UUID, user: User = Depends(require_write), db: Session = Depends(get_db)) -> None:
-    obj = db.query(TestStep).filter(TestStep.id == step_id, TestStep.is_deleted == False).first()  # noqa: E712
-    if not obj:
-        raise HTTPException(status_code=404, detail="TestStep not found")
-    _assert_run_not_approved(db.get(TestRun, obj.test_run_id))
     obj.is_deleted = True
     db.commit()

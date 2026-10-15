@@ -32,13 +32,12 @@ from app.models.evidence import EvidenceFile
 from app.models.role_assignment import ROLE_CONTROL_OWNER
 from app.models.user import User
 from app.services import control_resolver as cr
+from app.services import sampling
 from app.services.role_resolver import _assignments_by_target, resolve_roles_for_control
 
 HEADERS = ("샘플수", "프로세스번호", "프로세스이름", "하위프로세스번호", "하위프로세스이름", "위험번호", "담당자",
            "위험내용", "통제활동이름", "통제현황(WTT의 summary 수준)", "통제현황(기존프로세스)")
 WIDTHS = (8, 12, 16, 16, 18, 14, 10, 40, 24, 50, 30)
-# 통제 주기 → 권장 표본 수(실무 관행의 하한). 엑셀에서 고쳐 쓴다
-SAMPLE_BY_FREQUENCY = {"A": 1, "Q": 2, "M": 2, "W": 5, "D": 20, "O": 25}
 RESULT_LABELS = {"pass": "적정", "fail": "미흡", "na": "해당 없음"}
 MAX_IMAGE_WIDTH = 760       # px — A~J 열 폭 안에 들어오게
 ROW_PX = 20                 # 기본 행 높이(15pt)
@@ -154,7 +153,7 @@ def build(db: Session, cycle: AssessmentCycle, *, owner_id: UUID | None = None,
         sp = subp.get(c.get("sub_process_code")) or {}
         p = proc.get(c.get("process_code")) or {}
         rk = risk.get(c.get("risk_id")) or {}
-        values = (SAMPLE_BY_FREQUENCY.get(c.get("frequency") or "", None), c.get("process_code"), p.get("name"),
+        values = (sampling.required_samples(cycle.kind, c), c.get("process_code"), p.get("name"),
                   c.get("sub_process_code"), sp.get("name"), rk.get("code"), c.get("owner_name"),
                   rk.get("description"), c.get("name"), c.get("description"), None)
         for col, (h, v) in enumerate(zip(HEADERS, values, strict=True), start=1):

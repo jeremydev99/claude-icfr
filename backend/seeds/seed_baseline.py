@@ -108,6 +108,7 @@ _CONTROL_FIELDS = [
     "activity_approval", "activity_verification", "activity_physical",
     "activity_master_data", "activity_reconciliation", "activity_supervision",
     "related_accounts", "frequency", "ipe_relevant", "related_systems", "euc_description",
+    "test_methods", "population", "sample_size", "test_procedure",
 ]
 
 

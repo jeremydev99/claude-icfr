@@ -9,10 +9,22 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.deps import CurrentUser, get_db
-from app.core.permissions import require_icfr_manager, require_write, tenant_roles
+from app.core.permissions import require_write, tenant_roles
 from app.minio_client import build_evidence_key, get_object_stream, upload_object
-from app.models.assessment import CYCLE_OPEN, AssessmentCycle
-from app.models.evidence import LINK_TARGET_CONTROL, LINK_TARGET_TYPES, EvidenceFile, EvidenceLink
+from app.models.assessment import (
+    ACTIVITY_DRAFT,
+    CYCLE_OPEN,
+    ActivitySample,
+    AssessmentActivity,
+    AssessmentCycle,
+)
+from app.models.evidence import (
+    LINK_TARGET_CONTROL,
+    LINK_TARGET_SAMPLE,
+    LINK_TARGET_TYPES,
+    EvidenceFile,
+    EvidenceLink,
+)
 from app.models.role_assignment import (
     POLICY_EVIDENCE_EDIT_ENABLED,
     POLICY_EVIDENCE_MAX_BYTES,
@@ -146,6 +158,43 @@ def _assert_can_edit_evidence(db: Session, user: User, cycle_id: UUID,
         )
 
 
+def _sample_activity(db: Session, sample_id: UUID) -> tuple[ActivitySample, AssessmentActivity]:
+    smp = db.query(ActivitySample).filter(ActivitySample.id == sample_id,
+                                          ActivitySample.is_deleted == False).first()  # noqa: E712
+    act = db.query(AssessmentActivity).filter(AssessmentActivity.id == smp.activity_id,
+                                              AssessmentActivity.is_deleted == False).first() if smp else None  # noqa: E712
+    if smp is None or act is None:
+        raise HTTPException(status_code=404, detail="연결할 테스트 샘플이 없습니다")
+    return smp, act
+
+
+def _assert_sample_linkable(db: Session, user: User, sample_id: UUID, cycle_id: UUID | None,
+                            control_id: UUID | None) -> None:
+    """증빙 ↔ 샘플 연결·해제 (2026-10-15) — 업로드 판정(`_assert_can_edit_evidence`)에 더해
+    ① 같은 회차 × 통제의 샘플 ② 작성 중 기록 ③ 그 기록을 쓴 본인. 제출된 기록의 근거는 바꿀 수 없다."""
+    _smp, act = _sample_activity(db, sample_id)
+    if act.cycle_id != cycle_id or act.control_id != control_id:
+        raise HTTPException(status_code=409, detail="다른 회차·통제의 샘플에는 연결할 수 없습니다")
+    if act.status != ACTIVITY_DRAFT:
+        raise HTTPException(status_code=409, detail="제출된 테스트의 증빙 연결은 바꿀 수 없습니다")
+    if act.performed_by_id != user.id:
+        raise HTTPException(status_code=403, detail="테스트를 작성한 통제책임자 본인만 샘플 증빙을 연결할 수 있습니다")
+
+
+def _submitted_sample_link(db: Session, file_id: UUID) -> bool:
+    """이 파일이 **제출된** 테스트 샘플의 근거인가 — 그렇다면 지울 수 없다."""
+    ids = [lk.linked_entity_id for lk in db.query(EvidenceLink).filter(
+        EvidenceLink.file_id == file_id, EvidenceLink.linked_entity_type == LINK_TARGET_SAMPLE,
+        EvidenceLink.is_deleted == False).all()]  # noqa: E712
+    if not ids:
+        return False
+    act_ids = {s.activity_id for s in db.query(ActivitySample).filter(
+        ActivitySample.id.in_([UUID(i) for i in ids])).all()}
+    return db.query(AssessmentActivity).filter(AssessmentActivity.id.in_(act_ids),
+                                               AssessmentActivity.status != ACTIVITY_DRAFT,
+                                               AssessmentActivity.is_deleted == False).count() > 0  # noqa: E712
+
+
 def _assert_can_edit_file(db: Session, user: User, obj: EvidenceFile) -> None:
     """기존 증빙 파일 수정·삭제 판정.
 
@@ -184,6 +233,7 @@ async def create_file(
     file: UploadFile = File(...),
     title: str | None = Form(default=None),
     note: str | None = Form(default=None),
+    sample_id: UUID | None = Form(default=None),
     user: User = Depends(require_write),
     db: Session = Depends(get_db),
 ) -> EvidenceFile:
@@ -196,8 +246,11 @@ async def create_file(
     핸들러가 담당한다.
 
     권한은 §2.5 — 회차 상태와 통제 단위 역할 양쪽을 본다.
+    `sample_id` 를 주면 그 테스트 샘플의 근거로 바로 연결한다(2026-10-15, 작성 중 기록·본인만).
     """
     _assert_can_edit_evidence(db, user, cycle_id, control_id)
+    if sample_id is not None:
+        _assert_sample_linkable(db, user, sample_id, cycle_id, control_id)
 
     data = await file.read()
 
@@ -228,6 +281,8 @@ async def create_file(
 
     # 경로는 build_evidence_key 만 만든다. tenant_id 는 그 함수가 컨텍스트에서 가져온다
     obj.minio_key = build_evidence_key(cycle_id, control_id, obj.id)
+    if sample_id is not None:
+        db.add(EvidenceLink(file_id=obj.id, linked_entity_type=LINK_TARGET_SAMPLE, linked_entity_id=str(sample_id)))
     upload_object(obj.minio_key, data, content_type)
 
     db.commit()
@@ -303,6 +358,8 @@ def delete_file(file_id: UUID, reason: str | None = None,
     if not obj:
         raise HTTPException(status_code=404, detail="EvidenceFile not found")
     _assert_can_edit_file(db, user, obj)
+    if _submitted_sample_link(db, obj.id):
+        raise HTTPException(status_code=409, detail="제출된 테스트 샘플의 증빙은 지울 수 없습니다")
     obj.is_deleted = True
     obj.deleted_by_id = user.id
     obj.deleted_at_ts = datetime.now(UTC)
@@ -350,13 +407,13 @@ def list_links(file_id: UUID | None = None, skip: int = 0, limit: int = 100, use
 
 
 @router.post("/links", status_code=status.HTTP_201_CREATED, response_model=EvidenceLinkRead)
-def create_link(body: EvidenceLinkCreate, user: User = Depends(require_icfr_manager),
+def create_link(body: EvidenceLinkCreate, user: User = Depends(require_write),
                 db: Session = Depends(get_db)) -> EvidenceLink:
-    """증빙 연결 생성 — **`icfr_manager` 전용**(13.9-48).
+    """증빙 연결 생성 — 통제 연결은 **`icfr_manager` 전용**(13.9-48), 테스트 샘플 연결은
+    업로드 판정 + 작성 중 기록의 본인(2026-10-15, `_assert_sample_linkable`).
 
-    쓰는 곳이 없는 경로라 통제책임자·평가자 판정을 따로 두지 않는다. 실제 용도가 생기면
-    업로드 판정과 함께 정한다. 검증 순서: 대상 종류(422) → 파일(404, 자기 회사·미삭제)
-    → 대상 존재(404) → 파일이 회차 × 통제에 붙어 있으면 업로드와 같은 회차 판정.
+    검증 순서: 대상 종류(422) → 파일(404, 자기 회사·미삭제) → 권한 → 대상 존재(404)
+    → 파일이 회차 × 통제에 붙어 있으면 업로드와 같은 회차 판정.
     """
     if body.linked_entity_type not in LINK_TARGET_TYPES:
         raise HTTPException(status_code=422,
@@ -368,6 +425,20 @@ def create_link(body: EvidenceLinkCreate, user: User = Depends(require_icfr_mana
                                       EvidenceFile.is_deleted == False).first()  # noqa: E712
     if f is None:
         raise HTTPException(status_code=404, detail="EvidenceFile not found")
+    if body.linked_entity_type == LINK_TARGET_SAMPLE:
+        try:
+            sid = UUID(body.linked_entity_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="연결할 테스트 샘플이 없습니다") from None
+        _assert_sample_linkable(db, user, sid, f.cycle_id, f.control_id)
+        dup = db.query(EvidenceLink).filter(EvidenceLink.file_id == f.id,
+                                            EvidenceLink.linked_entity_type == LINK_TARGET_SAMPLE,
+                                            EvidenceLink.linked_entity_id == str(sid),
+                                            EvidenceLink.is_deleted == False).first()  # noqa: E712
+        if dup is not None:
+            return dup
+    elif ROLE_ICFR_MANAGER not in tenant_roles(db, user.id):
+        raise HTTPException(status_code=403, detail="내부회계관리자 권한이 필요합니다")
     if body.linked_entity_type == LINK_TARGET_CONTROL:
         ids = {str(c["id"]) for c in resolve_controls(db)}
         if body.linked_entity_id not in ids:
@@ -383,13 +454,19 @@ def create_link(body: EvidenceLinkCreate, user: User = Depends(require_icfr_mana
 
 
 @router.delete("/links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_link(link_id: UUID, user: User = Depends(require_icfr_manager),
+def delete_link(link_id: UUID, user: User = Depends(require_write),
                 db: Session = Depends(get_db)) -> None:
-    """증빙 연결 삭제 — `icfr_manager` 전용. **소프트 삭제 + 누가·언제**(13.9-48). 사유 칸은 별건."""
+    """증빙 연결 삭제 — 통제 연결은 `icfr_manager` 전용, 샘플 연결은 작성 중 기록의 본인.
+    **소프트 삭제 + 누가·언제**(13.9-48). 사유 칸은 별건."""
     obj = db.query(EvidenceLink).filter(EvidenceLink.id == link_id, EvidenceLink.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="EvidenceLink not found")
     f = db.query(EvidenceFile).filter(EvidenceFile.id == obj.file_id).first()
+    if obj.linked_entity_type == LINK_TARGET_SAMPLE:
+        _assert_sample_linkable(db, user, UUID(obj.linked_entity_id), f.cycle_id if f else None,
+                                f.control_id if f else None)
+    elif ROLE_ICFR_MANAGER not in tenant_roles(db, user.id):
+        raise HTTPException(status_code=403, detail="내부회계관리자 권한이 필요합니다")
     if f is not None and f.cycle_id and f.control_id:
         _assert_can_edit_evidence(db, user, f.cycle_id, f.control_id)
     obj.is_deleted = True  # deleted_by·deleted_at 은 before_flush 가 찍는다(ADR-0036)

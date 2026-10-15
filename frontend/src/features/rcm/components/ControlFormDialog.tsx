@@ -64,6 +64,12 @@ export const controlFormSchema = z.object({
   related_accounts: z.string().nullable().optional(),
   related_systems: z.string().nullable().optional(),
   euc_description: z.string().nullable().optional(),
+  // 테스트 방법(2026-10-15) — 표본수는 1 이상 정수, 비우면 수행 주기 기준표를 쓴다
+  test_methods: z.string().nullable().optional(),
+  population: z.string().nullable().optional(),
+  sample_size: z.union([z.string(), z.number()]).nullable().optional()
+    .refine((v) => v === null || v === undefined || v === '' || /^[1-9]\d{0,2}$/.test(String(v)), '표본수는 1~999 정수'),
+  test_procedure: z.string().nullable().optional(),
 })
 
 export type ControlFormData = z.infer<typeof controlFormSchema>
@@ -94,6 +100,10 @@ const DEFAULT_VALUES: ControlFormData = {
   related_accounts: '',
   related_systems: '',
   euc_description: '',
+  test_methods: null,
+  population: '',
+  sample_size: '',
+  test_procedure: '',
 }
 
 const FIELD_TAB_MAP: Record<string, string> = {
@@ -106,6 +116,7 @@ const FIELD_TAB_MAP: Record<string, string> = {
   activity_physical: 'activity', activity_master_data: 'activity',
   activity_reconciliation: 'activity', activity_supervision: 'activity',
   related_accounts: 'related', related_systems: 'related', euc_description: 'related',
+  test_methods: 'related', population: 'related', sample_size: 'related', test_procedure: 'related',
 }
 
 const TAB_ORDER = ['basic', 'classification', 'activity', 'related']
@@ -168,6 +179,10 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
         related_accounts: control.related_accounts ?? '',
         related_systems: control.related_systems ?? '',
         euc_description: control.euc_description ?? '',
+        test_methods: control.test_methods ?? null,
+        population: control.population ?? '',
+        sample_size: control.sample_size ?? '',
+        test_procedure: control.test_procedure ?? '',
         // 내 임시저장(또는 반려된 변경)이 있으면 그 값으로 이어서 고친다
         ...(change && change.is_mine && ['draft', 'rejected'].includes(change.status)
           ? Object.fromEntries(Object.entries(change.changes).map(([k, v]) => [k, v ?? '']))
@@ -215,6 +230,10 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
           related_accounts: data.related_accounts || null,
           related_systems: data.related_systems || null,
           euc_description: data.euc_description || null,
+          test_methods: data.test_methods || null,
+          population: data.population || null,
+          sample_size: data.sample_size === '' || data.sample_size == null ? null : Number(data.sample_size),
+          test_procedure: data.test_procedure || null,
         }
         const saved = await createMutation.mutateAsync(payload)
         toast.success('통제가 추가되었습니다')
@@ -240,6 +259,10 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
           related_accounts: data.related_accounts || null,
           related_systems: data.related_systems || null,
           euc_description: data.euc_description || null,
+          test_methods: data.test_methods || null,
+          population: data.population || null,
+          sample_size: data.sample_size === '' || data.sample_size == null ? null : Number(data.sample_size),
+          test_procedure: data.test_procedure || null,
         }
         if (action === 'direct') {
           const saved = await updateMutation.mutateAsync({ id: control.id, payload })

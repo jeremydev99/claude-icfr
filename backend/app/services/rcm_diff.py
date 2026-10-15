@@ -18,6 +18,7 @@ FIELD_LABELS = {
     "activity_master_data": "활동: 마스터데이터", "activity_reconciliation": "활동: 대사", "activity_supervision": "활동: 감독",
     "related_accounts": "관련 계정", "frequency": "수행 주기", "assessment_frequency": "평가 주기",
     "ipe_relevant": "IPE 관련", "related_systems": "관련 시스템", "euc_description": "EUC",
+    "test_methods": "테스트 방법", "population": "모집단", "sample_size": "표본수", "test_procedure": "테스트 절차",
     "risk": "위험", "risk_level": "위험 수준", "sub_process_code": "하위프로세스", "process_code": "프로세스",
     "assertions": "어서션", "assessment_level": "평가 수준", "process": "프로세스", "sub_process": "하위프로세스",
 }
@@ -64,7 +65,12 @@ def _normalize(snapshot: dict) -> dict[str, dict[str, dict]]:
     return out
 
 
+TEST_METHOD_LABELS = {"inquiry": "질문", "observation": "관찰", "inspection": "문서검사", "reperformance": "재수행"}
+
+
 def _fmt(v, field: str | None = None):
+    if field == "test_methods" and isinstance(v, str):
+        return ", ".join(TEST_METHOD_LABELS.get(m, m) for m in v.split(","))
     labels = VALUE_LABELS.get(field or "")
     if labels and not isinstance(v, list) and v in labels:
         return labels[v]

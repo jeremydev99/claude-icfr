@@ -20,6 +20,8 @@ CONTROL_FIELDS = (
     "activity_approval", "activity_verification", "activity_physical",
     "activity_master_data", "activity_reconciliation", "activity_supervision",
     "related_accounts", "frequency", "ipe_relevant", "related_systems", "euc_description",
+    # 테스트 방법 영역(2026-10-15) — 엑셀에 그 헤더가 있을 때만 파서가 키를 넣는다. 없으면 비교하지 않는다
+    "test_methods", "population", "sample_size", "test_procedure",
 )
 LAYER_LABEL = rcm_diff.LAYER_LABELS
 
@@ -108,12 +110,12 @@ def plan(live: dict, parsed, known_assertions: set[str]) -> dict:
         want = sorted(set(c.get("assertions") or []) & known_assertions)
         row = by_code["controls"].get(code)
         if row is None:
-            data = {f: c.get(f) for f in CONTROL_FIELDS}
+            data = {f: c.get(f) for f in CONTROL_FIELDS if f in c}
             add("controls", code, {**data, "risk_id": parent_id("risks", c["risk_code"]), "assertions": want},
                 parent_code=c["risk_code"])
             continue
         check_parent("controls", row, "risks", "risk_id", c["risk_code"])
-        update("controls", row, {f: c.get(f) for f in CONTROL_FIELDS if not _same(row.get(f), c.get(f))})
+        update("controls", row, {f: c[f] for f in CONTROL_FIELDS if f in c and not _same(row.get(f), c[f])})
         have = sorted(row.get("assertions") or [])
         if have != want:
             row["assertions"] = want

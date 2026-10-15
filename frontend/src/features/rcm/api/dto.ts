@@ -34,6 +34,11 @@ export interface ControlDto {
   related_accounts: string | null
   related_systems: string | null
   euc_description: string | null
+  // 테스트 방법(2026-10-15) — 표본수는 감사인 협의 값(운영평가 필요 샘플 수)
+  test_methods?: string | null
+  population?: string | null
+  sample_size?: number | null
+  test_procedure?: string | null
   assertions: AssertionCode[] | null
   process_code: string | null
   sub_process_code: string | null

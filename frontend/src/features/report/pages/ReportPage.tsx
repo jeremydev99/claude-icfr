@@ -10,7 +10,8 @@ import { useFiscal } from '@/lib/useFiscal'
 import { fyLabel } from '@/lib/fiscalYear'
 import { useScopingMeta, useScopingSummary } from '@/features/scoping/api/useScoping'
 import { useRcmSummary } from '@/features/dashboard/api/useRcmSummary'
-import { useTestRuns } from '@/features/test/api/useTestRuns'
+import { useTestRecords } from '@/features/my-assessment/api'
+import { useCycles } from '@/features/schedule/api/useSchedule'
 import { useDeficiencies } from '@/features/remediation/api/useDeficiencies'
 import { usePlans } from '@/features/remediation/api/useRemediationPlans'
 import { useEvidenceFiles } from '@/features/evidence/api/useEvidence'
@@ -78,19 +79,20 @@ export default function ReportPage() {
   const scoping = useScopingSummary()
   const { data: scopingMeta } = useScopingMeta()
   const rcm = useRcmSummary()
-  const tests = useTestRuns(ALL)
+  const cycles = useCycles()
+  const tests = useTestRecords(cycles.data)
   const defs = useDeficiencies(ALL)
   const plans = usePlans(ALL)
   const evidence = useEvidenceFiles({ limit: 1 })
   const statements = useFsStatements()
 
-  const loading = [scoping, rcm, tests, defs, plans, evidence, statements].some((q) => q.isLoading)
-  const failed = [scoping, rcm, tests, defs, plans, evidence, statements].filter((q) => q.isError).length
+  const loading = [scoping, rcm, cycles, tests, defs, plans, evidence, statements].some((q) => q.isLoading)
+  const failed = [scoping, rcm, cycles, tests, defs, plans, evidence, statements].filter((q) => q.isError).length
 
   const facts = useMemo(() => computeFacts({
     scoping: scoping.data,
     rcm: rcm.data,
-    testRuns: tests.data?.items,
+    testRuns: tests.data,
     deficiencies: defs.data?.items,
     plans: plans.data?.items,
     evidenceTotal: evidence.data?.total,

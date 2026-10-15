@@ -127,6 +127,12 @@ def _test_step(db, oid, p):
     return _by_control("테스트 단계", "app.models.test_module.TestRun")(db, o.test_run_id, p) if o else None
 
 
+def _sample(db, oid, p):
+    from app.models.assessment import ActivitySample
+    o = _get(db, ActivitySample, oid)
+    return _by_control(f"테스트 샘플 {o.seq}", "app.models.assessment.AssessmentActivity")(db, o.activity_id, p) if o else None
+
+
 def _deficiency(db, oid, _p):
     from app.models.remediation import Deficiency
     o = _get(db, Deficiency, oid)
@@ -241,6 +247,7 @@ RESOLVERS: dict[str, Callable] = {
     "rawc": _by_control("통제 위험평가", "app.models.test_module.ControlRiskAssessment"),
     "test_run": _by_control("테스트", "app.models.test_module.TestRun"),
     "test_step": _test_step,
+    "sample": _sample,
     "control_link": _control_link,
     "invitation": _invitation,
     "external_profile": _external_profile,

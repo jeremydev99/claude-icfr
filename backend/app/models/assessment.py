@@ -27,6 +27,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -67,6 +68,17 @@ ACTIVITY_RULES = {
     ACTIVITY_TEST: ("control_owner", CYCLE_OPERATION),
     ACTIVITY_OPERATION_ASSESSMENT: ("assessor", CYCLE_OPERATION),
 }
+
+# ── 활동 작성·제출 (ADR-0032 §2.10, 2026-10-15) ───────────────────
+# 샘플을 붙이는 활동(설계·테스트)은 작성 중(draft)으로 시작해 필요 샘플을 다 채우고 제출(submitted)한다.
+# 제출하면 고칠 수 없다 — 다시 하려면 새 활동(재수행). 승인·마감 미완 판정은 제출된 것만 본다.
+# 샘플이 없는 활동(설계평가·운영평가 등)은 지금처럼 기록 즉시 제출이다.
+ACTIVITY_DRAFT = "draft"
+ACTIVITY_SUBMITTED = "submitted"
+SAMPLE_ACTIVITY_KINDS = (ACTIVITY_DESIGN, ACTIVITY_TEST)
+
+# 샘플·활동 결과 — 엑셀 내보내기 RESULT_LABELS 와 같은 값
+SAMPLE_RESULTS = ("pass", "fail", "na")
 
 # ── 승인 단계 (§2.5) ─────────────────────────────────────────────
 APPROVAL_DEPT = "dept"            # 부서승인 — 정책 토글·스킵 대상
@@ -172,6 +184,41 @@ class AssessmentActivity(AuditedBase):
 
     performed_by: Mapped["User"] = relationship(  # noqa: F821
         "User", foreign_keys=[performed_by_id])
+
+    # ── 작성·제출 (§2.10) — 기존 행은 'submitted'(지금까지 기록 즉시 확정이었다)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default=ACTIVITY_SUBMITTED,
+                                        server_default=ACTIVITY_SUBMITTED, index=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 제출 시점의 필요 샘플 수 — RCM 표본수가 나중에 바뀌어도 "그때 몇 건이 필요했나"가 남는다
+    required_samples: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 테스트 방법·모집단·절차 — 작성 시 RCM 값으로 채우고 담당자가 고칠 수 있다(TestRun 대체)
+    test_methods: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    population: Mapped[str | None] = mapped_column(Text, nullable=True)
+    procedure: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ActivitySample(AuditedBase):
+    """활동의 샘플 한 줄 — 설계평가 1건, 운영평가는 RCM 표본수만큼(services/sampling).
+
+    증빙은 `evidence_links`(linked_entity_type='sample', linked_entity_id=이 id)로 잇는다.
+    파일 자체는 지금처럼 회차 × 통제에 붙어 있어 회차 증빙 목록·엑셀 내보내기가 그대로 동작한다.
+    """
+    __tablename__ = "activity_samples"
+    __table_args__ = (
+        UniqueConstraint("id", "tenant_id", name="uq_activity_samples_id_tenant"),
+        ForeignKeyConstraint(
+            ["activity_id", "tenant_id"],
+            ["assessment_activities.id", "assessment_activities.tenant_id"],
+            name="fk_activity_samples_activity_tenant",
+        ),
+    )
+
+    activity_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    label: Mapped[str | None] = mapped_column(String(200), nullable=True)   # 전표번호·일자 등 샘플 식별
+    sampled_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    result: Mapped[str | None] = mapped_column(String(10), nullable=True)    # SAMPLE_RESULTS
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ActivityApproval(AuditedBase):
