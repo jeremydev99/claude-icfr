@@ -172,3 +172,15 @@ jobs:
       # dangling 이미지만 정리. 볼륨·바인드마운트는 절대 건드리지 않는다.
       - name: Prune old images
         run: docker image prune -f
+
+      # 커밋 SHA 태그 이미지는 dangling 이 아니라 위 단계로 안 지워져 디스크가 찬다.
+      # 우리 이미지(IMAGE_PREFIX)만, 저장소별 최근 5개(롤백용)를 남기고 지운다.
+      # -f 없이 rmi 하므로 실행 중 컨테이너가 쓰는 이미지는 지워지지 않는다.
+      # 공개 이미지(postgres·minio)와 다른 스택(invoice-api) 이미지는 대상이 아니다(ADR-0043).
+      - name: Remove old SHA images (keep 5)
+        run: |
+          for repo in backend frontend; do
+            docker image ls "${IMAGE_PREFIX}/${repo}" --format '{{.CreatedAt}}\t{{.Repository}}:{{.Tag}}' \
+              | sort -r | tail -n +6 | cut -f2 \
+              | xargs -r docker rmi || true
+          done

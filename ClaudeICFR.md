@@ -2359,6 +2359,8 @@ HTTP 200
 126. **개선계획 등록 후 수정 화면 (2026-10-14, Regina 결정 — STEP 0 Q1~Q6 추천안, 13.9-112 제외분)** — 마이그레이션 없음. 서버 `PATCH /api/remediation/plans/{id}` 는 있었으나 화면에 수정이 없었고, 담당자 변경 불가·칸 비우기 불가(`exclude_none`)·검토자 의견 누구나 입력 가능이 빈틈. **변경**: `RemediationPlanUpdate` 에 `owner_id`, **보낸 칸만 반영(exclude_unset)** — 선택 칸(개선 내용·담당자 의견·검토자 의견)은 null/빈 문자열로 비움, 필수(담당자·목표일·개선 조치)는 비우면 422, 담당자는 활성 회사 사용자여야(422). **검토자 의견은 내부회계 관리자(1~3단계)만**(등록·수정 모두 403). 승인 후 잠금(409)은 종전. FE `RemediationPlanEditDialog`(모든 수정 항목, 바뀐 칸만 전송, 검토자 의견은 관리자만 활성) + 상세 시트 [수정] 버튼(쓰기 권한·승인 전). 변경 기록은 감사 로그("개선계획 수정 저장"). 테스트 `test_plan_edit_owner_clear_and_required`·`test_reviewer_opinion_only_by_icfr_staff`(전용 사용자), remediation 16 passed·eval_write_guard 포함 42 passed, FE vitest 193·build.
 127. **이번 판 수정자는 승인 불가 — 회계연도 RCM 작성자·승인자 분리 완성 (2026-10-14, Regina 결정 — STEP 0 Q1~Q5 추천안, 13.9-115 미채택분)** — 마이그레이션 `b8d0f2a4c6e8`(추가만: `approval_states.editor_ids` JSON nullable, `a7c9e1b3d5f6` 뒤). 문제: 13.9-115 는 엑셀만 열었고, 마스터가 바로 반영(통제 생성·수정·삭제·계층·어서션·엑셀)한 판을 그 마스터가 승인할 수 있었음. 감사 컬럼(`updated_by`)은 변경 결재 승인 마스터가 수정자로 잡혀 오탐 → 별도 기록. **변경**: `rcm.require_rcm_editable`(RCM 바로 반영 경로 공통 의존성) 통과 시 `rcm_approval.mark_editors` — 작성 중 최신 회계연도 RCM 의 `editor_ids` 에 더함(쓰기와 같은 트랜잭션 — 실패·잠금 409 면 남지 않음). 변경 결재 묶음 결재는 잠금만 보고(결재 마스터는 수정자 아님) 반영된 항목의 **신청자**를 수정자로. 승인(confirm 훅) 시 승인자가 수정자면 409 "이번 판 RCM 을 직접 수정한 사람은 승인할 수 없습니다", 스냅샷에 `editor_ids` 기록, 재오픈 시 비움. **경로 전환**: `DocHooks.adjust_path`(신설, 기본 없음) — 마스터 전원이 이번 판 수정자면 검토 요청 경로를 대표이사·이사회 승인 증빙(external)으로. `GET /api/rcm-years` 응답 `editors`(이름), 수정자 본인은 `can.approve=false`+사유. FE 결재 영역 아래 "이번 판 수정자: … — 이 판을 승인할 수 없습니다". 운영 v3(검토 중)은 기록 전 판이라 수정자 없음 — 전용남 승인 가능. 테스트 `test_reopen_bumps_version_and_keeps_old_snapshot`(마스터 수정 → 본인 409·다른 마스터 승인·스냅샷 editor_ids·재오픈 시 비움으로 갱신), `test_only_master_edited_goes_external`, `test_lock_rejection_does_not_mark_editor`, RCM 결재·엑셀·통제 변경 20 passed, FE vitest 193·build. **백엔드 전체 순차 2회**: 729 passed·18 skipped·실패 0 (24분 37초 / 24분 39초).
 
+128. **세금계산서 웹DB(invoice-api) 공존 (2026-10-15, 마스터 결정, ADR-0043)** — 코드·마이그레이션 없음. `infra/nginx/icfr.conf` 443 블록에 `include /etc/nginx/invoice-api/location*.conf;` 한 줄(글롭, 파일 없으면 무동작). invoice-api 의 컨테이너·설정·데이터는 ICFR 작업에서 건드리지 않는다. 서버 nginx 반영·운영 디스크 이미지 정리(루트 91%, ICFR SHA 태그 이미지 누적)는 승인 대기.
+
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
 
@@ -2368,6 +2370,7 @@ HTTP 200
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-10-15 / 마스터 + Claude** — **세금계산서 웹DB(invoice-api) 공존**: nginx include 한 줄 + ADR-0043 (13.9-128).
 - **2026-10-14 / Regina + Claude** — **이번 판 수정자는 승인 불가**(회계연도 RCM, 마이그레이션 `b8d0f2a4c6e8` 추가만, 13.9-127). 마스터만 고친 판은 대표이사·이사회 승인 증빙 경로로.
 - **2026-10-14 / Regina + Claude** — **개선계획 수정 화면**(담당자 변경·칸 비우기·검토자 의견은 관리자만, 마이그레이션 없음, 13.9-126).
 - **2026-10-14 / Regina + Claude** — **13.9-119 ②③ 정리**(마이그레이션 없음): 스코핑 "질적 평가 비어 있음" 경고를 판정 안 난 계정만 세도록(양적 Y·수동 판정·해당 없음 제외), RCM 엑셀 미리보기 응답에 `summary_text`("미리보기 — …") — 감사 로그 대상 표시. 테스트 `test_scoping_fs`(경고 없음 → 금액 비움 시 경고 → 해당 없음 시 사라짐)·`test_rcm_excel_sync` 보강. 운영평가 엑셀 내보내기(13.9-122) 운영 반영 기록 포함.
