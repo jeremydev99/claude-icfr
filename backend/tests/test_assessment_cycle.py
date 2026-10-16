@@ -99,6 +99,9 @@ def test_assessment_frequency_from_baseline_and_override(client: TestClient) -> 
     h = _headers(client)
     db, tok = _ctx()
     try:
+        # RCM 바로 반영은 내부회계관리자만 — 관리자가 0명일 때의 초기 예외에 기대지 않는다(다른 파일이 관리자를
+        # 먼저 만들면 403 이 나던 순서 의존, 13.9-132 에서 발견)
+        _grant_icfr_manager(db)
         _, ctrl = _control(db, "F1", freq="quarterly")
     finally:
         reset_active_tenant(tok)
