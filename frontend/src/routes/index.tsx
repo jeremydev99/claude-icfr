@@ -5,7 +5,7 @@ import AuthLayout from '@/layouts/AuthLayout'
 import AppLayout from '@/layouts/AppLayout'
 import PrivateRoute from './PrivateRoute'
 import RoleRoute from './RoleRoute'
-import { canViewAllForUser } from '@/features/auth/permissions.pure'
+import { canSeeAdminAreaForUser, canViewAllForUser, isIcfrManagerForUser } from '@/features/auth/permissions.pure'
 import LoginPage from '@/pages/LoginPage'
 import AccountSetupPage from '@/features/auth/pages/AccountSetupPage'
 import InvitePage from '@/features/auth/pages/InvitePage'
@@ -73,14 +73,14 @@ export const router = createBrowserRouter([
         path: 'evidence',
         element: <RoleRoute allow={canViewAllForUser} fallback="/my-assessment"><EvidencePage /></RoleRoute>,
       },
-      { path: 'users', element: <UsersPage /> },
-      { path: 'notification', element: <NotificationPage /> },
-      // 관리자 기능 — 화면 미구현(API 있음). 접근 제한은 서버가 최종 판정한다.
-      { path: 'admin/departments', element: <DepartmentsPage /> },
-      { path: 'admin/role-assignments', element: <RoleAssignmentsPage /> },
-      { path: 'admin/policies', element: <PoliciesPage /> },
-      { path: 'admin/fiscal-year', element: <FiscalYearPage /> },
-      { path: 'admin/audit-logs', element: <AuditLogsPage /> },
+      { path: 'users', element: <RoleRoute allow={canSeeAdminAreaForUser} fallback="/dashboard"><UsersPage /></RoleRoute> },
+      { path: 'notification', element: <RoleRoute allow={canSeeAdminAreaForUser} fallback="/dashboard"><NotificationPage /></RoleRoute> },
+      // 관리자 기능 — 메뉴와 같은 판정으로 주소 직접 접근도 막는다(2026-10-16). 최종 판정은 서버다
+      { path: 'admin/departments', element: <RoleRoute allow={canSeeAdminAreaForUser} fallback="/dashboard"><DepartmentsPage /></RoleRoute> },
+      { path: 'admin/role-assignments', element: <RoleRoute allow={isIcfrManagerForUser} fallback="/dashboard"><RoleAssignmentsPage /></RoleRoute> },
+      { path: 'admin/policies', element: <RoleRoute allow={isIcfrManagerForUser} fallback="/dashboard"><PoliciesPage /></RoleRoute> },
+      { path: 'admin/fiscal-year', element: <RoleRoute allow={canSeeAdminAreaForUser} fallback="/dashboard"><FiscalYearPage /></RoleRoute> },
+      { path: 'admin/audit-logs', element: <RoleRoute allow={isIcfrManagerForUser} fallback="/dashboard"><AuditLogsPage /></RoleRoute> },
       { path: 'proposals/:id', element: <ProposalPage /> },
       { path: '*', element: <Navigate to="/dashboard" replace /> },
     ],

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, HelpCircle, KeyRound, Lock, LogOut, Menu, ShieldCheck } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, HelpCircle, KeyRound, LogOut, Menu, ShieldCheck } from 'lucide-react'
 import { useAuthStore } from '@/features/auth/store'
-import { isIcfrManagerForUser, isNavHidden } from '@/features/auth/permissions.pure'
+import { isNavHidden } from '@/features/auth/permissions.pure'
 import { daysLeft, isPathAllowed } from '@/features/auth/externalScope.pure'
 import MfaDialog from '@/features/auth/mfa/MfaDialog'
 import { useLogout, useMe } from '@/features/auth/hooks/useAuth'
@@ -52,20 +52,11 @@ function currentTitle(pathname: string): string | null {
   return best?.label ?? null
 }
 
-/** 메뉴 한 줄. 권한이 없으면 **숨기지 않고 잠근다** — 숨기면 "그런 기능이 있는지"조차 모른다. */
-function NavRow({ item, locked, onNavigate }: { item: NavItem; locked: boolean; onNavigate?: () => void }) {
-  if (locked) {
-    return (
-      <div
-        className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2.5 text-[0.95rem] text-sidebar-muted/60"
-        title="내부회계관리자만 사용할 수 있습니다"
-      >
-        <item.icon className="h-5 w-5 flex-shrink-0" />
-        <span className="flex-1">{item.label}</span>
-        <Lock className="h-3 w-3 flex-shrink-0" />
-      </div>
-    )
-  }
+/**
+ * 메뉴 한 줄. 권한이 없는 메뉴는 여기 오기 전에 **감춘다**(`isNavHidden`, 2026-10-16 Regina) —
+ * 종전에는 자물쇠로 잠가 보였으나 일반 사용자가 헷갈리고 권한 구분이 드러나 불쾌할 수 있다.
+ */
+function NavRow({ item, onNavigate }: { item: NavItem; onNavigate?: () => void }) {
   return (
     <NavLink
       to={item.path}
@@ -122,10 +113,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     .filter((g) => g.items.length > 0)
   const left = daysLeft(user)
 
-  // **`can_write` 가 아니라 `tenant_roles` 로 본다** — can_write 는 external_auditor 판정이고
-  // icfr_manager 판정이 아니다. 섞으면 메뉴는 열리는데 서버가 403 을 낸다.
-  const isIcfrManager = isIcfrManagerForUser(user)
-  const isLocked = (item: NavItem) => Boolean(item.requiresIcfrManager) && !isIcfrManager
 
   const groupLabels = navigation
     .map((g) => g.groupLabel)
@@ -190,7 +177,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           group.groupLabel === null ? (
             <div key={idx} className="mb-3">
               {group.items.map((item) => (
-                <NavRow key={item.path} item={item} locked={isLocked(item)} onNavigate={onNavigate} />
+                <NavRow key={item.path} item={item} onNavigate={onNavigate} />
               ))}
             </div>
           ) : (
@@ -210,7 +197,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               {expandedGroups[group.groupLabel] && (
                 <div className="space-y-0.5">
                   {group.items.map((item) => (
-                    <NavRow key={item.path} item={item} locked={isLocked(item)} onNavigate={onNavigate} />
+                    <NavRow key={item.path} item={item} onNavigate={onNavigate} />
                   ))}
                 </div>
               )}

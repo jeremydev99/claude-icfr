@@ -45,7 +45,7 @@ export interface NavItem {
   /** 대시보드 카드 배지. 대시보드(자기 자신)에는 없다. */
   status?: ModuleStatus
   /**
-   * `icfr_manager` 만 쓸 수 있는 메뉴 (ADR-0031 §2.6).
+   * `icfr_manager` 만 쓸 수 있는 메뉴 (ADR-0031 §2.6). 아니면 **감춘다**(2026-10-16, `isNavHidden`).
    *
    * **`can_write` 로 막지 않는다** — `can_write` 는 `external_auditor` 판정이지
    * `icfr_manager` 판정이 아니다(`features/auth/permissions.pure.ts` 참조).
@@ -53,6 +53,8 @@ export interface NavItem {
   requiresIcfrManager?: boolean
   /** 내부회계 관리자 1~3단계·감사인·외부자문만(`canViewAllForUser`) — 그 외에는 메뉴를 **감춘다**(자물쇠 아님, `isNavHidden`) */
   requiresFullViewer?: boolean
+  /** 관리자 영역 — 제도 관리자·감사인·외부자문·시스템관리자만 본다. 일반 사용자(통제책임자 등)에게는 감춘다 */
+  adminArea?: boolean
 }
 
 export interface NavGroup {
@@ -175,8 +177,9 @@ export const navigation: NavGroup[] = [
         icon: Building2,
         description: '부서 등록·소속 인원·책임자 지정',
         status: 'ready',
-        // **`requiresIcfrManager` 를 붙이지 않는다** — 조회는 누구나 할 수 있고(서버도 인증만),
-        // 조직도를 보는 것 자체는 막을 이유가 없다. 화면 안에서 쓰기 버튼만 잠근다.
+        // **`requiresIcfrManager` 를 붙이지 않는다** — 조회는 관리자 영역 누구나(서버도 인증만), 쓰기 버튼만 잠근다.
+        // 일반 사용자에게는 메뉴 자체를 감춘다(2026-10-16)
+        adminArea: true,
       },
       {
         label: '역할 배정',
@@ -200,6 +203,7 @@ export const navigation: NavGroup[] = [
         icon: CalendarRange,
         description: '회계연도가 시작하는 달 (tenant_policies)',
         status: 'ready',
+        adminArea: true,
       },
       {
         label: '감사 로그',
@@ -220,6 +224,7 @@ export const navigation: NavGroup[] = [
         status: 'ready',
         icon: Users,
         description: '사용자·역할·권한·SoD 관리',
+        adminArea: true,
       },
       {
         label: '메일발송',
@@ -227,6 +232,7 @@ export const navigation: NavGroup[] = [
         status: 'draft',
         icon: Mail,
         description: '알림 템플릿·규칙·발송 이력 관리',
+        adminArea: true,
       },
     ],
   },

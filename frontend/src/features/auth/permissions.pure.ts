@@ -32,12 +32,32 @@ export function canViewAllForUser(user: UserProfile | null | undefined): boolean
   return FULL_VIEW_ROLES.some((r) => user?.tenant_roles?.includes(r)) ?? false
 }
 
+/** 시스템관리자인가 — 계정 관리(`users.role='admin'`) 또는 테넌트 역할 `sys_admin` */
+export function isSystemAdminForUser(user: UserProfile | null | undefined): boolean {
+  return user?.role === 'admin' || (user?.tenant_roles?.includes('sys_admin') ?? false)
+}
+
 /**
- * 메뉴를 **아예 감출지** — 권한 없는 사람에게 자물쇠로도 보이지 않는다(2026-10-16 Regina: 증빙 관리).
- * 사이드바와 대시보드 카드가 같이 쓴다. `requiresIcfrManager` 는 종전대로 자물쇠 표시다.
+ * 관리자 영역(부서·회계연도·계정·메일)을 볼 사람 — 제도 관리자·감사인·외부자문 또는 시스템관리자.
+ * 외부 사용자는 따로 메뉴 범위(`externalScope.pure.ts`)가 정하므로 여기서 다시 막지 않는다(감사위원회·전문가의 알림 메뉴).
  */
-export function isNavHidden(item: { requiresFullViewer?: boolean }, user: UserProfile | null | undefined): boolean {
-  return Boolean(item.requiresFullViewer) && !canViewAllForUser(user)
+export function canSeeAdminAreaForUser(user: UserProfile | null | undefined): boolean {
+  return canViewAllForUser(user) || isSystemAdminForUser(user) || Boolean(user?.external)
+}
+
+/**
+ * 메뉴를 **아예 감출지**(2026-10-16 Regina) — 권한 없는 메뉴는 자물쇠로도 보이지 않는다.
+ * "일반 사용자는 헷갈리고, 권한이 나뉘어 있다는 게 불쾌할 수 있다." 사이드바·대시보드 카드·라우트 가드가 같이 쓴다.
+ * 화면 편의일 뿐 최종 판정은 서버다.
+ */
+export function isNavHidden(
+  item: { requiresIcfrManager?: boolean; requiresFullViewer?: boolean; adminArea?: boolean },
+  user: UserProfile | null | undefined,
+): boolean {
+  if (item.requiresIcfrManager && !isIcfrManagerForUser(user)) return true
+  if (item.requiresFullViewer && !canViewAllForUser(user)) return true
+  if (item.adminArea && !canSeeAdminAreaForUser(user)) return true
+  return false
 }
 
 /** 내부회계 관리자(일반·책임·마스터)인가 — 스코핑 작성 메뉴 노출. 최종 판정은 서버(`require_icfr_staff`). */

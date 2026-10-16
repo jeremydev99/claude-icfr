@@ -51,4 +51,14 @@ describe('isNavHidden — 증빙 관리 메뉴는 권한 없으면 아예 감춘
     expect(isNavHidden({ requiresFullViewer: true }, as(['icfr_staff']))).toBe(false)
     expect(isNavHidden({}, as([]))).toBe(false)
   })
+  it('관리자 메뉴(역할 배정·정책·감사 로그)는 마스터관리자 아니면 감춘다 — 자물쇠 아님', () => {
+    expect(isNavHidden({ requiresIcfrManager: true }, as(['icfr_lead']))).toBe(true)
+    expect(isNavHidden({ requiresIcfrManager: true }, as(['icfr_manager']))).toBe(false)
+  })
+  it('관리자 영역(부서·회계연도·계정·메일)은 일반 사용자에게 감춘다', () => {
+    expect(isNavHidden({ adminArea: true }, as([]))).toBe(true)
+    expect(isNavHidden({ adminArea: true }, as(['icfr_staff']))).toBe(false)
+    expect(isNavHidden({ adminArea: true }, as(['sys_admin']))).toBe(false)
+    expect(isNavHidden({ adminArea: true }, { ...as([]), role: 'admin' })).toBe(false)
+  })
 })
