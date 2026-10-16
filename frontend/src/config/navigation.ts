@@ -51,7 +51,7 @@ export interface NavItem {
    * `icfr_manager` 판정이 아니다(`features/auth/permissions.pure.ts` 참조).
    */
   requiresIcfrManager?: boolean
-  /** 내부회계 관리자 1~3단계·감사인·외부자문만(`canViewAllForUser`) — 증빙 관리(2026-10-16, 조사 4) */
+  /** 내부회계 관리자 1~3단계·감사인·외부자문만(`canViewAllForUser`) — 그 외에는 메뉴를 **감춘다**(자물쇠 아님, `isNavHidden`) */
   requiresFullViewer?: boolean
 }
 

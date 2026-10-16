@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, HelpCircle, KeyRound, Lock, LogOut, Menu, ShieldCheck } from 'lucide-react'
 import { useAuthStore } from '@/features/auth/store'
-import { canViewAllForUser, isIcfrManagerForUser } from '@/features/auth/permissions.pure'
+import { isIcfrManagerForUser, isNavHidden } from '@/features/auth/permissions.pure'
 import { daysLeft, isPathAllowed } from '@/features/auth/externalScope.pure'
 import MfaDialog from '@/features/auth/mfa/MfaDialog'
 import { useLogout, useMe } from '@/features/auth/hooks/useAuth'
@@ -58,7 +58,7 @@ function NavRow({ item, locked, onNavigate }: { item: NavItem; locked: boolean; 
     return (
       <div
         className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2.5 text-[0.95rem] text-sidebar-muted/60"
-        title={item.requiresFullViewer ? '내부회계 관리자·감사인만 사용할 수 있습니다' : '내부회계관리자만 사용할 수 있습니다'}
+        title="내부회계관리자만 사용할 수 있습니다"
       >
         <item.icon className="h-5 w-5 flex-shrink-0" />
         <span className="flex-1">{item.label}</span>
@@ -118,16 +118,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const [mfaOpen, setMfaOpen] = useState(false)
   // 외부 사용자(ADR-0039)는 허용된 메뉴만 보인다 — 감사위원회·세무·기장대리인. 최종 판정은 서버
   const nav = navigation
-    .map((g) => ({ ...g, items: g.items.filter((it) => isPathAllowed(user, it.path)) }))
+    .map((g) => ({ ...g, items: g.items.filter((it) => isPathAllowed(user, it.path) && !isNavHidden(it, user)) }))
     .filter((g) => g.items.length > 0)
   const left = daysLeft(user)
 
   // **`can_write` 가 아니라 `tenant_roles` 로 본다** — can_write 는 external_auditor 판정이고
   // icfr_manager 판정이 아니다. 섞으면 메뉴는 열리는데 서버가 403 을 낸다.
   const isIcfrManager = isIcfrManagerForUser(user)
-  const canViewAll = canViewAllForUser(user)
-  const isLocked = (item: NavItem) =>
-    (Boolean(item.requiresIcfrManager) && !isIcfrManager) || (Boolean(item.requiresFullViewer) && !canViewAll)
+  const isLocked = (item: NavItem) => Boolean(item.requiresIcfrManager) && !isIcfrManager
 
   const groupLabels = navigation
     .map((g) => g.groupLabel)

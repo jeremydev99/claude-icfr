@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
-import { canViewAllForUser, isIcfrManagerForUser } from './permissions.pure'
+import { canViewAllForUser, isIcfrManagerForUser, isNavHidden } from './permissions.pure'
 import type { UserProfile } from './store'
 
 const base = {
@@ -40,5 +40,15 @@ describe('canViewAllForUser — 증빙 관리·전체 보기(조사 4)', () => {
   })
   it('로그인 전(null)에도 안전하다', () => {
     expect(canViewAllForUser(null)).toBe(false)
+  })
+})
+
+describe('isNavHidden — 증빙 관리 메뉴는 권한 없으면 아예 감춘다', () => {
+  const as = (roles: string[]) => ({ ...base, tenant_roles: roles, can_write: true })
+  it('requiresFullViewer 메뉴만 대상', () => {
+    expect(isNavHidden({ requiresFullViewer: true }, as([]))).toBe(true)
+    expect(isNavHidden({ requiresFullViewer: true }, as(['sys_admin']))).toBe(true)
+    expect(isNavHidden({ requiresFullViewer: true }, as(['icfr_staff']))).toBe(false)
+    expect(isNavHidden({}, as([]))).toBe(false)
   })
 })

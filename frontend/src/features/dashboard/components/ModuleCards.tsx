@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import apiClient from '@/lib/axios'
-import { useActiveTenantId } from '@/features/auth/store'
+import { useActiveTenantId, useAuthStore } from '@/features/auth/store'
+import { isNavHidden } from '@/features/auth/permissions.pure'
 import { effectiveStatus } from '../moduleStatus.pure'
 import { navigation, type ModuleStatus, type NavItem } from '@/config/navigation'
 import { Badge } from '@/components/ui/badge'
@@ -65,7 +66,8 @@ function ModuleCard({ item, count }: { item: NavItem; count?: number }) {
 export default function ModuleCards() {
   // 사이드바 정의를 그대로 쓴다 — 메뉴와 카드가 어긋나지 않게 목록을 두 곳에 두지 않는다.
   // 대시보드 자기 자신은 뺀다(`status` 없는 항목).
-  const items = navigation.flatMap((g) => g.items).filter((i) => i.status)
+  const user = useAuthStore((s) => s.user)
+  const items = navigation.flatMap((g) => g.items).filter((i) => i.status && !isNavHidden(i, user))
   // 메뉴별 실제 데이터 건수(GET /api/dashboard/modules) — 실패하면 고정 상태만 쓴다
   const tenantId = useActiveTenantId()
   const { data: counts } = useQuery({

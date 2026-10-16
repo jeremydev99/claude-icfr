@@ -32,6 +32,14 @@ export function canViewAllForUser(user: UserProfile | null | undefined): boolean
   return FULL_VIEW_ROLES.some((r) => user?.tenant_roles?.includes(r)) ?? false
 }
 
+/**
+ * 메뉴를 **아예 감출지** — 권한 없는 사람에게 자물쇠로도 보이지 않는다(2026-10-16 Regina: 증빙 관리).
+ * 사이드바와 대시보드 카드가 같이 쓴다. `requiresIcfrManager` 는 종전대로 자물쇠 표시다.
+ */
+export function isNavHidden(item: { requiresFullViewer?: boolean }, user: UserProfile | null | undefined): boolean {
+  return Boolean(item.requiresFullViewer) && !canViewAllForUser(user)
+}
+
 /** 내부회계 관리자(일반·책임·마스터)인가 — 스코핑 작성 메뉴 노출. 최종 판정은 서버(`require_icfr_staff`). */
 export function isIcfrStaffForUser(user: UserProfile | null | undefined): boolean {
   return TIER_ROLES.some((r) => user?.tenant_roles?.includes(r)) ?? false

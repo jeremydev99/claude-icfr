@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Download, Loader2, Paperclip, Plus, Trash2, X } from 'lucide-react'
+import { ClipboardPaste, Download, Loader2, Paperclip, Plus, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/features/auth/store'
 import { Badge } from '@/components/ui/badge'
@@ -209,7 +209,7 @@ function SamplesTable({ act, editable, required, cycleId, controlCode }: {
       <div className="flex items-center justify-between">
         <p className="font-medium">
           샘플 ({act.samples.length}건 / 필요 {required}건)
-          {editable && <span className="ml-2 text-xs font-normal text-muted-foreground">샘플 줄을 클릭하고 Ctrl+V 로 캡처를 붙여넣을 수 있습니다</span>}
+          {editable && <span className="ml-2 text-xs font-normal text-muted-foreground">캡처는 「캡처 붙여넣기」를 누르고 Ctrl+V</span>}
         </p>
         {editable && (
           <Button size="sm" variant="outline" disabled={addSample.isPending}
@@ -234,6 +234,7 @@ function SampleRow({ s, act, editable, deletable, cycleId, controlCode }: {
   const { patchSample, deleteSample, upload, unlink } = useMyAssessmentActions()
   const [label, setLabel] = useState(s.label ?? '')
   const fileRef = useRef<HTMLInputElement>(null)
+  const [pasteReady, setPasteReady] = useState(false)
   useEffect(() => setLabel(s.label ?? ''), [s.id, s.label])
   const err = (fallback: string) => ({ onError: (e: unknown) => toast.error(errorDetail(e, fallback)) })
   const save = (body: Parameters<typeof patchSample.mutate>[0]['body']) => patchSample.mutate({ id: s.id, body }, err('저장하지 못했습니다'))
@@ -297,8 +298,17 @@ function SampleRow({ s, act, editable, deletable, cycleId, controlCode }: {
                 e.target.value = ''
                 void uploadFiles(files)
               }} />
+              {/* 캡처 붙여넣기 칸 — 누르면 포커스가 잡히고 Ctrl+V 가 이 샘플로 올라간다(줄의 onPaste 가 받는다) */}
+              <div role="button" tabIndex={0} aria-label={`샘플 ${s.seq} 캡처 붙여넣기`}
+                onFocus={() => setPasteReady(true)} onBlur={() => setPasteReady(false)}
+                className={pasteReady
+                  ? 'flex h-8 cursor-text items-center gap-1 rounded-md border-2 border-dashed border-primary bg-primary/5 px-2 text-xs text-primary outline-none'
+                  : 'flex h-8 cursor-pointer items-center gap-1 rounded-md border border-dashed px-2 text-xs text-muted-foreground hover:border-primary hover:text-primary'}>
+                {upload.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardPaste className="h-3.5 w-3.5" />}
+                {pasteReady ? '지금 Ctrl+V' : '캡처 붙여넣기'}
+              </div>
               <Button size="sm" variant="outline" className="h-8" disabled={upload.isPending} onClick={() => fileRef.current?.click()}>
-                <Paperclip className="mr-1 h-4 w-4" />증빙
+                <Paperclip className="mr-1 h-4 w-4" />파일
               </Button>
             </>
           )}
