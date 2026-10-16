@@ -178,6 +178,8 @@ class WorklistRow(BaseModel):
     evidence_count: int = 0                # 이 통제 × 회차 증빙 파일 수
     pending_stages: list[str] = []         # 제출 후 남은 승인 단계
     can_approve: list[str] = []            # 내가 지금 승인할 수 있는 단계
+    # 내 승인 차례인데 직무분리로 막힌 이유(작성자 본인·다른 단계 승인자) — 다른 승인자가 필요하다(2026-10-16, 조사 1)
+    sod_blocked: str | None = None
 
 
 # ── 승인 ──────────────────────────────────────────────────

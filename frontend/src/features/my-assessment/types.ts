@@ -22,6 +22,8 @@ export interface WorklistRow {
   evidence_count: number
   pending_stages: string[]
   can_approve: string[]
+  /** 내 승인 차례인데 직무분리로 막힌 이유 — 다른 승인자가 필요하다 */
+  sod_blocked: string | null
 }
 
 export interface SampleEvidence {

@@ -328,6 +328,9 @@ function Footer({ act, row, editable, required, canRedo, onRedo }: {
           {row.pending_stages.length > 0 && (
             <p className="text-muted-foreground">남은 단계: {row.pending_stages.map((s) => STAGE_LABEL[s] ?? s).join(' → ')}</p>
           )}
+          {row.sod_blocked && (
+            <p className="text-amber-700">{row.sod_blocked} — 역할 배정에서 다른 승인자를 지정해야 합니다.</p>
+          )}
           <div className="flex gap-2">
             {row.can_approve.map((stage) => (
               <Button key={stage} size="sm" disabled={approve.isPending}

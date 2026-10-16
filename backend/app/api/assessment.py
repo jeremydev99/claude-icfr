@@ -465,6 +465,15 @@ def approve_activity(activity_id: UUID, body: ApprovalCreate,
     if activity.status != ACTIVITY_SUBMITTED:
         raise HTTPException(status_code=409, detail="제출되지 않은 기록은 승인할 수 없습니다")
 
+    # 직무분리(2026-10-16, 조사 1) — 역할 보유만 보면 배정이 바뀐 뒤 작성자가 자기 기록을 승인할 수 있다.
+    # 판정은 **기록 기준**: 작성자 본인 · 같은 기록의 다른 단계를 이미 승인한 사람은 승인하지 못한다
+    prior = {ap.approved_by_id for ap in db.query(ActivityApproval).filter(
+        ActivityApproval.activity_id == activity_id,
+        ActivityApproval.is_deleted == False).all()}  # noqa: E712
+    sod = _sod_block(activity.performed_by_id, prior, user.id)
+    if sod:
+        raise HTTPException(status_code=403, detail=sod)
+
     dup = db.query(ActivityApproval).filter(
         ActivityApproval.activity_id == activity_id,
         ActivityApproval.stage == body.stage,
@@ -483,6 +492,15 @@ def approve_activity(activity_id: UUID, body: ApprovalCreate,
     row = ApprovalRead.model_validate(obj)
     row.approved_by_name = _names(db, {user.id}).get(user.id)
     return row
+
+
+def _sod_block(performed_by: UUID, prior_approvers: set[UUID], user_id: UUID) -> str | None:
+    """직무분리로 이 사람이 이 기록을 승인할 수 없으면 그 이유. 승인 API 와 worklist 가 같이 쓴다."""
+    if performed_by == user_id:
+        return "본인이 작성한 테스트는 승인할 수 없습니다(직무분리)"
+    if user_id in prior_approvers:
+        return "같은 테스트의 다른 단계를 이미 승인했습니다(직무분리)"
+    return None
 
 
 # ── 마감·최종승인 (§2.5·§2.6) ─────────────────────────────
@@ -894,11 +912,13 @@ def get_worklist(cycle_id: UUID, mine: bool = True, user: CurrentUser = None,
     latest = {cid: lst[-1] for cid, lst in by_control.items()}
     samples = _sample_reads(db, [a.id for a in latest.values()])
     stages: dict[UUID, set[str]] = {}
+    approvers: dict[UUID, set[UUID]] = {}
     if latest:
         for ap in db.query(ActivityApproval).filter(
                 ActivityApproval.activity_id.in_([a.id for a in latest.values()]),
                 ActivityApproval.is_deleted == False).all():  # noqa: E712
             stages.setdefault(ap.activity_id, set()).add(ap.stage)
+            approvers.setdefault(ap.activity_id, set()).add(ap.approved_by_id)
     ev_count: dict[UUID, int] = {}
     if ids:
         for (cid,) in db.query(EvidenceFile.control_id).filter(
@@ -913,14 +933,16 @@ def get_worklist(cycle_id: UUID, mine: bool = True, user: CurrentUser = None,
         c = c or {}
         a = latest.get(t.control_id)
         need_stages = ([APPROVAL_DEPT] if dept_needed else []) + [APPROVAL_ASSESSOR]
-        state, pending, can = "not_started", [], []
+        state, pending, can, sod = "not_started", [], [], None
         if a is not None and a.status == ACTIVITY_DRAFT:
             state = "draft"
         elif a is not None:
             pending = [s for s in need_stages if s not in stages.get(a.id, set())]
             state = "submitted" if pending else "approved"
             if cycle.status == CYCLE_OPEN:
-                can = [s for s in pending if holders.get(role_of[s]) == user.id]
+                mine_pending = [s for s in pending if holders.get(role_of[s]) == user.id]
+                sod = _sod_block(a.performed_by_id, approvers.get(a.id, set()), user.id) if mine_pending else None
+                can = [] if sod else mine_pending
         owner_id = holders.get(ROLE_CONTROL_OWNER)
         out.append(WorklistRow(
             control_id=t.control_id, control_code=t.control_code or c.get("code"),
@@ -937,5 +959,6 @@ def get_worklist(cycle_id: UUID, mine: bool = True, user: CurrentUser = None,
             state=state, activity_id=a.id if a else None, activity_count=len(by_control.get(t.control_id, [])),
             samples_done=sum(1 for r in samples.get(a.id, []) if _sample_done(r)) if a else 0,
             evidence_count=ev_count.get(t.control_id, 0), pending_stages=pending, can_approve=can,
+            sod_blocked=sod,
         ))
     return out

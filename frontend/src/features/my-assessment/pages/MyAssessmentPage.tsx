@@ -189,6 +189,7 @@ export default function MyAssessmentPage() {
                     {r.can_approve.length > 0 && (
                       <Badge variant="destructive">{r.can_approve.map((s) => STAGE_LABEL[s] ?? s).join('·')} 필요</Badge>
                     )}
+                    {r.sod_blocked && <Badge variant="outline" title={r.sod_blocked}>직무분리 — 다른 승인자 필요</Badge>}
                   </TableCell>
                 </TableRow>
               ))}

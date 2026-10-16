@@ -101,10 +101,13 @@ export const ROLE_FILTER_LABEL: Record<RoleFilter, string> = {
   all: '전체',
 }
 
-/** 작성할 것 = 내가 통제책임자, 승인할 것 = 내가 평가자·부서승인자. 둘 다면 양쪽에 나온다 */
-export function matchesRole(r: Pick<WorklistRow, 'my_roles'>, f: RoleFilter): boolean {
+/**
+ * 작성할 것 = 내가 통제책임자. 승인할 것 = **지금 내가 승인할 수 있는 제출 건**(서버 `can_approve`, 2026-10-16 조사 1) —
+ * 역할만 가진 미착수·작성 중·승인 완료 건과, 직무분리로 막힌 본인 작성 건은 세지 않는다. 역할 기준 목록은 '전체'에서 본다.
+ */
+export function matchesRole(r: Pick<WorklistRow, 'my_roles' | 'can_approve'>, f: RoleFilter): boolean {
   if (f === 'write') return r.my_roles.includes('control_owner')
-  if (f === 'approve') return r.my_roles.includes('assessor') || r.my_roles.includes('dept_approver')
+  if (f === 'approve') return r.can_approve.length > 0
   return true
 }
 

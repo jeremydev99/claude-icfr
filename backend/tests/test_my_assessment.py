@@ -285,3 +285,66 @@ def test_worklist_mine_and_full_view(client: TestClient, storage) -> None:
     arow = next(r for r in client.get(f"/api/assessment/cycles/{s['cycle']}/worklist",
                                       headers=_login(client, s["assessor"])).json() if r["control_id"] == s["control"])
     assert arow["my_roles"] == ["assessor"] and arow["can_approve"] == []
+
+
+# ── 직무분리 — 승인 시점 판정 (2026-10-16, 조사 1) ─────────────
+
+def _submitted(client, s) -> dict:
+    h = _login(client, s["owner"])
+    act = _start(client, s, h)
+    for i, smp in enumerate(act["samples"], start=1):
+        _fill(client, s, h, smp, i)
+    client.patch(f"/api/assessment/activities/{act['id']}", headers=h, json={"result": "pass"})
+    assert client.post(f"/api/assessment/activities/{act['id']}/submit", headers=h).status_code == 200
+    return act
+
+
+def _reassign(s, role: str, email: str) -> None:
+    """이 통제의 역할 보유자를 바꾼다(없으면 만든다)."""
+    db = TestingSessionLocal()
+    tok = set_active_tenant(DEFAULT_TENANT_ID)
+    try:
+        uid = db.query(User).filter(User.email == email).first().id
+        ra = db.query(RoleAssignment).filter(RoleAssignment.target_id == UUID(s["control"]),
+                                             RoleAssignment.role_name == role).first()
+        if ra is None:
+            db.add(RoleAssignment(scope="control", target_id=UUID(s["control"]), role_name=role, user_id=uid))
+        else:
+            ra.user_id = uid
+        db.commit()
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+
+
+def test_performer_cannot_approve_own_test_even_after_reassignment(client: TestClient, storage) -> None:
+    """제출 뒤 작성자가 평가자로 배정돼도 자기 기록은 승인하지 못한다 — 목록에도 승인 버튼 대신 사유."""
+    s = _setup("S1", sample_size=1)
+    act = _submitted(client, s)
+    _reassign(s, "assessor", s["owner"])
+    h = _login(client, s["owner"])
+    r = client.post(f"/api/assessment/activities/{act['id']}/approvals", headers=h, json={"stage": "assessor"})
+    assert r.status_code == 403 and "본인이 작성한" in r.json()["detail"]
+    row = next(x for x in client.get(f"/api/assessment/cycles/{s['cycle']}/worklist", headers=h).json()
+               if x["control_id"] == s["control"])
+    assert row["can_approve"] == [] and "본인이 작성한" in row["sod_blocked"]
+    # 다른 사람에게 돌려주면 승인된다
+    _reassign(s, "assessor", s["assessor"])
+    ah = _login(client, s["assessor"])
+    row = next(x for x in client.get(f"/api/assessment/cycles/{s['cycle']}/worklist", headers=ah).json()
+               if x["control_id"] == s["control"])
+    assert row["can_approve"] == ["assessor"] and row["sod_blocked"] is None
+    assert client.post(f"/api/assessment/activities/{act['id']}/approvals", headers=ah,
+                       json={"stage": "assessor"}).status_code == 201
+
+
+def test_same_person_cannot_approve_two_stages(client: TestClient, storage) -> None:
+    """부서승인자 = 평가자인 사람은 한 단계만 승인한다."""
+    s = _setup("S2", sample_size=1)
+    _reassign(s, "dept_approver", s["assessor"])
+    act = _submitted(client, s)
+    ah = _login(client, s["assessor"])
+    assert client.post(f"/api/assessment/activities/{act['id']}/approvals", headers=ah,
+                       json={"stage": "dept"}).status_code == 201
+    r = client.post(f"/api/assessment/activities/{act['id']}/approvals", headers=ah, json={"stage": "assessor"})
+    assert r.status_code == 403 and "다른 단계" in r.json()["detail"]

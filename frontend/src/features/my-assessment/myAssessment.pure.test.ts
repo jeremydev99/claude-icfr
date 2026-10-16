@@ -63,7 +63,7 @@ describe('목록 집계', () => {
     control_id: 'c', control_code: null, control_name: null, process_code: null, frequency: null, auto_manual: null,
     owner_id: 'u', owner_name: null, my_roles: [], activity_kind: 'test', required_samples: 1, sample_basis: '',
     rcm_test_methods: null, rcm_population: null, rcm_test_procedure: null, state: 'not_started', activity_id: null,
-    activity_count: 0, samples_done: 0, evidence_count: 0, pending_stages: [], can_approve: [], ...p,
+    activity_count: 0, samples_done: 0, evidence_count: 0, pending_stages: [], can_approve: [], sod_blocked: null, ...p,
   })
   it('상태별 건수·필요 샘플 합계·미배정', () => {
     const s = summarize([row({ required_samples: 7 }), row({ state: 'draft', required_samples: 2, owner_id: null })])
@@ -76,12 +76,16 @@ describe('목록 집계', () => {
 })
 
 describe('역할·통제책임자 거르기', () => {
-  const r = (my_roles: string[], owner_id: string | null = 'u1', owner_name: string | null = '갑') => ({ my_roles, owner_id, owner_name })
-  it('작성할 것 = 통제책임자, 승인할 것 = 평가자·부서승인자', () => {
+  const r = (my_roles: string[], owner_id: string | null = 'u1', owner_name: string | null = '갑', can_approve: string[] = []) =>
+    ({ my_roles, owner_id, owner_name, can_approve })
+  it('작성할 것 = 통제책임자, 승인할 것 = 지금 승인할 수 있는 제출 건만', () => {
     expect(matchesRole(r(['control_owner']), 'write')).toBe(true)
     expect(matchesRole(r(['assessor']), 'write')).toBe(false)
-    expect(matchesRole(r(['assessor']), 'approve')).toBe(true)
-    expect(matchesRole(r(['dept_approver']), 'approve')).toBe(true)
+    // 역할만 있고 승인할 차례가 아니면(미착수·작성 중·승인 완료·직무분리로 막힘) 세지 않는다
+    expect(matchesRole(r(['assessor']), 'approve')).toBe(false)
+    expect(matchesRole(r(['control_owner', 'dept_approver']), 'approve')).toBe(false)
+    expect(matchesRole(r(['assessor'], 'u1', '갑', ['assessor']), 'approve')).toBe(true)
+    expect(matchesRole(r(['dept_approver'], 'u1', '갑', ['dept']), 'approve')).toBe(true)
     expect(matchesRole(r(['control_owner']), 'all')).toBe(true)
   })
   it('통제책임자 선택지 — 이름순·건수, 미배정은 따로', () => {
