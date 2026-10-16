@@ -18,6 +18,7 @@ from app.core import governance_log as glog
 from app.core.database import get_db
 from app.core.deps import CurrentUser
 from app.core.permissions import (
+    can_view_all,
     is_assessor,
     require_icfr_manager,
     require_icfr_staff,
@@ -54,12 +55,9 @@ from app.models.governance import (
     GovernanceFile,
 )
 from app.models.role_assignment import (
-    READ_ONLY_ROLES,
     ROLE_ASSESSOR,
     ROLE_CONTROL_OWNER,
     ROLE_DEPT_APPROVER,
-    ROLE_EXTERNAL_ADVISOR,
-    TIER_ROLES,
 )
 from app.models.user import User
 from app.schemas.assessment import (
@@ -851,7 +849,6 @@ def submit_activity(activity_id: UUID, user: User = Depends(require_write),
 
 # ── 내 평가 목록 (2026-10-15) ─────────────────────────────
 
-_FULL_VIEW_ROLES = set(TIER_ROLES) | set(READ_ONLY_ROLES) | {ROLE_EXTERNAL_ADVISOR}
 _OWNER_KIND = {CYCLE_DESIGN: ACTIVITY_DESIGN, CYCLE_OPERATION: ACTIVITY_TEST}
 
 
@@ -864,7 +861,7 @@ def get_worklist(cycle_id: UUID, mine: bool = True, user: CurrentUser = None,
     `mine=false` — 전체. 내부회계 관리자(1~3단계)·외부감사인·외부자문만(마스터 결정 Q3: 통제책임자는 본인 담당만).
     """
     cycle = _get_cycle_or_404(db, cycle_id)
-    if not mine and not (tenant_roles(db, user.id) & _FULL_VIEW_ROLES):
+    if not mine and not can_view_all(tenant_roles(db, user.id)):
         raise HTTPException(status_code=403, detail="전체 보기는 내부회계 관리자·외부감사인만 할 수 있습니다")
     kind = _OWNER_KIND[cycle.kind]
     targets = db.query(CycleTarget).filter(CycleTarget.cycle_id == cycle_id,

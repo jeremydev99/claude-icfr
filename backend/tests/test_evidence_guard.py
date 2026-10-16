@@ -68,7 +68,9 @@ def test_only_icfr_manager_can_create_or_delete_link(client: TestClient) -> None
         h = _login(client, email, PW)
         assert client.post("/api/evidence/links", headers=h, json=_link_body(fid, ctrl)).status_code == 403
         assert client.delete(f"/api/evidence/links/{link.json()['id']}", headers=h).status_code == 403
-        assert client.get("/api/evidence/links", headers=h).status_code == 200   # 조회는 인증만
+        # 연결 목록은 증빙 관리 역할만(2026-10-16, 조사 4) — 외부감사인은 조회 전용으로 본다
+        expect = 200 if email == "eg-ext@acme.example" else 403
+        assert client.get("/api/evidence/links", headers=h).status_code == expect
 
 
 def test_link_validation(client: TestClient) -> None:
@@ -164,3 +166,82 @@ def test_legacy_evidence_only_icfr_manager_can_delete_or_rename(client: TestClie
                         json={"filename": "x.pdf"}).status_code == 403
     mh = _login(client, "eg-mgr@acme.example", PW)
     assert client.delete(f"/api/evidence/files/{fid}", headers=mh).status_code == 204
+
+
+# ── 증빙 관리 열람·다운로드 최소권한 (2026-10-16, 조사 4) ──────────
+
+def _setup_view(suffix: str) -> tuple[UUID, UUID, UUID]:
+    """통제 2개(A: 책임자·평가자·부서승인자 배정, B: 다른 책임자) + 회차 1 + 열람 역할 계정."""
+    db, tok = _ctx()
+    try:
+        for email, name, roles in (
+            ("ev-staff@acme.example", "일반관리자", ("icfr_staff",)),
+            ("ev-auditor@acme.example", "내부감사", ("auditor",)),
+            ("ev-advisor@acme.example", "외부자문", ("external_advisor",)),
+            ("ev-sys@acme.example", "시스템관리자", ("sys_admin",)),
+        ):
+            _user(db, email, name, roles)
+        owner = _user(db, f"ev-owner-{suffix}@acme.example", "책임자A")
+        assessor = _user(db, f"ev-assessor-{suffix}@acme.example", "평가자A")
+        dept = _user(db, f"ev-dept-{suffix}@acme.example", "부서승인자A")
+        other = _user(db, f"ev-other-{suffix}@acme.example", "책임자B")
+        a = _control(db, f"V{suffix}A")
+        b = _control(db, f"V{suffix}B")
+        cyc = _cycle(db, f"V{suffix}", a)
+        for role, uid in (("control_owner", owner), ("assessor", assessor), ("dept_approver", dept)):
+            db.add(RoleAssignment(scope="control", target_id=a, role_name=role, user_id=uid))
+        db.add(RoleAssignment(scope="control", target_id=b, role_name="control_owner", user_id=other))
+        db.commit()
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+    return a, b, cyc
+
+
+def test_evidence_admin_reads_only_for_full_viewers(client: TestClient) -> None:
+    """목록·상세·이력·연결 목록 — 관리자 1~3단계·감사인·외부자문만. 통제책임자·sys_admin 단독은 403."""
+    a, _b, cyc = _setup_view("R1")
+    oh = _login(client, "ev-owner-R1@acme.example", PW)
+    fid = _upload(client, oh, cyc, a).json()["id"]
+    paths = ("/api/evidence/files", f"/api/evidence/files/{fid}",
+             f"/api/evidence/files/{fid}/history", "/api/evidence/links")
+    for email in ("ev-staff@acme.example", "ev-auditor@acme.example", "ev-advisor@acme.example"):
+        h = _login(client, email, PW)
+        for p in paths:
+            assert client.get(p, headers=h).status_code == 200, (email, p)
+    for email in ("ev-owner-R1@acme.example", "ev-sys@acme.example", "ev-other-R1@acme.example"):
+        h = _login(client, email, PW)
+        for p in paths:
+            assert client.get(p, headers=h).status_code == 403, (email, p)
+
+
+def test_download_limited_to_control_roles_and_full_viewers(client: TestClient) -> None:
+    """그 통제의 책임자·평가자·부서승인자와 열람 역할은 받고, 다른 통제 담당자·sys_admin 단독은 403."""
+    a, _b, cyc = _setup_view("D1")
+    oh = _login(client, "ev-owner-D1@acme.example", PW)
+    fid = _upload(client, oh, cyc, a).json()["id"]
+    url = f"/api/evidence/files/{fid}/download"
+    for email in ("ev-owner-D1@acme.example", "ev-assessor-D1@acme.example", "ev-dept-D1@acme.example",
+                  "ev-staff@acme.example", "ev-auditor@acme.example"):
+        r = client.get(url, headers=_login(client, email, PW))
+        assert r.status_code == 200, (email, r.text)
+    for email in ("ev-other-D1@acme.example", "ev-sys@acme.example"):
+        assert client.get(url, headers=_login(client, email, PW)).status_code == 403, email
+
+
+def test_legacy_download_only_full_viewers(client: TestClient) -> None:
+    """통제 없는 레거시 증빙 — 통제 단위 판정을 걸 수 없어 열람 역할만."""
+    _setup_view("G1")
+    db, tok = _ctx()
+    try:
+        owner = db.query(User).filter(User.email == "ev-owner-G1@acme.example").first()
+        f = EvidenceFile(filename="옛.pdf", mime_type="application/pdf", size_bytes=1,
+                         uploaded_by_id=owner.id, minio_key="legacy/x")
+        db.add(f)
+        db.commit()
+        fid = f.id
+    finally:
+        reset_active_tenant(tok)
+        db.close()
+    assert client.get(f"/api/evidence/files/{fid}/download",
+                      headers=_login(client, "ev-owner-G1@acme.example", PW)).status_code == 403

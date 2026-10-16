@@ -51,6 +51,8 @@ export interface NavItem {
    * `icfr_manager` 판정이 아니다(`features/auth/permissions.pure.ts` 참조).
    */
   requiresIcfrManager?: boolean
+  /** 내부회계 관리자 1~3단계·감사인·외부자문만(`canViewAllForUser`) — 증빙 관리(2026-10-16, 조사 4) */
+  requiresFullViewer?: boolean
 }
 
 export interface NavGroup {
@@ -145,6 +147,8 @@ export const navigation: NavGroup[] = [
         status: 'ready',
         icon: Paperclip,
         description: '평가·테스트 증빙 파일 업로드·연결·보존',
+        // 회사 전체 증빙 목록이라 관리자·감사인만. 통제책임자는 내 평가에서 자기 샘플 증빙을 다룬다
+        requiresFullViewer: true,
       },
     ],
   },

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/features/auth/store'
-import { isIcfrStaffForUser } from '@/features/auth/permissions.pure'
+import { canViewAllForUser } from '@/features/auth/permissions.pure'
 import { useCycles } from '@/features/schedule/api/useSchedule'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -30,9 +30,6 @@ import {
   summarize,
 } from '../myAssessment.pure'
 
-// 전체 보기 — 내부회계 관리자(1~3단계)·감사(조회 전용)만. 서버 `_FULL_VIEW_ROLES` 와 같은 판정, 최종은 서버 403
-const READ_ONLY = ['external_auditor', 'auditor', 'external_advisor']
-
 /**
  * 내 평가(2026-10-15) — 평가 회차의 대상 통제 중 **RCM 역할 배정으로 내가 맡은 것**이 자동으로 나온다.
  * 통제를 하나씩 등록하지 않는다. 통제를 누르면 테스트 기록 + 샘플별 증빙을 한 화면에서 작성·제출한다.
@@ -40,7 +37,8 @@ const READ_ONLY = ['external_auditor', 'auditor', 'external_advisor']
  */
 export default function MyAssessmentPage() {
   const user = useAuthStore((s) => s.user)
-  const canFullView = isIcfrStaffForUser(user) || READ_ONLY.some((r) => user?.tenant_roles?.includes(r))
+  // 전체 보기 — 서버 `FULL_VIEW_ROLES` 와 같은 판정, 최종은 서버 403
+  const canFullView = canViewAllForUser(user)
   const [kind, setKind] = useState<'operation' | 'design'>('operation')
   const [cycleId, setCycleId] = useState<string | null>(null)
   const [full, setFull] = useState(false)

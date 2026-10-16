@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.deps import CurrentUser, get_db
-from app.core.permissions import require_write, tenant_roles
+from app.core.permissions import can_view_all, require_full_viewer, require_write, tenant_roles
 from app.minio_client import build_evidence_key, get_object_stream, upload_object
 from app.models.assessment import (
     ACTIVITY_DRAFT,
@@ -28,7 +28,9 @@ from app.models.evidence import (
 from app.models.role_assignment import (
     POLICY_EVIDENCE_EDIT_ENABLED,
     POLICY_EVIDENCE_MAX_BYTES,
+    ROLE_ASSESSOR,
     ROLE_CONTROL_OWNER,
+    ROLE_DEPT_APPROVER,
     ROLE_ICFR_MANAGER,
     TenantPolicy,
 )
@@ -209,13 +211,33 @@ def _assert_can_edit_file(db: Session, user: User, obj: EvidenceFile) -> None:
                             detail="회차가 없는 기존 증빙은 내부회계관리자만 수정·삭제할 수 있습니다")
 
 
+_CONTROL_VIEW_ROLES = (ROLE_CONTROL_OWNER, ROLE_ASSESSOR, ROLE_DEPT_APPROVER)
+
+
+def _assert_can_download(db: Session, user: User, obj: EvidenceFile) -> None:
+    """증빙 내려받기(2026-10-16, 조사 4) — 증빙 관리 역할 또는 **그 통제의** 담당자·평가자·부서승인자.
+
+    그 전에는 로그인만 확인해 id 만 알면 누구나 회사 전체 증빙을 받을 수 있었다.
+    통제가 없는 레거시 증빙은 통제 단위 판정을 걸 수 없어 증빙 관리 역할만 받는다.
+    """
+    if can_view_all(tenant_roles(db, user.id)):
+        return
+    if obj.control_id is not None:
+        resolved = resolve_roles_for_control(db, obj.control_id, resolve_control_process_id(db, obj.control_id))
+        if any(r["user_id"] == user.id for r in resolved if r["role_name"] in _CONTROL_VIEW_ROLES):
+            return
+    raise HTTPException(status_code=403,
+                        detail="이 통제의 담당자·승인자 또는 내부회계 관리자만 내려받을 수 있습니다")
+
+
 # ── Evidence Files ─────────────────────────────────────────
 
 @router.get("/files")
 def list_files(skip: int = 0, limit: int = 100, cycle_id: UUID | None = None,
-               control_id: UUID | None = None, user: CurrentUser = None,
+               control_id: UUID | None = None, user: User = Depends(require_full_viewer),
                db: Session = Depends(get_db)) -> dict:
-    """증빙 목록. `cycle_id`·`control_id` 는 선택 필터(AND) — 화면 목록 필터(13.9-74 ②)."""
+    """증빙 목록. `cycle_id`·`control_id` 는 선택 필터(AND) — 화면 목록 필터(13.9-74 ②).
+    회사 전체 목록이라 증빙 관리 역할만 본다(2026-10-16, 조사 4)."""
     q = db.query(EvidenceFile).filter(EvidenceFile.is_deleted == False)  # noqa: E712
     if cycle_id is not None:
         q = q.filter(EvidenceFile.cycle_id == cycle_id)
@@ -291,7 +313,8 @@ async def create_file(
 
 
 @router.get("/files/{file_id}", response_model=EvidenceFileRead)
-def get_file(file_id: UUID, user: CurrentUser = None, db: Session = Depends(get_db)) -> EvidenceFile:
+def get_file(file_id: UUID, user: User = Depends(require_full_viewer),
+             db: Session = Depends(get_db)) -> EvidenceFile:
     obj = db.query(EvidenceFile).filter(EvidenceFile.id == file_id, EvidenceFile.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="EvidenceFile not found")
@@ -303,6 +326,7 @@ def download_file(file_id: UUID, user: CurrentUser = None, db: Session = Depends
     obj = db.query(EvidenceFile).filter(EvidenceFile.id == file_id, EvidenceFile.is_deleted == False).first()  # noqa: E712
     if not obj:
         raise HTTPException(status_code=404, detail="EvidenceFile not found")
+    _assert_can_download(db, user, obj)
     if not obj.minio_key:
         raise HTTPException(status_code=409, detail="파일 본체 없음 (레거시 메타)")
 
@@ -368,7 +392,7 @@ def delete_file(file_id: UUID, reason: str | None = None,
 
 
 @router.get("/files/{file_id}/history", response_model=EvidenceFileHistory)
-def get_file_history(file_id: UUID, user: CurrentUser = None,
+def get_file_history(file_id: UUID, user: User = Depends(require_full_viewer),
                      db: Session = Depends(get_db)) -> EvidenceFileHistory:
     """삭제된 증빙 포함 이력 조회 — 업로더·업로드시각·삭제자·삭제시각·사유.
 
@@ -397,7 +421,8 @@ def get_file_history(file_id: UUID, user: CurrentUser = None,
 # ── Evidence Links ─────────────────────────────────────────
 
 @router.get("/links")
-def list_links(file_id: UUID | None = None, skip: int = 0, limit: int = 100, user: CurrentUser = None, db: Session = Depends(get_db)) -> dict:
+def list_links(file_id: UUID | None = None, skip: int = 0, limit: int = 100,
+               user: User = Depends(require_full_viewer), db: Session = Depends(get_db)) -> dict:
     q = db.query(EvidenceLink).filter(EvidenceLink.is_deleted == False)  # noqa: E712
     if file_id:
         q = q.filter(EvidenceLink.file_id == file_id)

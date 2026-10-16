@@ -4,6 +4,8 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import AuthLayout from '@/layouts/AuthLayout'
 import AppLayout from '@/layouts/AppLayout'
 import PrivateRoute from './PrivateRoute'
+import RoleRoute from './RoleRoute'
+import { canViewAllForUser } from '@/features/auth/permissions.pure'
 import LoginPage from '@/pages/LoginPage'
 import AccountSetupPage from '@/features/auth/pages/AccountSetupPage'
 import InvitePage from '@/features/auth/pages/InvitePage'
@@ -66,7 +68,11 @@ export const router = createBrowserRouter([
       { path: 'test', element: <Navigate to="/my-assessment" replace /> },
       { path: 'remediation', element: <RemediationPage /> },
       { path: 'report', element: <ReportPage /> },
-      { path: 'evidence', element: <EvidencePage /> },
+      // 증빙 관리 — 관리자·감사인만(조사 4). 통제책임자는 내 평가에서 자기 샘플 증빙을 다룬다
+      {
+        path: 'evidence',
+        element: <RoleRoute allow={canViewAllForUser} fallback="/my-assessment"><EvidencePage /></RoleRoute>,
+      },
       { path: 'users', element: <UsersPage /> },
       { path: 'notification', element: <NotificationPage /> },
       // 관리자 기능 — 화면 미구현(API 있음). 접근 제한은 서버가 최종 판정한다.

@@ -61,6 +61,26 @@ def can_write(roles: set[str]) -> bool:
     return not (roles and roles <= READ_ONLY_ROLES)
 
 
+# 회사 전체 평가·증빙을 볼 수 있는 역할(2026-10-16, 조사 4) — 내부회계 관리자 1~3단계·감사인(조회)·외부자문.
+# 내 평가 전체 보기와 증빙 관리가 **같은 집합**을 쓴다. 통제책임자 등 일반 사용자와 sys_admin 단독 계정은 아니다
+FULL_VIEW_ROLES = frozenset(TIER_ROLES) | READ_ONLY_ROLES | {ROLE_EXTERNAL_ADVISOR}
+
+
+def can_view_all(roles: set[str]) -> bool:
+    """회사 전체 평가·증빙 열람 — `/me` 와 서버 가드가 이 함수 하나를 쓴다."""
+    return bool(roles & FULL_VIEW_ROLES)
+
+
+def require_full_viewer(user: CurrentUser, db: Session = Depends(get_db)) -> User:
+    """증빙 관리 목록·이력 가드(조사 4) — `FULL_VIEW_ROLES` 만."""
+    if not can_view_all(tenant_roles(db, user.id)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="증빙 관리는 내부회계 관리자·감사인만 볼 수 있습니다",
+        )
+    return user
+
+
 def is_assessor(db: Session, user_id) -> bool:
     """어느 통제에서든 `assessor`(평가자)로 배정돼 있는가 — 회차 생성·마감 자격(ADR-0032 §2.1).
 

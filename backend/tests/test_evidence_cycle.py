@@ -498,8 +498,9 @@ def test_list_files_filters_by_cycle_and_control(client: TestClient, storage) ->
     a2 = _upload(client, oh, cy_a, c2, "a2.pdf").json()["id"]
     b1 = _upload(client, oh, cy_b, c1, "b1.pdf").json()["id"]
 
+    mh = _login(client)   # 목록은 증빙 관리 역할만(2026-10-16, 조사 4) — 시드 관리자로 조회
     def ids(**params) -> set[str]:
-        resp = client.get("/api/evidence/files", headers=oh,
+        resp = client.get("/api/evidence/files", headers=mh,
                           params={k: str(v) for k, v in params.items()})
         assert resp.status_code == 200, resp.text
         body = resp.json()

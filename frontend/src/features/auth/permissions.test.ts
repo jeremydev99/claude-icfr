@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
-import { isIcfrManagerForUser } from './permissions.pure'
+import { canViewAllForUser, isIcfrManagerForUser } from './permissions.pure'
 import type { UserProfile } from './store'
 
 const base = {
@@ -26,5 +26,19 @@ describe('isIcfrManagerForUser', () => {
   it('로그인 전(null)에도 안전하다', () => {
     expect(isIcfrManagerForUser(null)).toBe(false)
     expect(isIcfrManagerForUser(undefined)).toBe(false)
+  })
+})
+
+describe('canViewAllForUser — 증빙 관리·전체 보기(조사 4)', () => {
+  const as = (roles: string[]) => ({ ...base, tenant_roles: roles, can_write: true })
+  it.each([
+    [['icfr_staff'], true], [['icfr_lead'], true], [['icfr_manager'], true],
+    [['auditor'], true], [['external_auditor'], true], [['external_advisor'], true],
+    [[], false], [['sys_admin'], false],
+  ])('%j → %s', (roles, expected) => {
+    expect(canViewAllForUser(as(roles))).toBe(expected)
+  })
+  it('로그인 전(null)에도 안전하다', () => {
+    expect(canViewAllForUser(null)).toBe(false)
   })
 })

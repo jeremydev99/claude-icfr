@@ -21,6 +21,17 @@ export function isIcfrManagerForUser(user: UserProfile | null | undefined): bool
   return user?.tenant_roles?.includes(ROLE_ICFR_MANAGER) ?? false
 }
 
+/** 회사 전체 평가·증빙을 보는 역할 — 서버 `FULL_VIEW_ROLES`(core/permissions.py)와 같은 집합 */
+export const FULL_VIEW_ROLES = [...TIER_ROLES, 'external_auditor', 'auditor', 'external_advisor'] as const
+
+/**
+ * 증빙 관리·내 평가 전체 보기(2026-10-16, 조사 4) — 내부회계 관리자 1~3단계·감사인(조회)·외부자문.
+ * 통제책임자 등 일반 사용자와 sys_admin 단독 계정은 아니다. 최종 판정은 서버(`require_full_viewer`).
+ */
+export function canViewAllForUser(user: UserProfile | null | undefined): boolean {
+  return FULL_VIEW_ROLES.some((r) => user?.tenant_roles?.includes(r)) ?? false
+}
+
 /** 내부회계 관리자(일반·책임·마스터)인가 — 스코핑 작성 메뉴 노출. 최종 판정은 서버(`require_icfr_staff`). */
 export function isIcfrStaffForUser(user: UserProfile | null | undefined): boolean {
   return TIER_ROLES.some((r) => user?.tenant_roles?.includes(r)) ?? false
