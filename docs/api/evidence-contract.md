@@ -219,6 +219,7 @@ content-disposition: attachment; filename*=UTF-8''2026%EB%85%84%201%EB%B6%84%EA%
 | `GET /files/{id}/download` | 열람 역할 **또는** 그 파일 통제의 control_owner·assessor·dept_approver. 통제 없는 레거시는 열람 역할만 | "이 통제의 담당자·승인자 또는 내부회계 관리자만 내려받을 수 있습니다" |
 | 업로드·수정·삭제·연결 생성/삭제 | 무변경(§3·§3.1·§3.2) | |
 
+회차 엑셀 내보내기 `GET /api/assessment/cycles/{id}/export`(증빙 이미지 포함): `mine=true`(내가 통제책임자인 통제) 누구나, `mine=false`(회차 전체) 열람 역할만 — 403 "회차 전체 내보내기는 내부회계 관리자·감사인만…"(13.9-137).
 sys_admin 단독 계정은 열람 역할이 아니다(ADR-0038 §2.5). 화면: 메뉴 잠금 + `/evidence` 라우트 가드(→ `/my-assessment`).
 
 ## 4. 삭제와 이력

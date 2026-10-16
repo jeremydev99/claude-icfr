@@ -261,7 +261,7 @@ def get_cycle(cycle_id: UUID, user: CurrentUser = None,
 @router.get("/cycles/{cycle_id}/export")
 def export_cycle(cycle_id: UUID, mine: bool = False, user: CurrentUser = None, db: Session = Depends(get_db)):
     """회차 엑셀 내보내기(13.9-122) — 통제 1건 = 시트 1장, 증빙 이미지(PDF 는 페이지 이미지)를 붙인다.
-    `mine=true` 면 내가 통제책임자인 통제만. 규칙은 `services/assessment_export`."""
+    `mine=true` 면 내가 통제책임자인 통제만(누구나), `mine=false`(회차 전체)는 증빙 관리 역할만. 규칙은 `services/assessment_export`."""
     from urllib.parse import quote
 
     from fastapi.responses import Response
@@ -269,6 +269,11 @@ def export_cycle(cycle_id: UUID, mine: bool = False, user: CurrentUser = None, d
     from app.services import assessment_export as ax
 
     cycle = _get_cycle_or_404(db, cycle_id)
+    # 회차 전체는 회사 모든 통제의 증빙 이미지를 담는다 — 증빙 관리·전체 보기와 같은 역할만(2026-10-16 Regina,
+    # "민감정보가 있을 수 있으니 나누되, 내 통제 엑셀은 받을 수 있어야"). 그 전에는 로그인만 확인했다.
+    # 내 담당(mine)은 본인이 통제책임자인 통제만이라 누구나 받는다
+    if not mine and not can_view_all(tenant_roles(db, user.id)):
+        raise HTTPException(status_code=403, detail="회차 전체 내보내기는 내부회계 관리자·감사인만 할 수 있습니다 — 내 담당으로 내려받으세요")
     try:
         data, n = ax.build(db, cycle, owner_id=user.id if mine else None)
     except ax.ExportError as e:

@@ -64,6 +64,7 @@ def test_export_sheet_per_control_with_images_and_pdf_pages(client: TestClient, 
     try:
         owner = _user(db, "ex-owner@acme.example", "책임자X")
         other = _user(db, "ex-other@acme.example", "책임자Y")
+        _user(db, "ex-mgr@acme.example", "관리자X", ("icfr_manager",))
         c1, c2 = _control(db, "X1"), _control(db, "X2")
         cyc = _cycle(db, "X1", c1)
         from app.models.assessment import CycleTarget
@@ -84,8 +85,10 @@ def test_export_sheet_per_control_with_images_and_pdf_pages(client: TestClient, 
     assert client.post("/api/evidence/files", headers=oh, data={"cycle_id": str(cyc), "control_id": str(c1)},
                        files={"file": ("명세.pdf", _pdf(12), "application/pdf")}).status_code == 201
 
+    # 회차 전체는 증빙 관리 역할만(13.9-137) — 통제책임자는 403, 관리자로 받는다
+    assert client.get(f"/api/assessment/cycles/{cyc}/export", headers=oh).status_code == 403
     # 전체 — 통제 2건 = 시트 2장, 증빙 없는 통제도 시트가 있다
-    res = client.get(f"/api/assessment/cycles/{cyc}/export", headers=oh)
+    res = client.get(f"/api/assessment/cycles/{cyc}/export", headers=_login(client, "ex-mgr@acme.example", "pw123456"))
     assert res.status_code == 200, res.text
     assert res.headers["content-type"].startswith(XLSX_MIME)
     wb = load_workbook(io.BytesIO(res.content))

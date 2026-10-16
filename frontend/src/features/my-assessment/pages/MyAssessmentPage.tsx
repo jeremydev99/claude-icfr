@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Loader2 } from 'lucide-react'
+import { AlertTriangle, Download, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useAuthStore } from '@/features/auth/store'
 import { canViewAllForUser } from '@/features/auth/permissions.pure'
 import { useCycles } from '@/features/schedule/api/useSchedule'
@@ -9,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useWorklist } from '../api'
+import { downloadCycleExcel, useWorklist } from '../api'
 import ActivitySheet from '../components/ActivitySheet'
 import { Button } from '@/components/ui/button'
 import {
@@ -69,6 +70,19 @@ export default function MyAssessmentPage() {
   const unassignedCount = allRows.filter((r) => !r.owner_id).length
   const rows = showFull ? allRows.filter((r) => matchesOwner(r, owner)) : allRows.filter((r) => matchesRole(r, role))
   const sum = summarize(rows)
+  // 엑셀 내보내기 — 전체 보기면 회차 전체(관리자·감사인), 아니면 내 담당(통제책임자인 통제). 일정관리에서 옮겨 왔다
+  const [exporting, setExporting] = useState(false)
+  const exportExcel = async () => {
+    if (!cycleId) return
+    setExporting(true)
+    try {
+      await downloadCycleExcel(cycleId, !showFull)
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setExporting(false)
+    }
+  }
   const row = allRows.find((r) => r.control_id === selected) ?? null
 
   return (
@@ -98,6 +112,13 @@ export default function MyAssessmentPage() {
             </SelectContent>
           </Select>
         </div>
+        {cycle && (
+          <Button variant="outline" disabled={exporting} onClick={exportExcel}
+            title={showFull ? '회차 대상 통제 전체 — 통제 1건 = 시트 1장, 증빙 이미지 포함' : '내가 통제책임자인 통제만 — 통제 1건 = 시트 1장, 증빙 이미지 포함'}>
+            {exporting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />}
+            {showFull ? '엑셀 내보내기(전체)' : '엑셀 내보내기(내 담당)'}
+          </Button>
+        )}
         {showFull ? (
           <div className="space-y-1">
             <Label>통제책임자</Label>

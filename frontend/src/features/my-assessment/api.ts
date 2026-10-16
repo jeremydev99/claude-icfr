@@ -145,3 +145,26 @@ export function useTestRecords(cycles: CycleItem[] | undefined) {
     isError: results.some((r) => r.isError),
   }
 }
+
+/**
+ * 회차 엑셀 내보내기(13.9-122) — 통제 1건 = 시트 1장, 증빙 이미지·PDF 페이지를 붙인다. 시간이 걸릴 수 있다.
+ * `mine=true` 내 담당(통제책임자인 통제, 누구나) / `false` 회차 전체(관리자·감사인만, 13.9-137 — 민감 증빙).
+ * 실패하면 화면에 보여 줄 문구로 던진다.
+ */
+export async function downloadCycleExcel(cycleId: string, mine: boolean): Promise<void> {
+  try {
+    const res = await apiClient.get<Blob>(`/api/assessment/cycles/${cycleId}/export`, { params: { mine }, responseType: 'blob' })
+    const m = String(res.headers['content-disposition'] ?? '').match(/filename\*=UTF-8''([^;]+)/)
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(res.data)
+    a.download = m ? decodeURIComponent(m[1]) : '운영평가.xlsx'
+    a.click()
+    URL.revokeObjectURL(a.href)
+  } catch (e) {
+    const blob = (e as { response?: { data?: Blob } })?.response?.data
+    const text = blob instanceof Blob ? await blob.text().catch(() => '') : ''
+    if (text.includes('내보낼 통제가 없습니다')) throw new Error('내보낼 통제가 없습니다 — 이 회차에 내가 통제책임자인 통제가 없습니다')
+    const detail = (() => { try { return String(JSON.parse(text).detail ?? '') } catch { return '' } })()
+    throw new Error(detail || '엑셀을 만들지 못했습니다')
+  }
+}

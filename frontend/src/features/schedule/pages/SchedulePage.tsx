@@ -34,7 +34,6 @@ import { Pencil, Eye } from 'lucide-react'
 import { endMonthOf, fiscalRangeText } from '@/lib/fiscalYear'
 import PlanPanel from '../components/PlanPanel'
 import HelpButton from '@/features/help/HelpButton'
-import apiClient from '@/lib/axios'
 
 /**
  * 일정관리 — 회계연도 일정안(표준·사용자 지정, 전결라인 결재) + 평가 회차 기간 오버레이(2026-10-06).
@@ -52,27 +51,7 @@ export default function SchedulePage() {
   const canWrite = useAuthStore((s) => s.user?.can_write ?? false)
   const canCreateCycle = useAuthStore((s) => Boolean(s.user?.can_write && s.user?.is_assessor))
   const [createOpen, setCreateOpen] = useState(false)
-  // 회차 엑셀 내보내기 — 증빙 이미지를 붙이느라 시간이 걸릴 수 있어 진행 중 표시
-  const [exporting, setExporting] = useState<string | null>(null)
-  const exportCycle = async (id: string, mine: boolean) => {
-    setExporting(id)
-    try {
-      const res = await apiClient.get<Blob>(`/api/assessment/cycles/${id}/export`, { params: { mine }, responseType: 'blob' })
-      const cd = String(res.headers['content-disposition'] ?? '')
-      const m = cd.match(/filename\*=UTF-8''([^;]+)/)
-      const a = document.createElement('a')
-      a.href = URL.createObjectURL(res.data)
-      a.download = m ? decodeURIComponent(m[1]) : '운영평가.xlsx'
-      a.click()
-      URL.revokeObjectURL(a.href)
-    } catch (e) {
-      const blob = (e as { response?: { data?: Blob } })?.response?.data
-      const text = blob instanceof Blob ? await blob.text().catch(() => '') : ''
-      toast.error(text.includes('내보낼 통제가 없습니다') ? '내보낼 통제가 없습니다 — 내 담당 통제가 이 회차에 없습니다' : '엑셀을 만들지 못했습니다')
-    } finally {
-      setExporting(null)
-    }
-  }
+
   // 회차 마감·최종승인(ADR-0038 2-4) — 결재 대기함에서 오면 `?cycle=` 로 바로 연다
   const [cycleSheet, setCycleSheet] = useState<string | null>(null)
   const [searchParams] = useSearchParams()
@@ -315,11 +294,7 @@ export default function SchedulePage() {
                       <span className={incomplete[c.id]! > 0 ? 'text-destructive' : ''}> · 미완 {incomplete[c.id]}건</span>
                     )}
                   </span>
-                  {/* 엑셀 내보내기(13.9-122) — 통제 1건 = 시트 1장, 증빙 이미지·PDF 페이지를 붙인다 */}
-                  <Button size="sm" variant="ghost" className="h-7" disabled={exporting === c.id}
-                    onClick={() => exportCycle(c.id, false)}>엑셀</Button>
-                  <Button size="sm" variant="ghost" className="h-7" disabled={exporting === c.id}
-                    onClick={() => exportCycle(c.id, true)}>엑셀(내 담당)</Button>
+                  {/* 엑셀 내보내기는 내 평가(회차 선택 옆)로 옮겼다(2026-10-16 Regina) */}
                   <Button size="sm" variant="outline" className="h-7" onClick={() => setCycleSheet(c.id)}>
                     {c.status === 'open' ? '마감' : c.status === 'closed' ? '최종승인' : '결재 기록'}
                   </Button>
