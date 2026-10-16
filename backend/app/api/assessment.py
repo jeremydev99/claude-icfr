@@ -965,5 +965,6 @@ def get_worklist(cycle_id: UUID, mine: bool = True, user: CurrentUser = None,
             samples_done=sum(1 for r in samples.get(a.id, []) if _sample_done(r)) if a else 0,
             evidence_count=ev_count.get(t.control_id, 0), pending_stages=pending, can_approve=can,
             sod_blocked=sod,
+            dept_approver_missing=dept_needed and holders.get(ROLE_DEPT_APPROVER) is None,
         ))
     return out

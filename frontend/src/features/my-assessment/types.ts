@@ -26,6 +26,8 @@ export interface WorklistRow {
   can_approve: string[]
   /** 내 승인 차례인데 직무분리로 막힌 이유 — 다른 승인자가 필요하다 */
   sod_blocked: string | null
+  /** 부서승인 단계가 필요한데 부서승인자가 없다 — 그대로면 승인 대기에서 끝나지 않는다 */
+  dept_approver_missing: boolean
 }
 
 export interface SampleEvidence {

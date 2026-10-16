@@ -352,3 +352,35 @@ def test_same_person_cannot_approve_two_stages(client: TestClient, storage) -> N
                        json={"stage": "dept"}).status_code == 201
     r = client.post(f"/api/assessment/activities/{act['id']}/approvals", headers=ah, json={"stage": "assessor"})
     assert r.status_code == 403 and "다른 단계" in r.json()["detail"]
+
+
+# ── 점검 보완 (2026-10-16 브라우저 점검) ─────────────────────
+
+def test_same_sample_same_file_is_refused(client: TestClient, storage) -> None:
+    """같은 샘플에 같은 내용은 409 — 다른 샘플에는 올리되 duplicate_of 로 알린다."""
+    s = _setup("P1", sample_size=2)
+    h = _login(client, s["owner"])
+    act = _start(client, s, h)
+    s1, s2 = act["samples"][0]["id"], act["samples"][1]["id"]
+
+    def up(sid):
+        return client.post("/api/evidence/files", headers=h,
+                           data={"cycle_id": s["cycle"], "control_id": s["control"], "sample_id": sid},
+                           files={"file": ("캡처.pdf", PDF, "application/pdf")})
+    assert up(s1).status_code == 201
+    again = up(s1)
+    assert again.status_code == 409 and "이미 붙어 있습니다" in again.json()["detail"]
+    other = up(s2)
+    assert other.status_code == 201 and other.json()["duplicate_of"] == "캡처.pdf"
+
+
+def test_worklist_flags_missing_dept_approver(client: TestClient) -> None:
+    """부서승인이 켜져 있는데 부서승인자가 없으면 표시 — 그대로면 승인 대기에서 끝나지 않는다."""
+    s = _setup("P2", sample_size=1)
+    row = next(x for x in client.get(f"/api/assessment/cycles/{s['cycle']}/worklist",
+                                      headers=_login(client, s["owner"])).json() if x["control_id"] == s["control"])
+    assert row["dept_approver_missing"] is True
+    _reassign(s, "dept_approver", s["other"])
+    row = next(x for x in client.get(f"/api/assessment/cycles/{s['cycle']}/worklist",
+                                      headers=_login(client, s["owner"])).json() if x["control_id"] == s["control"])
+    assert row["dept_approver_missing"] is False

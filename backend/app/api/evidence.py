@@ -311,9 +311,15 @@ async def create_file(
         raise HTTPException(status_code=415,
                             detail=f"파일 내용이 형식({content_type})과 맞지 않습니다 — 확장자만 바꾼 파일은 올릴 수 없습니다")
     digest = hashlib.sha256(data).hexdigest()
-    dup = db.query(EvidenceFile).filter(EvidenceFile.cycle_id == cycle_id, EvidenceFile.control_id == control_id,
-                                        EvidenceFile.sha256 == digest,
-                                        EvidenceFile.is_deleted == False).first()  # noqa: E712
+    dups = db.query(EvidenceFile).filter(EvidenceFile.cycle_id == cycle_id, EvidenceFile.control_id == control_id,
+                                         EvidenceFile.sha256 == digest,
+                                         EvidenceFile.is_deleted == False).all()  # noqa: E712
+    dup = dups[0] if dups else None
+    # 같은 샘플에 같은 내용이 이미 붙어 있으면 올리지 않는다 — 다른 샘플이면 근거로 다시 쓸 수 있어 알리기만 한다
+    if sample_id is not None and dups and db.query(EvidenceLink).filter(
+            EvidenceLink.file_id.in_([d.id for d in dups]), EvidenceLink.linked_entity_type == LINK_TARGET_SAMPLE,
+            EvidenceLink.linked_entity_id == str(sample_id), EvidenceLink.is_deleted == False).first():  # noqa: E712
+        raise HTTPException(status_code=409, detail=f"이 샘플에 같은 파일이 이미 붙어 있습니다 ({dup.title or dup.filename})")
 
     obj = EvidenceFile(
         filename=file.filename,

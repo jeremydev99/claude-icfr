@@ -156,3 +156,13 @@ export function progressText(r: Pick<WorklistRow, 'samples_done' | 'required_sam
   if (r.state === 'not_started') return `0/${r.required_samples}`
   return `${Math.min(r.samples_done, r.required_samples)}/${r.required_samples}`
 }
+
+/**
+ * 기본 회차(2026-10-16 점검) — 진행 중이면서 **내 담당이 있는** 회차를 먼저. 없으면 진행 중, 없으면 첫 회차.
+ * 회차가 여럿일 때 내 담당이 없는 회차로 열려 "맡은 통제가 없습니다"로 시작하던 것.
+ */
+export function pickDefaultCycle(cycles: { id: string; status: string }[],
+                                 myCounts: Record<string, number | undefined>): string | null {
+  const open = cycles.filter((c) => c.status === 'open')
+  return (open.find((c) => (myCounts[c.id] ?? 0) > 0) ?? open[0] ?? cycles[0])?.id ?? null
+}

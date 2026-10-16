@@ -15,6 +15,7 @@ import {
   summarize,
   isClipboardName,
   pastedFileName,
+  pickDefaultCycle,
 } from './myAssessment.pure'
 import type { SampleRead, WorklistRow } from './types'
 
@@ -65,7 +66,7 @@ describe('목록 집계', () => {
     control_id: 'c', control_code: null, control_name: null, process_code: null, frequency: null, auto_manual: null,
     owner_id: 'u', owner_name: null, my_roles: [], activity_kind: 'test', required_samples: 1, sample_basis: '',
     rcm_test_methods: null, rcm_population: null, rcm_test_procedure: null, state: 'not_started', activity_id: null,
-    activity_count: 0, samples_done: 0, evidence_count: 0, pending_stages: [], can_approve: [], sod_blocked: null, rcm_control_status: null, ...p,
+    activity_count: 0, samples_done: 0, evidence_count: 0, pending_stages: [], can_approve: [], sod_blocked: null, rcm_control_status: null, dept_approver_missing: false, ...p,
   })
   it('상태별 건수·필요 샘플 합계·미배정', () => {
     const s = summarize([row({ required_samples: 7 }), row({ state: 'draft', required_samples: 2, owner_id: null })])
@@ -113,5 +114,15 @@ describe('붙여넣은 캡처 파일명(조사 2)', () => {
     expect(pastedFileName('image.png', 'image/png', 'ELC-01', 2, now, 1)).toBe('ELC-01_S2_20261016-090507_2.png')
     expect(pastedFileName('', 'image/jpeg', null, 1, now)).toBe('증빙_S1_20261016-090507.jpg')
     expect(pastedFileName('image.png', 'image/png', 'A/B C', 1, now)).toBe('A-B-C_S1_20261016-090507.png')
+  })
+})
+
+describe('기본 회차 — 내 담당이 있는 진행 중 회차 먼저', () => {
+  const cs = [{ id: 'm', status: 'open' }, { id: 'y', status: 'open' }, { id: 'old', status: 'closed' }]
+  it('내 담당이 있는 회차', () => expect(pickDefaultCycle(cs, { m: 0, y: 3 })).toBe('y'))
+  it('어디에도 없으면 첫 진행 중', () => expect(pickDefaultCycle(cs, { m: 0, y: 0 })).toBe('m'))
+  it('진행 중이 없으면 첫 회차, 없으면 null', () => {
+    expect(pickDefaultCycle([{ id: 'old', status: 'closed' }], {})).toBe('old')
+    expect(pickDefaultCycle([], {})).toBeNull()
   })
 })

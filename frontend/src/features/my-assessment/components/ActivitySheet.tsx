@@ -72,6 +72,12 @@ export default function ActivitySheet({ cycleId, cycleOpen, row, onClose }: {
             </SheetHeader>
 
             <div className="mt-4 space-y-6 text-sm">
+              {row.dept_approver_missing && (
+                <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+                  이 통제는 <b>부서승인자가 지정되지 않았습니다</b>. 제출해도 부서승인 단계에서 승인이 끝나지 않으니,
+                  내부회계 관리자에게 역할 배정(또는 부서장 지정)을 요청하세요.
+                </p>
+              )}
               <section className="rounded-md border bg-muted/30 p-3 space-y-1">
                 <p className="font-medium">RCM 테스트 방법</p>
                 {row.rcm_control_status && (

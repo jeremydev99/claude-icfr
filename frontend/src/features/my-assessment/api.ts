@@ -16,6 +16,18 @@ export function useWorklist(cycleId: string | null, mine: boolean) {
   })
 }
 
+/** 회차별 내 담당 건수 — 기본 회차 고르기용(2026-10-16). 목록과 같은 키라 캐시를 같이 쓴다. 아직 모르면 undefined */
+export function useMyCycleCounts(cycleIds: string[]): Record<string, number | undefined> {
+  const tenantId = useActiveTenantId()
+  const results = useQueries({
+    queries: cycleIds.map((id) => ({
+      queryKey: key(tenantId, 'worklist', id, true),
+      queryFn: async () => (await apiClient.get<WorklistRow[]>(`${A}/cycles/${id}/worklist`, { params: { mine: true } })).data,
+    })),
+  })
+  return Object.fromEntries(cycleIds.map((id, i) => [id, results[i]?.data?.length]))
+}
+
 export function useActivity(activityId: string | null) {
   const tenantId = useActiveTenantId()
   return useQuery({

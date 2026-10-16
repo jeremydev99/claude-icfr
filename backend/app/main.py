@@ -89,6 +89,8 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # 다운로드 파일명 — 화면과 API 주소가 다른 설치(로컬 개발·타사 설치)에서도 원래 이름으로 저장되게(2026-10-16)
+        expose_headers=["Content-Disposition"],
     )
     app.add_middleware(RequestIDMiddleware)
     app.add_middleware(AuditLogMiddleware)

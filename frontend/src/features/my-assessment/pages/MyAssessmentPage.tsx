@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { downloadCycleExcel, useWorklist } from '../api'
+import { downloadCycleExcel, useMyCycleCounts, useWorklist } from '../api'
 import ActivitySheet from '../components/ActivitySheet'
 import { Button } from '@/components/ui/button'
 import {
@@ -21,6 +21,7 @@ import {
   OWNER_ALL,
   OWNER_NONE,
   ownerOptions,
+  pickDefaultCycle,
   progressText,
   ROLE_FILTER_LABEL,
   type RoleFilter,
@@ -46,11 +47,18 @@ export default function MyAssessmentPage() {
 
   const { data: allCycles = [], isLoading: cyclesLoading } = useCycles()
   const cycles = useMemo(() => allCycles.filter((c) => c.kind === kind), [allCycles, kind])
+  // 기본 회차 — 내 담당이 있는 진행 중 회차를 먼저(pickDefaultCycle). 사용자가 직접 고르면 그대로 둔다
+  const openIds = useMemo(() => cycles.filter((c) => c.status === 'open').map((c) => c.id), [cycles])
+  const myCounts = useMyCycleCounts(openIds)
+  const countsReady = openIds.every((id) => myCounts[id] !== undefined)
+  const [pickedByUser, setPickedByUser] = useState(false)
   useEffect(() => {
-    if (!cycles.some((c) => c.id === cycleId)) {
-      setCycleId((cycles.find((c) => c.status === 'open') ?? cycles[0])?.id ?? null)
+    const valid = cycles.some((c) => c.id === cycleId)
+    if (!valid || (!pickedByUser && countsReady)) {
+      const best = pickDefaultCycle(cycles, myCounts)
+      if (best !== cycleId) setCycleId(best)
     }
-  }, [cycles, cycleId])
+  }, [cycles, cycleId, pickedByUser, countsReady, myCounts])
   const cycle = cycles.find((c) => c.id === cycleId) ?? null
 
   const showFull = full && canFullView
@@ -94,7 +102,7 @@ export default function MyAssessmentPage() {
       </div>
 
       <div className="flex flex-wrap items-end gap-4">
-        <Tabs value={kind} onValueChange={(v) => { setKind(v as 'operation' | 'design'); setSelected(null) }}>
+        <Tabs value={kind} onValueChange={(v) => { setKind(v as 'operation' | 'design'); setSelected(null); setPickedByUser(false) }}>
           <TabsList>
             <TabsTrigger value="operation">운영평가</TabsTrigger>
             <TabsTrigger value="design">설계평가</TabsTrigger>
@@ -102,7 +110,7 @@ export default function MyAssessmentPage() {
         </Tabs>
         <div className="space-y-1">
           <Label>평가 회차</Label>
-          <Select value={cycleId ?? ''} onValueChange={(v) => { setCycleId(v); setSelected(null) }} disabled={cycles.length === 0}>
+          <Select value={cycleId ?? ''} onValueChange={(v) => { setCycleId(v); setSelected(null); setPickedByUser(true) }} disabled={cycles.length === 0}>
             <SelectTrigger className="w-72"><SelectValue placeholder={`${KIND_LABEL[kind]} 회차 없음`} /></SelectTrigger>
             <SelectContent>
               {cycles.map((c) => (
@@ -209,6 +217,10 @@ export default function MyAssessmentPage() {
                       <Badge variant="destructive">{r.can_approve.map((s) => STAGE_LABEL[s] ?? s).join('·')} 필요</Badge>
                     )}
                     {r.sod_blocked && <Badge variant="outline" title={r.sod_blocked}>직무분리 — 다른 승인자 필요</Badge>}
+                    {r.dept_approver_missing && (
+                      <Badge variant="outline" className="border-amber-400 text-amber-700"
+                        title="부서승인 단계가 있는데 부서승인자가 없습니다 — 역할 배정 또는 부서장 지정이 필요합니다">부서승인자 미지정</Badge>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
