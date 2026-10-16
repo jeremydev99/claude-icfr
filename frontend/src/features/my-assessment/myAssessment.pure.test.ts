@@ -13,6 +13,8 @@ import {
   sampleMissing,
   submitBlockers,
   summarize,
+  isClipboardName,
+  pastedFileName,
 } from './myAssessment.pure'
 import type { SampleRead, WorklistRow } from './types'
 
@@ -94,5 +96,22 @@ describe('역할·통제책임자 거르기', () => {
     expect(rows.filter((x) => matchesOwner(x, OWNER_NONE))).toHaveLength(1)
     expect(rows.filter((x) => matchesOwner(x, 'u2'))).toHaveLength(2)
     expect(rows.filter((x) => matchesOwner(x, OWNER_ALL))).toHaveLength(4)
+  })
+})
+
+describe('붙여넣은 캡처 파일명(조사 2)', () => {
+  const now = new Date(2026, 9, 16, 9, 5, 7)
+  it('브라우저 기본 이름(image.png)·빈 이름만 바꾼다', () => {
+    expect(isClipboardName('image.png')).toBe(true)
+    expect(isClipboardName('Image.JPEG')).toBe(true)
+    expect(isClipboardName('')).toBe(true)
+    expect(isClipboardName('전표_123.pdf')).toBe(false)
+    expect(pastedFileName('전표_123.pdf', 'application/pdf', 'C-01', 1, now)).toBe('전표_123.pdf')
+  })
+  it('통제코드_S샘플번호_일시, 여러 장이면 순번', () => {
+    expect(pastedFileName('image.png', 'image/png', 'ELC-01', 2, now)).toBe('ELC-01_S2_20261016-090507.png')
+    expect(pastedFileName('image.png', 'image/png', 'ELC-01', 2, now, 1)).toBe('ELC-01_S2_20261016-090507_2.png')
+    expect(pastedFileName('', 'image/jpeg', null, 1, now)).toBe('증빙_S1_20261016-090507.jpg')
+    expect(pastedFileName('image.png', 'image/png', 'A/B C', 1, now)).toBe('A-B-C_S1_20261016-090507.png')
   })
 })

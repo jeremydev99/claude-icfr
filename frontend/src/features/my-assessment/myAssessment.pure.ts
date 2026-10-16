@@ -133,6 +133,25 @@ export function ownerOptions(rows: Pick<WorklistRow, 'owner_id' | 'owner_name'>[
   return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko'))
 }
 
+/** 캡처 붙여넣기 이름인가 — 브라우저는 클립보드 이미지에 `image.png` 같은 고정 이름을 붙인다 */
+export function isClipboardName(name: string): boolean {
+  return !name.trim() || /^image\.(png|jpe?g|gif|bmp|webp)$/i.test(name.trim())
+}
+
+/**
+ * 붙여넣은 캡처의 파일명(2026-10-16, 조사 2) — 모두 `image.png` 가 되면 증빙을 구분할 수 없다.
+ * `{통제코드}_S{샘플번호}_{yyyyMMdd-HHmmss}[_n].{확장자}`. 탐색기에서 복사한 실제 파일은 이름을 그대로 둔다.
+ */
+export function pastedFileName(original: string, type: string, controlCode: string | null, seq: number,
+                               now: Date, index = 0): string {
+  if (!isClipboardName(original)) return original
+  const ext = (original.split('.').pop() || type.split('/').pop() || 'png').toLowerCase().replace('jpeg', 'jpg')
+  const p = (n: number) => String(n).padStart(2, '0')
+  const stamp = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`
+  const code = (controlCode ?? '').replace(/[\\/:*?"<>|\s]+/g, '-') || '증빙'
+  return `${code}_S${seq}_${stamp}${index ? `_${index + 1}` : ''}.${ext}`
+}
+
 export function progressText(r: Pick<WorklistRow, 'samples_done' | 'required_samples' | 'state'>): string {
   if (r.state === 'not_started') return `0/${r.required_samples}`
   return `${Math.min(r.samples_done, r.required_samples)}/${r.required_samples}`

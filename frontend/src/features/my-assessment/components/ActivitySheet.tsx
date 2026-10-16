@@ -11,13 +11,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { errorDetail } from '@/features/admin/api/PolicyAssignmentApi'
+import { validateFile } from '@/features/evidence/evidence.pure'
 import { downloadEvidence, useActivity, useControlHistory, useMyAssessmentActions } from '../api'
 import {
   canDeleteSample,
+  isClipboardName,
   listToMethods,
   METHODS,
   methodsLabel,
   methodsToList,
+  pastedFileName,
   RESULT_LABEL,
   sampleMissing,
   STAGE_LABEL,
@@ -92,7 +95,7 @@ export default function ActivitySheet({ cycleId, cycleOpen, row, onClose }: {
               {act && (
                 <>
                   <ActivityForm act={act} editable={editable} />
-                  <SamplesTable act={act} editable={editable} required={required} cycleId={cycleId} />
+                  <SamplesTable act={act} editable={editable} required={required} cycleId={cycleId} controlCode={row.control_code} />
                   <Footer act={act} row={row} editable={editable} required={required} canRedo={canStart && act.status === 'submitted'}
                     onRedo={start} />
                 </>
@@ -191,14 +194,17 @@ function ActivityForm({ act, editable }: { act: ActivityRead; editable: boolean 
   )
 }
 
-function SamplesTable({ act, editable, required, cycleId }: {
-  act: ActivityRead; editable: boolean; required: number; cycleId: string
+function SamplesTable({ act, editable, required, cycleId, controlCode }: {
+  act: ActivityRead; editable: boolean; required: number; cycleId: string; controlCode: string | null
 }) {
   const { addSample } = useMyAssessmentActions()
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between">
-        <p className="font-medium">샘플 ({act.samples.length}건 / 필요 {required}건)</p>
+        <p className="font-medium">
+          샘플 ({act.samples.length}건 / 필요 {required}건)
+          {editable && <span className="ml-2 text-xs font-normal text-muted-foreground">샘플 줄을 클릭하고 Ctrl+V 로 캡처를 붙여넣을 수 있습니다</span>}
+        </p>
         {editable && (
           <Button size="sm" variant="outline" disabled={addSample.isPending}
             onClick={() => addSample.mutate(act.id, { onError: (e) => toast.error(errorDetail(e, '샘플을 추가하지 못했습니다')) })}>
@@ -208,7 +214,7 @@ function SamplesTable({ act, editable, required, cycleId }: {
       </div>
       <div className="space-y-2">
         {act.samples.map((s) => (
-          <SampleRow key={s.id} s={s} act={act} editable={editable} cycleId={cycleId}
+          <SampleRow key={s.id} s={s} act={act} editable={editable} cycleId={cycleId} controlCode={controlCode}
             deletable={editable && canDeleteSample(act.samples.length, required)} />
         ))}
       </div>
@@ -216,8 +222,8 @@ function SamplesTable({ act, editable, required, cycleId }: {
   )
 }
 
-function SampleRow({ s, act, editable, deletable, cycleId }: {
-  s: SampleRead; act: ActivityRead; editable: boolean; deletable: boolean; cycleId: string
+function SampleRow({ s, act, editable, deletable, cycleId, controlCode }: {
+  s: SampleRead; act: ActivityRead; editable: boolean; deletable: boolean; cycleId: string; controlCode: string | null
 }) {
   const { patchSample, deleteSample, upload, unlink } = useMyAssessmentActions()
   const [label, setLabel] = useState(s.label ?? '')
@@ -227,8 +233,37 @@ function SampleRow({ s, act, editable, deletable, cycleId }: {
   const save = (body: Parameters<typeof patchSample.mutate>[0]['body']) => patchSample.mutate({ id: s.id, body }, err('저장하지 못했습니다'))
   const missing = sampleMissing(s)
 
+  // 파일 선택·붙여넣기 공통 — 클라이언트 검증(50MB·형식) 후 차례로 올린다. 최종 판정은 서버
+  const uploadFiles = async (files: File[]) => {
+    const now = new Date()
+    for (const [i, f] of files.entries()) {
+      const named = isClipboardName(f.name)
+        ? new File([f], pastedFileName(f.name, f.type, controlCode, s.seq, now, files.length > 1 ? i : 0), { type: f.type })
+        : f
+      const bad = validateFile(named)
+      if (bad) { toast.error(`${named.name}: ${bad}`); continue }
+      try {
+        await upload.mutateAsync({ cycleId, controlId: act.control_id, sampleId: s.id, file: named })
+      } catch (e) {
+        toast.error(errorDetail(e, '증빙을 올리지 못했습니다'))
+      }
+    }
+  }
+  // Ctrl+V(2026-10-16, 조사 2) — 이 샘플 줄에 포커스가 있을 때만. 입력칸 안의 붙여넣기·텍스트 붙여넣기는 건드리지 않는다
+  const onPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (!editable || upload.isPending) return
+    const t = e.target as HTMLElement
+    if (t.closest('input, textarea, [contenteditable="true"]')) return
+    const files = Array.from(e.clipboardData.files)
+    if (files.length === 0) return
+    e.preventDefault()
+    void uploadFiles(files)
+  }
+
   return (
-    <div className="rounded-md border p-2">
+    <div className={editable ? 'rounded-md border p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus:border-primary' : 'rounded-md border p-2'}
+      tabIndex={editable ? 0 : undefined} onPaste={onPaste}
+      title={editable ? '클릭 후 Ctrl+V 로 캡처·파일을 이 샘플의 증빙으로 붙여넣기' : undefined}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="w-8 shrink-0 text-center font-medium">{s.seq}</span>
         {editable ? (
@@ -252,9 +287,9 @@ function SampleRow({ s, act, editable, deletable, cycleId }: {
           {editable && (
             <>
               <input ref={fileRef} type="file" className="hidden" onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) upload.mutate({ cycleId, controlId: act.control_id, sampleId: s.id, file: f }, err('증빙을 올리지 못했습니다'))
+                const files = Array.from(e.target.files ?? [])
                 e.target.value = ''
+                void uploadFiles(files)
               }} />
               <Button size="sm" variant="outline" className="h-8" disabled={upload.isPending} onClick={() => fileRef.current?.click()}>
                 <Paperclip className="mr-1 h-4 w-4" />증빙
