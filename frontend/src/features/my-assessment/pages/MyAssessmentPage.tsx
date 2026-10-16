@@ -23,7 +23,6 @@ import {
   ownerOptions,
   progressText,
   ROLE_FILTER_LABEL,
-  ROLE_LABEL,
   type RoleFilter,
   STAGE_LABEL,
   STATE_LABEL,
@@ -116,7 +115,7 @@ export default function MyAssessmentPage() {
           <Button variant="outline" disabled={exporting} onClick={exportExcel}
             title={showFull ? '회차 대상 통제 전체 — 통제 1건 = 시트 1장, 증빙 이미지 포함' : '내가 통제책임자인 통제만 — 통제 1건 = 시트 1장, 증빙 이미지 포함'}>
             {exporting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />}
-            {showFull ? '엑셀 내보내기(전체)' : '엑셀 내보내기(내 담당)'}
+            {showFull ? '엑셀 내보내기(전체)' : '엑셀 내보내기'}
           </Button>
         )}
         {showFull ? (
@@ -186,7 +185,7 @@ export default function MyAssessmentPage() {
                 <TableHead className="w-36">통제</TableHead>
                 <TableHead>통제명</TableHead>
                 <TableHead className="w-16">주기</TableHead>
-                <TableHead className="w-32">{showFull ? '통제책임자' : '내 역할'}</TableHead>
+                <TableHead className="w-32">담당자</TableHead>
                 <TableHead className="w-24">샘플</TableHead>
                 <TableHead className="w-16">증빙</TableHead>
                 <TableHead className="w-40">상태</TableHead>
@@ -199,9 +198,8 @@ export default function MyAssessmentPage() {
                   <TableCell>{r.control_name}</TableCell>
                   <TableCell>{FREQ_LABEL[r.frequency ?? ''] ?? '-'}</TableCell>
                   <TableCell>
-                    {showFull
-                      ? (r.owner_name ?? <span className="text-amber-700">미배정</span>)
-                      : r.my_roles.map((x) => ROLE_LABEL[x] ?? x).join(', ')}
+                    {/* 담당자 = 통제책임자 이름(2026-10-16 Regina — '내 역할'보다 누구 통제인지가 구분된다) */}
+                    {r.owner_name ?? <span className="text-amber-700">미배정</span>}
                   </TableCell>
                   <TableCell title={r.sample_basis}>{progressText(r)}</TableCell>
                   <TableCell>{r.evidence_count}</TableCell>

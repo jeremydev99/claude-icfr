@@ -36,6 +36,8 @@ class EvidenceFileRead(EvidenceFileBase):
     note: str | None = None
     created_at: datetime
     updated_at: datetime
+    # 업로드 응답에서만 — 같은 회차 × 통제에 내용이 같은 파일(sha256)이 이미 있으면 그 문서명. 막지 않고 알린다(13.9-138)
+    duplicate_of: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 

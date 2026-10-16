@@ -251,7 +251,9 @@ function SampleRow({ s, act, editable, deletable, cycleId, controlCode }: {
       const bad = validateFile(named)
       if (bad) { toast.error(`${named.name}: ${bad}`); continue }
       try {
-        await upload.mutateAsync({ cycleId, controlId: act.control_id, sampleId: s.id, file: named })
+        const res = await upload.mutateAsync({ cycleId, controlId: act.control_id, sampleId: s.id, file: named })
+        // 같은 회차 × 통제에 내용이 같은 파일이 이미 있으면 서버가 알려 준다 — 막지는 않는다(다른 샘플 근거일 수 있다)
+        if (res?.duplicate_of) toast.warning(`${named.name}: 같은 내용의 증빙이 이미 있습니다 (${res.duplicate_of})`)
       } catch (e) {
         toast.error(errorDetail(e, '증빙을 올리지 못했습니다'))
       }

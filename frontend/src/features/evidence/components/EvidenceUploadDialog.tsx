@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import {
   Dialog,
   DialogContent,
@@ -74,7 +75,10 @@ export default function EvidenceUploadDialog({ open, onOpenChange }: Props) {
     upload(
       { file: selectedFile, cycleId, controlId, title, note },
       {
-        onSuccess: () => handleClose(),
+        onSuccess: (res) => {
+          if (res?.duplicate_of) toast.warning(`같은 내용의 증빙이 이미 있습니다: ${res.duplicate_of}`)
+          handleClose()
+        },
         onError: (error) => setServerError(resolveEvidenceError(error)),
       },
     )

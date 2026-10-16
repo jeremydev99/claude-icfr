@@ -220,7 +220,9 @@ content-disposition: attachment; filename*=UTF-8''2026%EB%85%84%201%EB%B6%84%EA%
 | 업로드·수정·삭제·연결 생성/삭제 | 무변경(§3·§3.1·§3.2) | |
 
 회차 엑셀 내보내기 `GET /api/assessment/cycles/{id}/export`(증빙 이미지 포함): `mine=true`(내가 통제책임자인 통제) 누구나, `mine=false`(회차 전체) 열람 역할만 — 403 "회차 전체 내보내기는 내부회계 관리자·감사인만…"(13.9-137).
-sys_admin 단독 계정은 열람 역할이 아니다(ADR-0038 §2.5). 화면: 메뉴 잠금 + `/evidence` 라우트 가드(→ `/my-assessment`).
+sys_admin 단독 계정은 열람 역할이 아니다(ADR-0038 §2.5).
+업로드 형식 검증(13.9-138): MIME 허용 목록에 더해 **파일 앞부분(매직 바이트)**이 그 형식과 맞아야 한다 — 아니면 415 "파일 내용이 형식(…)과 맞지 않습니다…".
+업로드 응답 `duplicate_of`: 같은 회차 × 통제에 sha256 이 같은 파일이 있으면 그 문서명(title 또는 filename), 없으면 null. 막지 않는다. 화면: 메뉴 잠금 + `/evidence` 라우트 가드(→ `/my-assessment`).
 
 ## 4. 삭제와 이력
 

@@ -245,3 +245,29 @@ def test_legacy_download_only_full_viewers(client: TestClient) -> None:
         db.close()
     assert client.get(f"/api/evidence/files/{fid}/download",
                       headers=_login(client, "ev-owner-G1@acme.example", PW)).status_code == 403
+
+
+# ── 파일 형식 실검증·중복 알림 (2026-10-16, 13.9-138) ───────────
+
+def test_upload_rejects_content_not_matching_type(client: TestClient) -> None:
+    """MIME 은 PNG 인데 내용이 다르면 415 — 확장자만 바꾼 파일."""
+    ctrl, cyc = _setup("M1")
+    mh = _login(client, "eg-mgr@acme.example", PW)
+    bad = client.post("/api/evidence/files", headers=mh, data={"cycle_id": str(cyc), "control_id": str(ctrl)},
+                      files={"file": ("캡처.png", b"MZ\x90\x00 not an image", "image/png")})
+    assert bad.status_code == 415 and "형식" in bad.json()["detail"]
+    ok = client.post("/api/evidence/files", headers=mh, data={"cycle_id": str(cyc), "control_id": str(ctrl)},
+                     files={"file": ("캡처.png", b"\x89PNG\r\n\x1a\n rest", "image/png")})
+    assert ok.status_code == 201, ok.text
+
+
+def test_duplicate_content_is_reported_not_blocked(client: TestClient) -> None:
+    """같은 회차 × 통제에 같은 내용이면 올리되 duplicate_of 로 알린다. 처음 올린 것은 None."""
+    ctrl, cyc = _setup("U1")
+    mh = _login(client, "eg-mgr@acme.example", PW)
+    first = _upload(client, mh, cyc, ctrl, name="전표1.pdf", body=b"%PDF-1.4 same")
+    assert first.status_code == 201 and first.json()["duplicate_of"] is None
+    again = _upload(client, mh, cyc, ctrl, name="전표1-다시.pdf", body=b"%PDF-1.4 same")
+    assert again.status_code == 201 and again.json()["duplicate_of"] == "전표1.pdf"
+    other = _upload(client, mh, cyc, ctrl, name="전표2.pdf", body=b"%PDF-1.4 other")
+    assert other.json()["duplicate_of"] is None

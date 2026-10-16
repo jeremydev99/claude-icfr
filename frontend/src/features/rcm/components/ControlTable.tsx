@@ -247,7 +247,8 @@ export default function ControlTable({ data, params, onParamsChange, onSelect, o
                     {ctrl.owner_name ? ctrl.owner_name.split(/[\s,]+/).filter(Boolean).join(', ') : '—'}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()} className="text-right pr-2">
-                    <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100">
+                    {/* 편집·삭제는 항상 보인다(2026-10-16 Regina — 마우스를 올려야 보여 찾기 어려웠다. 터치 화면에서도 필요) */}
+                    <div className="flex items-center justify-end gap-0.5 text-muted-foreground">
                       {onEdit && (
                         <Button
                           variant="ghost"

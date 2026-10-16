@@ -61,6 +61,27 @@ ALLOWED_MIME = {
 }
 
 
+# 파일 앞부분(매직 바이트)으로 실제 형식 확인(2026-10-16, 13.9-138) — 브라우저가 알려 준 MIME 만 믿지 않는다.
+# 확장자만 바꾼 실행 파일·스크립트가 증빙으로 저장돼 다른 사람이 내려받는 경로를 막는다
+_ZIP = (b"PK\x03\x04",)
+_OLE = (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",)          # HWP 5.0(복합 문서)
+_SIGNATURES: dict[str, tuple[bytes, ...]] = {
+    "application/pdf": (b"%PDF",),
+    "image/png": (b"\x89PNG\r\n\x1a\n",),
+    "image/jpeg": (b"\xff\xd8\xff",),
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": _ZIP,
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": _ZIP,
+    "application/haansofthwp": _OLE + _ZIP,                  # HWPX 는 zip
+    "application/x-hwp": _OLE + _ZIP,
+}
+
+
+def _content_matches(content_type: str, data: bytes) -> bool:
+    """신고된 형식과 파일 내용이 맞는가. 표에 없는 형식은 ALLOWED_MIME 에서 이미 걸러진다."""
+    sigs = _SIGNATURES.get(content_type)
+    return sigs is None or any(data.startswith(s) for s in sigs)
+
+
 @router.get("/info")
 def get_module_info(user: CurrentUser) -> dict:
     return {
@@ -286,12 +307,19 @@ async def create_file(
     content_type = file.content_type or ""
     if content_type not in ALLOWED_MIME:
         raise HTTPException(status_code=415, detail=f"허용되지 않는 파일 형식: {content_type}")
+    if not _content_matches(content_type, data):
+        raise HTTPException(status_code=415,
+                            detail=f"파일 내용이 형식({content_type})과 맞지 않습니다 — 확장자만 바꾼 파일은 올릴 수 없습니다")
+    digest = hashlib.sha256(data).hexdigest()
+    dup = db.query(EvidenceFile).filter(EvidenceFile.cycle_id == cycle_id, EvidenceFile.control_id == control_id,
+                                        EvidenceFile.sha256 == digest,
+                                        EvidenceFile.is_deleted == False).first()  # noqa: E712
 
     obj = EvidenceFile(
         filename=file.filename,
         mime_type=content_type,
         size_bytes=len(data),
-        sha256=hashlib.sha256(data).hexdigest(),
+        sha256=digest,
         uploaded_by_id=user.id,
         cycle_id=cycle_id,
         control_id=control_id,
@@ -309,6 +337,8 @@ async def create_file(
 
     db.commit()
     db.refresh(obj)
+    # 중복은 막지 않는다 — 같은 캡처를 다른 샘플의 근거로 쓰는 경우가 실재한다. 화면이 경고만 띄운다
+    obj.duplicate_of = (dup.title or dup.filename) if dup is not None else None
     return obj
 
 
