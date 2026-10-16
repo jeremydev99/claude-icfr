@@ -13,11 +13,11 @@ import { useActiveTenantId, useAuthStore } from '@/features/auth/store'
 import { isIcfrStaffForUser } from '@/features/auth/permissions.pure'
 import {
   ROLES, ROLE_LABEL, effective, groupByProcess, matches, pkey, toChanges,
-  type Filter, type MatrixControl, type Pending, type RoleMatrixData, type RoleName,
+  noDeptApprover, type Filter, type MatrixControl, type Pending, type RoleMatrixData, type RoleName,
 } from './roleMatrix.pure'
 
 const FILTERS: { v: Filter; label: string }[] = [
-  { v: 'all', label: '전체' }, { v: 'unassigned', label: '미배정 있음' }, { v: 'key', label: '핵심통제' },
+  { v: 'all', label: '전체' }, { v: 'unassigned', label: '미배정 있음' }, { v: 'nodept', label: '부서승인자 없음' }, { v: 'key', label: '핵심통제' },
   { v: 'iuc', label: 'IUC(정보) 사용' }, { v: 'euc', label: '그중 EUC(스프레드시트)' }, { v: 'conflict', label: '겸직' },
 ]
 const INHERIT = '__inherit__'
@@ -69,6 +69,7 @@ export default function RoleMatrix() {
   const names = useMemo(() => new Map((data?.users ?? []).map((u) => [u.id, u.name])), [data])
   const groups = useMemo(() => data ? groupByProcess(data.controls.filter((c) => matches(c, filter, q)), data.processes) : [], [data, filter, q])
   const changes = data ? toChanges(pending, data) : []
+  const noDeptCount = data ? data.controls.filter(noDeptApprover).length : 0
 
   if (isLoading || !data) return <div className="flex items-center gap-2 p-6 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />불러오는 중…</div>
 
@@ -94,7 +95,11 @@ export default function RoleMatrix() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1 rounded-md border p-1">
           {FILTERS.map((f) => (
-            <Button key={f.v} size="sm" variant={filter === f.v ? 'default' : 'ghost'} onClick={() => setFilter(f.v)}>{f.label}</Button>
+            <Button key={f.v} size="sm" variant={filter === f.v ? 'default' : 'ghost'} onClick={() => setFilter(f.v)}>
+              {f.label}
+              {/* 부서승인자 없음은 건수를 같이 — 0 이 아니면 눈에 띄게(승인이 끝나지 않는 통제) */}
+              {f.v === 'nodept' && noDeptCount > 0 && <span className="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-800 dark:bg-amber-900 dark:text-amber-100">{noDeptCount}</span>}
+            </Button>
           ))}
         </div>
         <div className="relative w-56">

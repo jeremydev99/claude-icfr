@@ -43,12 +43,21 @@ export interface RoleMatrixData {
 export type Pending = Record<string, string | null>
 export const pkey = (scope: 'process' | 'control', target: string, role: RoleName) => `${scope}:${target}:${role}`
 
-export type Filter = 'all' | 'unassigned' | 'euc' | 'iuc' | 'key' | 'conflict'
+export type Filter = 'all' | 'unassigned' | 'nodept' | 'euc' | 'iuc' | 'key' | 'conflict'
+
+/**
+ * 부서승인 단계가 있는데 부서승인자가 없다(2026-10-16, 13.9-139) — 제출해도 승인 대기에서 끝나지 않는다.
+ * 통제책임자가 부서장을 겸하면(생략) 해당 없음. 고치는 법: 부서 관리에서 부서장 지정 또는 여기서 부서승인자 배정
+ */
+export function noDeptApprover(c: MatrixControl): boolean {
+  return !c.dept_approval_skipped && !c.roles.find((r) => r.role_name === 'dept_approver')?.user_id
+}
 
 export function matches(c: MatrixControl, f: Filter, q: string): boolean {
   const s = q.trim().toLowerCase()
   if (s && !`${c.code ?? ''} ${c.name ?? ''} ${c.owner_name ?? ''}`.toLowerCase().includes(s)) return false
   if (f === 'unassigned') return c.roles.some((r) => r.role_name !== 'dept_approver' && !r.user_id)
+  if (f === 'nodept') return noDeptApprover(c)
   if (f === 'euc') return c.euc_count > 0
   if (f === 'iuc') return c.iuc_count > 0
   if (f === 'key') return c.is_key_control

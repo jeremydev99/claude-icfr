@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { effective, groupByProcess, matches, pkey, toChanges, type MatrixControl, type MatrixProcess, type RoleMatrixData } from './roleMatrix.pure'
+import { effective, groupByProcess, matches, noDeptApprover, pkey, toChanges, type MatrixControl, type MatrixProcess, type RoleMatrixData } from './roleMatrix.pure'
 
 const proc = (id: string, owner?: string): MatrixProcess => ({
   id, code: id, name: id,
@@ -43,5 +43,19 @@ describe('roleMatrix', () => {
     const g = groupByProcess([ctrl('B', 'P'), ctrl('A', 'P'), ctrl('X', null)], [proc('P')])
     expect(g.map((x) => x.process?.id ?? null)).toEqual(['P', null])
     expect(g[0].controls.map((x) => x.id)).toEqual(['A', 'B'])
+  })
+})
+
+describe('부서승인자 없음(13.9-139)', () => {
+  const c = (deptUser: string | null, skipped = false) => ({
+    id: 'c', code: 'C', name: 'n', process_id: null, process_code: null, is_key_control: false, owner_name: null,
+    iuc_count: 0, euc_count: 0, conflicts: [], dept_approval_skipped: skipped,
+    roles: [{ role_name: 'dept_approver' as const, user_id: deptUser, user_name: null, source: 'none' as const }],
+  })
+  it('부서승인자가 비고 생략도 아니면 걸린다', () => {
+    expect(noDeptApprover(c(null))).toBe(true)
+    expect(noDeptApprover(c('u1'))).toBe(false)
+    expect(noDeptApprover(c(null, true))).toBe(false)
+    expect(matches(c(null), 'nodept', '')).toBe(true)
   })
 })

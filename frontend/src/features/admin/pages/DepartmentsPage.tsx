@@ -198,6 +198,11 @@ export default function DepartmentsPage() {
                         <span className="ml-2 text-xs text-muted-foreground">
                           {count}명{d.manager_name ? ` · 책임자 ${d.manager_name}` : ''}
                         </span>
+                        {/* 책임자가 없으면 그 부서 통제의 부서승인자가 비어 승인이 끝나지 않는다(13.9-139) */}
+                        {!d.manager_name && (
+                          <span className="ml-2 rounded border border-amber-400 px-1 text-xs text-amber-700"
+                            title="부서 책임자가 없으면 이 부서 통제의 부서승인자가 비어, 제출해도 승인이 끝나지 않습니다">책임자 미지정</span>
+                        )}
                       </button>
                       {canManage && (
                         <>
