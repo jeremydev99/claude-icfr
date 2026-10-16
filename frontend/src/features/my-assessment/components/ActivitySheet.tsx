@@ -75,9 +75,10 @@ export default function ActivitySheet({ cycleId, cycleOpen, row, onClose }: {
               <section className="rounded-md border bg-muted/30 p-3 space-y-1">
                 <p className="font-medium">RCM 테스트 방법</p>
                 {row.rcm_control_status && (
-                  <details open className="rounded border bg-background/60 p-2">
-                    <summary className="cursor-pointer text-muted-foreground">통제현황</summary>
-                    <p className="mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap">{row.rcm_control_status}</p>
+                  // 통제현황은 아래 방법·모집단·절차와 성격이 달라(운영 현황 서술) 진한 바탕으로 구분한다(2026-10-16 Regina)
+                  <details open className="mb-2 rounded-md border border-sky-300 bg-sky-100 p-2 dark:border-sky-800 dark:bg-sky-950/70">
+                    <summary className="cursor-pointer font-medium text-sky-900 dark:text-sky-200">통제현황</summary>
+                    <p className="mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap text-sky-950 dark:text-sky-50">{row.rcm_control_status}</p>
                   </details>
                 )}
                 <p><span className="text-muted-foreground">방법</span> {methodsLabel(row.rcm_test_methods)}</p>
