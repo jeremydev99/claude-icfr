@@ -57,3 +57,33 @@ jobs:
           ADMIN_PASSWORD: testpass
           ADMIN_DISPLAY_NAME: Test Admin
         run: pytest
+
+  # 프론트엔드 검사(2026-10-17) — lint(ESLint 9 flat config)·타입체크·vitest. 그 전에는 CI 어디에서도 돌지 않았다
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Lint (eslint)
+        working-directory: ./frontend
+        run: npm run lint
+
+      - name: Typecheck (tsc)
+        working-directory: ./frontend
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Unit tests (vitest)
+        working-directory: ./frontend
+        run: npx vitest run --reporter=dot

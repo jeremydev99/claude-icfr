@@ -22,7 +22,7 @@ export default function AuthLayout() {
       <aside className="relative hidden overflow-hidden bg-[hsl(224_45%_9%)] text-white [container-type:inline-size] lg:flex lg:flex-col">
         {LOGIN_PHOTO ? (
           <>
-            <img src={LOGIN_PHOTO} alt="" aria-hidden draggable={false} fetchPriority="high"
+            <img src={LOGIN_PHOTO} alt="" aria-hidden draggable={false} {...{ fetchpriority: 'high' }} /* React 18 은 fetchPriority 를 모르는 속성으로 경고 — 소문자 HTML 속성으로 */
               style={{ top: 'min(0px, calc(50% - 50.4cqw))' }}
               className="absolute inset-x-0 min-h-full w-full select-none object-cover brightness-110" />
             {/* 설명하는 여성의 머리끝(사진 높이 40.6%)을 패널 세로 50%에 맞춘다 — 사진 높이 = 너비×1152/928 이라

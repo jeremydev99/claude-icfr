@@ -154,7 +154,7 @@ function ActivityForm({ act, editable }: { act: ActivityRead; editable: boolean 
   if (!editable) {
     return (
       <section className="space-y-1">
-        <p className="font-medium">테스트 기록 <Badge variant="outline">{act.status === 'draft' ? '작성 중' : '제출됨'}</Badge></p>
+        <div className="font-medium">테스트 기록 <Badge variant="outline">{act.status === 'draft' ? '작성 중' : '제출됨'}</Badge></div>
         <p><span className="text-muted-foreground">작성</span> {act.performed_by_name} {act.submitted_at ? `· 제출 ${act.submitted_at.slice(0, 10)}` : ''}</p>
         <p><span className="text-muted-foreground">방법</span> {methodsLabel(act.test_methods)}</p>
         <p><span className="text-muted-foreground">모집단</span> {act.population ?? '-'}</p>
@@ -166,7 +166,7 @@ function ActivityForm({ act, editable }: { act: ActivityRead; editable: boolean 
   }
   return (
     <section className="space-y-3">
-      <p className="font-medium">테스트 기록 <Badge variant="secondary">작성 중</Badge></p>
+      <div className="font-medium">테스트 기록 <Badge variant="secondary">작성 중</Badge></div>
       <div className="flex flex-wrap gap-4">
         {METHODS.map((m) => (
           <label key={m.value} className="flex items-center gap-1.5">
