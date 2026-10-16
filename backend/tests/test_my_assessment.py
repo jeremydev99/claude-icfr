@@ -384,3 +384,39 @@ def test_worklist_flags_missing_dept_approver(client: TestClient) -> None:
     row = next(x for x in client.get(f"/api/assessment/cycles/{s['cycle']}/worklist",
                                       headers=_login(client, s["owner"])).json() if x["control_id"] == s["control"])
     assert row["dept_approver_missing"] is False
+
+
+# ── 제출 시점 승인 단계 고정 (13.9-141) ─────────────────────
+
+def _row(client, s, email):
+    return next(x for x in client.get(f"/api/assessment/cycles/{s['cycle']}/worklist",
+                                      headers=_login(client, email)).json() if x["control_id"] == s["control"])
+
+
+def test_completed_approval_does_not_revert_when_dept_head_added_later(client: TestClient, storage) -> None:
+    """통제책임자=부서장(부서승인 생략) 상태로 제출·승인 완료 → 나중에 다른 부서승인자가 생겨도 완료 그대로."""
+    s = _setup("Q1", sample_size=1)
+    _reassign(s, "dept_approver", s["owner"])          # 통제책임자 = 부서장 → 생략
+    act = _submitted(client, s)
+    assert client.post(f"/api/assessment/activities/{act['id']}/approvals", headers=_login(client, s["assessor"]),
+                       json={"stage": "assessor"}).status_code == 201
+    assert _row(client, s, s["assessor"])["state"] == "approved"
+    _reassign(s, "dept_approver", s["other"])           # 회차 중 부서장 변경
+    row = _row(client, s, s["assessor"])
+    assert row["state"] == "approved" and row["pending_stages"] == []
+    r = client.post(f"/api/assessment/activities/{act['id']}/approvals", headers=_login(client, s["other"]),
+                    json={"stage": "dept"})
+    assert r.status_code == 409 and "부서승인 단계가 없던" in r.json()["detail"]
+
+
+def test_frozen_dept_stage_drops_when_owner_becomes_head(client: TestClient, storage) -> None:
+    """부서승인자 없이 제출(단계 고정: 부서승인+평가자) → 통제책임자를 부서장으로 지정하면 부서승인이 빠져 완료."""
+    s = _setup("Q2", sample_size=1)
+    act = _submitted(client, s)
+    assert client.post(f"/api/assessment/activities/{act['id']}/approvals", headers=_login(client, s["assessor"]),
+                       json={"stage": "assessor"}).status_code == 201
+    row = _row(client, s, s["assessor"])
+    assert row["state"] == "submitted" and row["pending_stages"] == ["dept"]
+    _reassign(s, "dept_approver", s["owner"])
+    row = _row(client, s, s["assessor"])
+    assert row["state"] == "approved" and row["pending_stages"] == []

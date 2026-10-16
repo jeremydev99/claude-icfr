@@ -191,6 +191,8 @@ class AssessmentActivity(AuditedBase):
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 제출 시점의 필요 샘플 수 — RCM 표본수가 나중에 바뀌어도 "그때 몇 건이 필요했나"가 남는다
     required_samples: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 제출 시점 승인 단계(콤마 구분, 13.9-141) — 회차 중 부서장이 바뀌어도 끝난 승인이 되돌아가지 않게. NULL = 현재 역할로 계산
+    required_stages: Mapped[str | None] = mapped_column(String(30), nullable=True)
     # 테스트 방법·모집단·절차 — 작성 시 RCM 값으로 채우고 담당자가 고칠 수 있다(TestRun 대체)
     test_methods: Mapped[str | None] = mapped_column(String(60), nullable=True)
     population: Mapped[str | None] = mapped_column(Text, nullable=True)

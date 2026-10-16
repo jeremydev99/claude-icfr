@@ -459,6 +459,8 @@ def approve_activity(activity_id: UUID, body: ApprovalCreate,
                 status_code=409,
                 detail="이 통제는 통제책임자가 부서 책임자를 겸해 부서승인 단계가 없습니다",
             )
+        if activity.required_stages and APPROVAL_DEPT not in activity.required_stages.split(","):
+            raise HTTPException(status_code=409, detail="제출 당시 부서승인 단계가 없던 기록입니다")
         required_role = ROLE_DEPT_APPROVER
     else:
         required_role = ROLE_ASSESSOR
@@ -506,6 +508,31 @@ def _sod_block(performed_by: UUID, prior_approvers: set[UUID], user_id: UUID) ->
     if user_id in prior_approvers:
         return "같은 테스트의 다른 단계를 이미 승인했습니다(직무분리)"
     return None
+
+
+def _dept_needed_now(db: Session, control_id: UUID, resolved: list[dict] | None = None) -> bool:
+    """지금 역할로 보면 부서승인 단계가 있는가 — 정책 켜짐 + 통제책임자가 부서장을 겸하지 않음."""
+    if not _dept_approval_enabled(db):
+        return False
+    if resolved is None:
+        resolved = resolve_roles_for_control(db, control_id, resolve_control_process_id(db, control_id))
+    return not is_dept_approval_skipped(resolved)
+
+
+def _need_stages(activity: AssessmentActivity, dept_needed_now: bool) -> list[str]:
+    """이 기록에 필요한 승인 단계(13.9-141).
+
+    제출 때 고정한 단계(`required_stages`)가 있으면 그 범위 **안에서만** 지금 가능한 단계를 요구한다.
+    - 회차 중 부서장을 새로 지정해도 **단계가 늘지 않는다** — 끝난 승인이 승인 대기로 돌아가지 않는다.
+    - 지금 부서승인이 생략되는 상태(정책 꺼짐·통제책임자=부서장)면 고정돼 있어도 빼 준다 — 승인할 사람이
+      없거나 작성자 본인뿐이라 남겨 두면 끝나지 않는다.
+    고정값이 없으면(13.9-141 이전 제출) 종전대로 지금 역할로 계산한다.
+    """
+    now = ([APPROVAL_DEPT] if dept_needed_now else []) + [APPROVAL_ASSESSOR]
+    if not activity.required_stages:
+        return now
+    frozen = set(activity.required_stages.split(","))
+    return [s for s in now if s in frozen]
 
 
 # ── 마감·최종승인 (§2.5·§2.6) ─────────────────────────────
@@ -865,6 +892,9 @@ def submit_activity(activity_id: UUID, user: User = Depends(require_write),
     obj.status = ACTIVITY_SUBMITTED
     obj.submitted_at = datetime.now(UTC)
     obj.required_samples = need
+    # 승인 단계 고정(13.9-141) — 이후 부서장이 바뀌어도 이 기록의 단계는 늘지 않는다
+    obj.required_stages = ",".join(
+        ([APPROVAL_DEPT] if _dept_needed_now(db, obj.control_id) else []) + [APPROVAL_ASSESSOR])
     db.commit()
     db.refresh(obj)
     return _to_activity_read(db, obj)
@@ -937,7 +967,7 @@ def get_worklist(cycle_id: UUID, mine: bool = True, user: CurrentUser = None,
     for t, c, holders, dept_needed in rows:
         c = c or {}
         a = latest.get(t.control_id)
-        need_stages = ([APPROVAL_DEPT] if dept_needed else []) + [APPROVAL_ASSESSOR]
+        need_stages = _need_stages(a, dept_needed) if a is not None else [APPROVAL_ASSESSOR]
         state, pending, can, sod = "not_started", [], [], None
         if a is not None and a.status == ACTIVITY_DRAFT:
             state = "draft"
