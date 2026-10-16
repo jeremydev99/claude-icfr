@@ -21,7 +21,7 @@ CONTROL_FIELDS = (
     "activity_master_data", "activity_reconciliation", "activity_supervision",
     "related_accounts", "frequency", "ipe_relevant", "related_systems", "euc_description",
     # 테스트 방법 영역(2026-10-15) — 엑셀에 그 헤더가 있을 때만 파서가 키를 넣는다. 없으면 비교하지 않는다
-    "test_methods", "population", "sample_size", "test_procedure",
+    "test_methods", "population", "sample_size", "test_procedure", "control_status",
 )
 LAYER_LABEL = rcm_diff.LAYER_LABELS
 

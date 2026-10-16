@@ -1150,6 +1150,10 @@ _TEST_METHOD_HEADERS = (
 # 샘플수 열이 없는 양식의 대체값이며, 둘 다 있고 값이 다르면 경고한다.
 _TEST_TEXT_HEADERS = {"샘플수": "sample_count", "표본수": "sample_size", "모집단": "population",
                       "테스트절차": "test_procedure"}
+# 통제현황(2026-10-16, 13.9-134) — 원천 양식 AW열 '통제현황(WTT의 summary 수준)'. 이름으로 찾는다(접두 일치).
+# 운영평가 내보내기 양식의 '통제현황(기존프로세스)'는 다른 칸이라 제외한다
+_CONTROL_STATUS_PREFIX = "통제현황"
+_CONTROL_STATUS_EXCLUDE = "기존프로세스"
 
 
 def _test_columns(ws, data_start: int) -> dict[str, int]:
@@ -1167,6 +1171,9 @@ def _test_columns(ws, data_start: int) -> dict[str, int]:
             key = _TEST_TEXT_HEADERS.get(text)
             if key:
                 cols[key] = j
+                continue
+            if text.startswith(_CONTROL_STATUS_PREFIX) and _CONTROL_STATUS_EXCLUDE not in text:
+                cols["control_status"] = j
                 continue
             low = text.lower()
             for method, words in _TEST_METHOD_HEADERS:
@@ -1198,7 +1205,7 @@ def _test_values(row, cols: dict[str, int], row_idx: int, warnings: list) -> dic
         if "sample_count" in cols and "sample_size" in cols and primary and fallback and primary != fallback:
             warnings.append(f"Row {row_idx}: 샘플수 {primary} 와 표본수 {fallback} 가 다름 → 샘플수 {primary} 사용")
         out["sample_size"] = primary if "sample_count" in cols and primary else fallback
-    for key in ("population", "test_procedure"):
+    for key in ("population", "test_procedure", "control_status"):
         if key in cols:
             out[key] = str(cell(cols[key]) or "").strip() or None
     methods = [m for m, _ in _TEST_METHOD_HEADERS if f"method:{m}" in cols]

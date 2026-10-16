@@ -68,6 +68,11 @@ export default function RelatedInfoTab() {
           <Label htmlFor="test_procedure">테스트 절차</Label>
           <Textarea id="test_procedure" rows={4} {...register('test_procedure')} />
         </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="control_status">통제현황</Label>
+          <Textarea id="control_status" rows={5} {...register('control_status')} />
+          <p className="text-xs text-muted-foreground">WTT 수준의 통제 운영 현황. 내 평가 테스트 화면에 함께 보입니다.</p>
+        </div>
       </div>
     </div>
   )

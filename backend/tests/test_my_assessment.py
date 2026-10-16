@@ -150,6 +150,10 @@ def test_rcm_excel_reads_sample_columns_by_header() -> None:
     assert len([w for w in parsed.warnings if "샘플수" in w]) == 4
     assert by["EL-010-10-10"]["test_methods"] == "inspection"
     assert by["EL-010-10-10"]["population"] and by["EL-010-10-10"]["test_procedure"]
+    # 통제현황(AW열, 13.9-134) — 헤더 이름으로 93건 모두, 통제 설명(R열)과 다른 칸
+    assert all(c.get("control_status") for c in by.values())
+    assert by["EL-010-10-10"]["control_status"].startswith("1. 윤리헌장")
+    assert by["EL-010-10-10"]["control_status"] != by["EL-010-10-10"]["description"]
 
 
 # ── 작성 → 제출 ───────────────────────────────────────────

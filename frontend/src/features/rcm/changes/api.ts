@@ -89,7 +89,7 @@ export const FIELD_LABEL: Record<string, string> = {
   ipe_relevant: 'IPE 관련', activity_approval: '활동: 승인', activity_verification: '활동: 검증', activity_physical: '활동: 물리적 통제',
   activity_master_data: '활동: 기준정보', activity_reconciliation: '활동: 대사', activity_supervision: '활동: 감독',
   related_accounts: '관련 계정', related_systems: '관련 시스템', euc_description: 'EUC 설명',
-  test_methods: '테스트 방법', population: '모집단', sample_size: '표본수', test_procedure: '테스트 절차',
+  test_methods: '테스트 방법', population: '모집단', sample_size: '표본수', test_procedure: '테스트 절차', control_status: '통제현황',
 }
 
 export function showValue(v: unknown): string {

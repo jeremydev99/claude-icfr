@@ -15,6 +15,8 @@ export interface WorklistRow {
   rcm_test_methods: string | null
   rcm_population: string | null
   rcm_test_procedure: string | null
+  /** 통제현황(WTT summary) — RCM AW열 */
+  rcm_control_status: string | null
   state: 'not_started' | 'draft' | 'submitted' | 'approved'
   activity_id: string | null
   activity_count: number

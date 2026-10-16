@@ -65,7 +65,7 @@ describe('목록 집계', () => {
     control_id: 'c', control_code: null, control_name: null, process_code: null, frequency: null, auto_manual: null,
     owner_id: 'u', owner_name: null, my_roles: [], activity_kind: 'test', required_samples: 1, sample_basis: '',
     rcm_test_methods: null, rcm_population: null, rcm_test_procedure: null, state: 'not_started', activity_id: null,
-    activity_count: 0, samples_done: 0, evidence_count: 0, pending_stages: [], can_approve: [], sod_blocked: null, ...p,
+    activity_count: 0, samples_done: 0, evidence_count: 0, pending_stages: [], can_approve: [], sod_blocked: null, rcm_control_status: null, ...p,
   })
   it('상태별 건수·필요 샘플 합계·미배정', () => {
     const s = summarize([row({ required_samples: 7 }), row({ state: 'draft', required_samples: 2, owner_id: null })])

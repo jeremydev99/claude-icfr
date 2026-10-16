@@ -71,3 +71,16 @@ def test_coded_values_shown_in_korean() -> None:
     assert (_fmt("quarterly", "assessment_frequency"), _fmt("annual", "assessment_frequency")) == ("분기", "연")
     assert _fmt("Q", "frequency") == "분기" and _fmt("MR", "risk_level") == "보통"
     assert _fmt(True, "is_key_control") == "예" and _fmt("자유 문장", "description") == "자유 문장"
+
+
+def test_backfilled_control_status_not_compared_against_older_snapshot() -> None:
+    """통제현황(13.9-134)은 확정 뒤 원본에서 보강 적재했다 — 키가 없는 옛 확정본과는 비교하지 않는다.
+    양쪽 모두 키가 있으면(이후 판끼리) 변경으로 잡는다."""
+    old = _snap([_c("1")])                                          # v4 — 키 없음
+    now = _snap([_c("1", control_status="1. 윤리헌장 게시")])
+    assert diff(old, now)["total"] == 0
+    later = _snap([_c("1", control_status="1. 윤리헌장 게시 + 서약서")])
+    ch = diff(now, later)["layers"]["controls"]["changed"][0]["changes"]
+    assert [(f["field"], f["label"]) for f in ch] == [("control_status", "통제현황")]
+    # 다른 칸은 종전대로 — 옛 판에 키가 없어도 변경으로 잡는다
+    assert diff(old, _snap([_c("1", population="전표")]))["total"] == 1

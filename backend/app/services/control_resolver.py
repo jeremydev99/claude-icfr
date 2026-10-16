@@ -64,7 +64,7 @@ CONTROL_FIELDS = [
     "activity_master_data", "activity_reconciliation", "activity_supervision",
     "related_accounts", "frequency", "assessment_frequency", "ipe_relevant",
     "related_systems", "euc_description",
-    "test_methods", "population", "sample_size", "test_procedure",
+    "test_methods", "population", "sample_size", "test_procedure", "control_status",
 ]
 
 # 계층별 미러링(병합) 필드 — override 시 non-NULL 이면 baseline 을 덮는다.

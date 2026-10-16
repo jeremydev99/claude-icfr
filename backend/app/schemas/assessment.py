@@ -171,6 +171,7 @@ class WorklistRow(BaseModel):
     rcm_test_methods: str | None = None
     rcm_population: str | None = None
     rcm_test_procedure: str | None = None
+    rcm_control_status: str | None = None   # 통제현황(WTT summary) — 테스트 절차 영역에서 함께 보여 준다
     state: str                             # not_started | draft | submitted | approved
     activity_id: UUID | None = None        # 최신 활동
     activity_count: int = 0                # 재수행 포함

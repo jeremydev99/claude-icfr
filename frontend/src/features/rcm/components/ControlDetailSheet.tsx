@@ -180,6 +180,7 @@ export default function ControlDetailSheet({ control, open, onOpenChange, onEdit
               <InfoRow label="테스트 방법" value={methodsLabel(control.test_methods)} />
               <InfoRow label="모집단" value={control.population} />
               <InfoRow label="테스트 절차" value={control.test_procedure ? <span className="whitespace-pre-wrap">{control.test_procedure}</span> : null} />
+              <InfoRow label="통제현황" value={control.control_status ? <span className="whitespace-pre-wrap">{control.control_status}</span> : null} />
 
               <SectionTitle>위험평가 (RAWC) — {fiscalYear}년</SectionTitle>
               <Separator />

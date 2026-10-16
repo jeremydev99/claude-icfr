@@ -37,6 +37,8 @@ export interface Control {
   population: string | null
   sample_size: number | null
   test_procedure: string | null
+  /** 통제현황(WTT summary) — 원천 엑셀 AW열(13.9-134) */
+  control_status: string | null
   assertions: AssertionCode[] | null
   process_code: string | null
   sub_process_code: string | null

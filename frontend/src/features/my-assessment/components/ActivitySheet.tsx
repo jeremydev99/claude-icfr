@@ -74,6 +74,12 @@ export default function ActivitySheet({ cycleId, cycleOpen, row, onClose }: {
             <div className="mt-4 space-y-6 text-sm">
               <section className="rounded-md border bg-muted/30 p-3 space-y-1">
                 <p className="font-medium">RCM 테스트 방법</p>
+                {row.rcm_control_status && (
+                  <details open className="rounded border bg-background/60 p-2">
+                    <summary className="cursor-pointer text-muted-foreground">통제현황</summary>
+                    <p className="mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap">{row.rcm_control_status}</p>
+                  </details>
+                )}
                 <p><span className="text-muted-foreground">방법</span> {methodsLabel(row.rcm_test_methods)}</p>
                 <p><span className="text-muted-foreground">모집단</span> {row.rcm_population ?? '-'}</p>
                 <p className="whitespace-pre-wrap"><span className="text-muted-foreground">절차</span> {row.rcm_test_procedure ?? '-'}</p>

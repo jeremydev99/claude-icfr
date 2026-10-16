@@ -70,6 +70,7 @@ export const controlFormSchema = z.object({
   sample_size: z.union([z.string(), z.number()]).nullable().optional()
     .refine((v) => v === null || v === undefined || v === '' || /^[1-9]\d{0,2}$/.test(String(v)), '표본수는 1~999 정수'),
   test_procedure: z.string().nullable().optional(),
+  control_status: z.string().nullable().optional(),
 })
 
 export type ControlFormData = z.infer<typeof controlFormSchema>
@@ -104,6 +105,7 @@ const DEFAULT_VALUES: ControlFormData = {
   population: '',
   sample_size: '',
   test_procedure: '',
+  control_status: '',
 }
 
 const FIELD_TAB_MAP: Record<string, string> = {
@@ -116,7 +118,7 @@ const FIELD_TAB_MAP: Record<string, string> = {
   activity_physical: 'activity', activity_master_data: 'activity',
   activity_reconciliation: 'activity', activity_supervision: 'activity',
   related_accounts: 'related', related_systems: 'related', euc_description: 'related',
-  test_methods: 'related', population: 'related', sample_size: 'related', test_procedure: 'related',
+  test_methods: 'related', population: 'related', sample_size: 'related', test_procedure: 'related', control_status: 'related',
 }
 
 const TAB_ORDER = ['basic', 'classification', 'activity', 'related']
@@ -183,6 +185,7 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
         population: control.population ?? '',
         sample_size: control.sample_size ?? '',
         test_procedure: control.test_procedure ?? '',
+        control_status: control.control_status ?? '',
         // 내 임시저장(또는 반려된 변경)이 있으면 그 값으로 이어서 고친다
         ...(change && change.is_mine && ['draft', 'rejected'].includes(change.status)
           ? Object.fromEntries(Object.entries(change.changes).map(([k, v]) => [k, v ?? '']))
@@ -234,6 +237,7 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
           population: data.population || null,
           sample_size: data.sample_size === '' || data.sample_size == null ? null : Number(data.sample_size),
           test_procedure: data.test_procedure || null,
+          control_status: data.control_status || null,
         }
         const saved = await createMutation.mutateAsync(payload)
         toast.success('통제가 추가되었습니다')
@@ -263,6 +267,7 @@ export default function ControlFormDialog({ open, onOpenChange, mode, control, o
           population: data.population || null,
           sample_size: data.sample_size === '' || data.sample_size == null ? null : Number(data.sample_size),
           test_procedure: data.test_procedure || null,
+          control_status: data.control_status || null,
         }
         if (action === 'direct') {
           const saved = await updateMutation.mutateAsync({ id: control.id, payload })

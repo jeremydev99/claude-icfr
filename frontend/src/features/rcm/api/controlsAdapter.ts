@@ -41,6 +41,7 @@ export function toControl(dto: ControlDto): Control {
     population: dto.population ?? null,
     sample_size: dto.sample_size ?? null,
     test_procedure: dto.test_procedure ?? null,
+    control_status: dto.control_status ?? null,
     assertions: dto.assertions,
     process_code: dto.process_code,
     sub_process_code: dto.sub_process_code,

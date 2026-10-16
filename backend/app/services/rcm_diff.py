@@ -19,6 +19,7 @@ FIELD_LABELS = {
     "related_accounts": "관련 계정", "frequency": "수행 주기", "assessment_frequency": "평가 주기",
     "ipe_relevant": "IPE 관련", "related_systems": "관련 시스템", "euc_description": "EUC",
     "test_methods": "테스트 방법", "population": "모집단", "sample_size": "표본수", "test_procedure": "테스트 절차",
+    "control_status": "통제현황",
     "risk": "위험", "risk_level": "위험 수준", "sub_process_code": "하위프로세스", "process_code": "프로세스",
     "assertions": "어서션", "assessment_level": "평가 수준", "process": "프로세스", "sub_process": "하위프로세스",
 }
@@ -65,6 +66,11 @@ def _normalize(snapshot: dict) -> dict[str, dict[str, dict]]:
     return out
 
 
+# 확정본에 **키가 없으면** 비교하지 않는 칸 — 확정 뒤 원본 파일에서 보강 적재한 칸(2026-10-16, 13.9-134).
+# 통제현황은 v4 확정 엑셀에 있었는데 업로드가 버렸고, 같은 원본에서 채웠다(내용 변경 아님). 키 없음 ≠ 빈 값:
+# 이후 확정본은 키를 갖고 있으므로 그때부터의 변경은 그대로 잡힌다.
+BACKFILLED = {"control_status"}
+
 TEST_METHOD_LABELS = {"inquiry": "질문", "observation": "관찰", "inspection": "문서검사", "reperformance": "재수행"}
 
 
@@ -93,6 +99,8 @@ def diff(base: dict, target: dict) -> dict:
                 continue
             fields = []
             for k in sorted(set(ra[i]) | set(rb[i]), key=lambda x: list(FIELD_LABELS).index(x) if x in FIELD_LABELS else 999):
+                if k in BACKFILLED and (k not in ra[i] or k not in rb[i]):
+                    continue
                 before, after = ra[i].get(k), rb[i].get(k)
                 if before == after:
                     continue

@@ -253,6 +253,8 @@ class BaselineControl(AuditedBase):
     population: Mapped[str | None] = mapped_column(Text, nullable=True)
     sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     test_procedure: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 통제현황(WTT summary) — 원천 엑셀 AW열(2026-10-16, 13.9-134). 테스트 절차 영역에서 함께 보여 준다
+    control_status: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # baseline 콘텐츠 개정 회차 (row_version 낙관적 잠금과 별개 개념 — 모듈 docstring 참조)
     baseline_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
@@ -487,6 +489,8 @@ class ControlInstance(AuditedBase):
     population: Mapped[str | None] = mapped_column(Text, nullable=True)
     sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     test_procedure: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 통제현황(WTT summary) — 원천 엑셀 AW열(2026-10-16, 13.9-134). 테스트 절차 영역에서 함께 보여 준다
+    control_status: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     baseline_control: Mapped["BaselineControl | None"] = relationship(
         "BaselineControl", back_populates="instances"

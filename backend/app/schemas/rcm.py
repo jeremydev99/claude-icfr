@@ -164,6 +164,7 @@ class ControlBase(BaseModel):
     population: str | None = None
     sample_size: int | None = Field(None, ge=1, le=999)
     test_procedure: str | None = None
+    control_status: str | None = None   # 통제현황(WTT summary, 원천 엑셀 AW열)
 
 class ControlCreate(ControlBase):
     pass
@@ -192,6 +193,7 @@ class ControlUpdate(BaseModel):
     population: str | None = None
     sample_size: int | None = Field(None, ge=1, le=999)
     test_procedure: str | None = None
+    control_status: str | None = None   # 통제현황(WTT summary, 원천 엑셀 AW열)
 
 class ControlRead(ControlBase):
     id: UUID

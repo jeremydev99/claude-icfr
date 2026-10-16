@@ -6,7 +6,7 @@
 - 이미지(PNG·JPG)는 그대로, **PDF 는 페이지마다 이미지로**(pypdfium2 — Apache/BSD. PyMuPDF 는 AGPL 이라 쓰지 않는다,
   상용화 §20). PDF 는 1개당 최대 10페이지(넘으면 "이후 n페이지는 원본 참조"). 그 밖의 파일은 파일명과 안내만.
 
-Regina 결정(STEP 0): 회차 전체 또는 내 담당(통제책임자)만 / 샘플수 = 통제 주기 권장 표본 수 / 통제현황(WTT) = 통제 설명,
+Regina 결정(STEP 0): 회차 전체 또는 내 담당(통제책임자)만 / 샘플수 = 통제 주기 권장 표본 수 / 통제현황(WTT) = 통제 설명(2026-10-16 부터 RCM 통제현황 칸, 없으면 설명),
 기존 프로세스 칸은 비움 / 문서명·비고 = 증빙의 title·note(없으면 파일명·올린 사람과 일시) / 증빙 없는 통제도 시트를 만든다.
 """
 from __future__ import annotations
@@ -155,7 +155,8 @@ def build(db: Session, cycle: AssessmentCycle, *, owner_id: UUID | None = None,
         rk = risk.get(c.get("risk_id")) or {}
         values = (sampling.required_samples(cycle.kind, c), c.get("process_code"), p.get("name"),
                   c.get("sub_process_code"), sp.get("name"), rk.get("code"), c.get("owner_name"),
-                  rk.get("description"), c.get("name"), c.get("description"), None)
+                  rk.get("description"), c.get("name"),
+                  c.get("control_status") or c.get("description"), None)   # 통제현황(WTT) — 없으면 통제 설명(13.9-134)
         for col, (h, v) in enumerate(zip(HEADERS, values, strict=True), start=1):
             ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
             hc = ws.cell(1, col, h)

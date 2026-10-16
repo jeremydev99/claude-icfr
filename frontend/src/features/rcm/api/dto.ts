@@ -39,6 +39,7 @@ export interface ControlDto {
   population?: string | null
   sample_size?: number | null
   test_procedure?: string | null
+  control_status?: string | null
   assertions: AssertionCode[] | null
   process_code: string | null
   sub_process_code: string | null
