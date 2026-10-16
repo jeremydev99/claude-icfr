@@ -89,6 +89,8 @@ docs/*.pdf
 docs/*.docx
 docs/*.pptx
 docs/*.xlsx
+# 운영 확정본 원본(회사 실제 RCM 등) — 보강 적재·검증용으로 로컬에만 둔다(13.9-134). 테스트 픽스처는 별도 이름으로 커밋돼 있다
+backend/seeds/*FV*.xlsx
 
 # ===== 개인 컨텍스트 / 임시 파일 =====
 Regina_ClaudeContext.md
