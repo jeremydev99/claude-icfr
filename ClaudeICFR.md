@@ -3034,6 +3034,20 @@ PoC 종료 시 (Phase 1.5 후) 본격 ADR 등록:
 - 멀티테넌시 아키텍처 ADR
 - 가격 정책·라이선스 모델 ADR
 
+### 20.10 판매 전 필수 점검표 (출시 게이트)
+
+> **외부 판매·데모·타사 설치·저장소 공개 전에 이 표를 끝낸다.** 기억에 기대지 않도록 `CLAUDE.md` §0 이
+> 상용화 관련 작업을 시작할 때 이 표를 먼저 띄우게 한다(2026-10-16 Regina "나중에 체크하려다 놓치면?").
+> 항목을 추가할 때는 발견한 날짜와 근거(13.9 번호)를 적는다.
+
+| # | 점검 | 현황(2026-10-16) | 근거 |
+|---|---|---|---|
+| 1 | **회사 실제 데이터 제거** — 테스트용 RCM `backend/seeds/2026_설계평가_RCM_리스트.xlsx`(사이냅소프트 실 RCM)를 회사명·내용을 지운 합성 파일로 교체. 기대는 코드 3곳: `seeds/seed_baseline.py`·`tests/test_my_assessment.py`·`tests/test_rcm_excel_multiheader.py` | 미착수 | 13.9-134 후속 |
+| 2 | 코드·문서·프롬프트의 실제 회사명("사이냅") — 추적 파일 30개(앱 코드 4: `api/rcm.py`·`core/tenant_context.py`·`models/remediation.py`·`models/test_module.py`, 주석·기본 테넌트명) | 미착수 | 2026-10-16 집계 |
+| 3 | **GitHub 이력 정리** — 파일을 지워도 이력에 남는다. 공개·이관 시 이력 재작성(`git filter-repo`) 또는 새 저장소로 이관 | 미착수 | 13.9-134 후속 |
+| 4 | 실데이터 엑셀 무시 규칙 유지 확인 — `.gitignore` `backend/seeds/*FV*.xlsx`, `docs/*.xlsx` 등 | 적용됨 | 2026-10-16 |
+| 5 | 라이선스 — AGPL 의존 없음 확인(예: PDF 이미지화는 pypdfium2, PyMuPDF 금지) | 적용됨, 출시 시 재확인 | 13.9-122 |
+
 ### 20.9 참조
 
 - 시장 사례: OneTrust (GRC SaaS), MetricStream, 빅4 회계법인 ICFR 시스템
