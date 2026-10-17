@@ -22,7 +22,7 @@ def ensure_default_tenant(db: Session) -> Tenant:
     if tenant is None:
         tenant = Tenant(
             id=DEFAULT_TENANT_ID,
-            name=DEFAULT_TENANT_NAME,
+            name=get_settings().default_tenant_name or DEFAULT_TENANT_NAME,
             code=DEFAULT_TENANT_CODE,
             is_active=True,
         )

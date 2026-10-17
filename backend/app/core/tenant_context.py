@@ -24,7 +24,9 @@ from app.models.base import TenantMixin
 # 정수로 강제 변환되어 테스트가 깨진다. 영문자가 포함된 고정값을 쓴다(Postgres는 무관).
 DEFAULT_TENANT_ID = UUID("d0000000-0000-0000-0000-000000000001")
 DEFAULT_TENANT_CODE = "DEFAULT"
-DEFAULT_TENANT_NAME = "사이냅소프트"
+# 새 설치의 기본 회사 이름은 설정 `DEFAULT_TENANT_NAME`(config.default_tenant_name)이 정한다 — 이 값은 테스트·폴백용.
+# 실제 회사명을 코드에 두지 않는다(판매 전 점검표 §20.10 ②, 2026-10-17)
+DEFAULT_TENANT_NAME = "기본 회사"
 
 # 요청 단위 활성 tenant. 미설정 시 None → 자동 필터/주입 비활성(시스템 맥락).
 _active_tenant_id: ContextVar[UUID | None] = ContextVar("active_tenant_id", default=None)

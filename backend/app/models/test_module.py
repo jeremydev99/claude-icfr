@@ -9,7 +9,7 @@ from app.models.base import AuditedBase
 
 
 class ControlRiskAssessment(AuditedBase):
-    """RAWC 평가 — 한 통제 × 한 연도 = 1건. 사이냅소프트 양식 그룹 6 (AN~AV)."""
+    """RAWC 평가 — 한 통제 × 한 연도 = 1건. 표준 RCM 양식 그룹 6 (AN~AV)."""
     __tablename__ = "control_risk_assessments"
 
     # deprecated — 옛 controls.id 참조. baseline_control_id/instance_control_id 로 대체 중

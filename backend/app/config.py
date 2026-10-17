@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     # display_name 은 실명 용도 — 직책명("System Administrator") 금지.
     # 운영 시 .env 의 ADMIN_DISPLAY_NAME 으로 실제 관리자 실명을 설정한다.
     admin_display_name: str = "홍길동"
+    # 새 설치에서 처음 만드는 기본 회사(tenant) 이름 — 이미 있으면 바꾸지 않는다(운영 무영향)
+    default_tenant_name: str = "기본 회사"
 
     # 메일 발송(사내 메일서버 위임, STARTTLS) — 호스트가 비어 있으면 발송하지 않고 링크 복사만
     smtp_host: str = ""

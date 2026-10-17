@@ -156,7 +156,7 @@ def get_module_info(user: CurrentUser) -> dict:
         "phase_0_status": "Phase 1 풀 확장 완료",
         "phase_1_features": [
             "SubProcess·Risk·Control CRUD",
-            "Excel 업로드 (사이냅소프트 양식)",
+            "Excel 업로드 (표준 RCM 양식)",
             "풀 검색·필터",
             "위험 매트릭스",
             "벌크 삭제·수정",
@@ -1218,7 +1218,7 @@ def _test_values(row, cols: dict[str, int], row_idx: int, warnings: list) -> dic
 def _parse_rcm_sheet(ws, header_row: int, mapping: dict[str, int]) -> _ParsedRCM:
     """헤더 위치가 결정된 시트에서 RCM 데이터 파싱.
 
-    필수 3개 컬럼은 mapping 사용. 나머지는 사이냅소프트 양식 고정 위치 유지.
+    필수 3개 컬럼은 mapping 사용. 나머지는 표준 RCM 양식(원천 엑셀) 고정 위치 유지.
     """
     valid_levels = {"LR", "MR", "HR", "SR"}
     valid_freq = {"O", "D", "W", "M", "Q", "A"}

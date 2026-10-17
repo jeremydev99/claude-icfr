@@ -80,7 +80,7 @@ class RemediationPlan(AuditedBase):
 
 
 class DesignAssessment(AuditedBase):
-    """설계평가 — 한 통제·한 연도 = 1건 (사이냅소프트 양식 BG~BV)."""
+    """설계평가 — 한 통제·한 연도 = 1건 (표준 RCM 양식 BG~BV)."""
     __tablename__ = "design_assessments"
 
     # deprecated — 옛 controls.id 참조. baseline_control_id/instance_control_id 로 대체 중
