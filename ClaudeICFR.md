@@ -2379,6 +2379,7 @@ HTTP 200
 142. **관리 화면에 "부서승인자 없음" 표시 (2026-10-17, Regina — 13.9-140 ① 마스터 조치 준비)** — FE 만. ① 역할 배정 표 필터 「부서승인자 없음」 + 건수 배지(`roleMatrix.pure` `noDeptApprover`: 생략 아님 + 부서승인자 비어 있음). ② 부서 관리 목록에 책임자 없는 부서 「책임자 미지정」(운영: 솔루션사업팀·기업영업팀·공공영업팀·기술지원팀). 테스트 FE +1.
 143. **프론트 lint 복구 + CI·배포 게이트에 프론트 검사 (2026-10-17, Regina)** — 코드·마이그레이션 영향 없음. 종전 `frontend/.eslintrc.cjs`(eslintrc 형식, TS 파서 없음)는 **ESLint 9 가 읽지 않아 lint 가 사실상 꺼져** 있었고, CI·배포 어디에서도 프론트 lint·vitest 가 돌지 않았다(타입체크는 이미지 빌드의 `tsc` 뿐). ① `eslint.config.mjs`(flat) + devDependencies `typescript-eslint@8`·`eslint-plugin-react-hooks@5` — 훅 규칙·미사용 변수 error, `any` warn. 현재 오류 0·경고 2(테스트 파일 any). `.eslintrc.cjs` 삭제. ② `ci.yml` job `frontend`, `deploy.yml` job `verify-frontend`(lint·tsc·vitest) — `build` 가 `[verify, verify-frontend]` 를 기다린다. ③ 브라우저 점검(13.9-139)에서 본 콘솔 경고 2건: `<p>` 안 Badge(`<div>`) → `<div>`(내 평가 시트), React 18 미인식 `fetchPriority` → 소문자 `fetchpriority`(로그인 화면). **후속**: 첫 배포(`dfcb967`)에서 `verify-frontend` 의 vitest 가 실패해 배포가 막혔다(운영은 `ef7dff6` 유지) — 테스트가 아니라 **jsdom 30(undici 8)이 Node 22.22+/24.15+ 를 요구**해 Node 20 에서 환경이 뜨지 않은 것. CI·배포의 Node 를 24(로컬과 같음)로 — `node:24` 컨테이너(Linux)에서 npm ci·lint·tsc·vitest 221 통과 확인 후 반영. 이미지 빌드(`frontend/Dockerfile` node:20)는 jsdom 을 쓰지 않아 그대로.
 144. **판매 전 점검표 ② — 앱 코드의 실제 회사명 정리 (2026-10-17, Regina)** — 마이그레이션 없음, 운영 무영향(운영 tenant 이름은 DB 에 이미 있음). `api/rcm.py`·`models/remediation.py`·`models/test_module.py` 주석·모듈 정보 문구 "사이냅소프트 양식" → "표준 RCM 양식". `DEFAULT_TENANT_NAME` 상수 "기본 회사", 부트스트랩은 설정 `default_tenant_name`(env `DEFAULT_TENANT_NAME`, `.env*.example` 추가) — 없을 때만 만든다. 옛 마이그레이션 리터럴은 고치지 않고 §20.10 ② ⓐ 로 남김. 관련 테스트 110 통과.
+145. **판매 전 점검표 ① — 테스트·시드 RCM 을 합성 예시로 교체 + 새 고객 기본 RCM 없음 (2026-10-17, Regina "추천대로")** — 마이그레이션 없음, 운영 무영향(운영 RCM 은 DB). 실데이터 엑셀(회사명 D1·직원 실명 담당자 칸 14명·조직명·시스템명·내부 평가 결과 시트)을 합성 예시로 바꿨다 — 칸별 일관 치환(같은 문구 = 같은 합성값)이라 파서·테스트가 보는 구조(93통제·샘플수 합 197·샘플수≠표본수 경고 4건·테스트 방법 O 표시)는 그대로. 참조 3곳(`seeds/seed_baseline.py`·`tests/test_my_assessment.py`·`tests/test_rcm_excel_multiheader.py`) 갱신, 테스트 29 통과. 새 고객 기본 RCM 은 두지 않는다(회사마다 RCM 이 달라 공통 표준 유지 비용이 크다) — 고객이 표준 양식 엑셀을 올린다. 남은 것: GitHub 이력 정리(§20.10 #3).
 
 ### Claude에게 주는 다음 세션 지시
 > "ClaudeICFR.md를 읽고, 섹션 12에서 다음 작업을 확인한 뒤 진행. 작업 종료 시 섹션 12·13·14 업데이트 필수."
@@ -2389,6 +2390,7 @@ HTTP 200
 
 > 날짜 / 변경자 / 요약. 최신이 위로.
 
+- **2026-10-17 / Regina + Claude** — 판매 전 점검표 ①: 테스트·시드 RCM 합성 예시로 교체, 실데이터 엑셀 삭제, 새 고객 기본 RCM 없음 결정(13.9-145).
 - **2026-10-17 / Regina + Claude** — 판매 전 점검표 ② 앱 코드 회사명 정리, 기본 회사명 설정화(13.9-144).
 - **2026-10-17 / Regina + Claude** — **프론트 lint 복구(ESLint 9 flat) + CI·배포 게이트에 프론트 lint·tsc·vitest**, 콘솔 경고 2건(13.9-143).
 - **2026-10-17 / Regina + Claude** — 역할 배정 「부서승인자 없음」 필터·건수, 부서 관리 「책임자 미지정」(FE 만, 13.9-142).
@@ -3056,7 +3058,7 @@ PoC 종료 시 (Phase 1.5 후) 본격 ADR 등록:
 
 | # | 점검 | 현황(2026-10-16) | 근거 |
 |---|---|---|---|
-| 1 | **회사 실제 데이터 제거** — 테스트용 RCM `backend/seeds/2026_설계평가_RCM_리스트.xlsx`(사이냅소프트 실 RCM)를 회사명·내용을 지운 합성 파일로 교체. 기대는 코드 3곳: `seeds/seed_baseline.py`·`tests/test_my_assessment.py`·`tests/test_rcm_excel_multiheader.py` | 미착수 | 13.9-134 후속 |
+| 1 | **회사 실제 데이터 제거** — ✅ 2026-10-17: 테스트·시드용 RCM 을 **합성 예시** `backend/seeds/RCM_표준양식_합성예시.xlsx` 로 교체(구조·코드·샘플수·주기·O표시는 실제 양식 그대로, 회사명·직원 실명·조직명·시스템명·서술·개선업무명은 합성, 내부 평가 결과 시트 삭제, 문서 속성 정리 — XML 전체 검색 잔존 0). 실데이터 파일 `2026_설계평가_RCM_리스트.xlsx` 삭제(이력에는 남음 → #3). **결정(Regina 2026-10-17): 새 고객에게 기본 RCM 을 주지 않는다 — 빈 RCM + 고객이 표준 양식 엑셀 업로드**. `seed_baseline` 은 개발·데모용 | 완료 | 13.9-145 |
 | 2 | 코드·문서·프롬프트의 실제 회사명("사이냅") — **앱 코드 0건(2026-10-17 정리)**: 주석·화면 문구 "표준 RCM 양식", 새 설치 기본 회사명은 설정 `DEFAULT_TENANT_NAME`(기본 "기본 회사"). **남은 것**: ⓐ 마이그레이션 `b1f2c3d4e5a6` 이 새 DB 에 tenant 이름 '사이냅소프트' 를 넣는다(운영은 이미 적용 — 판매용 새 설치 전 리터럴 교체 또는 설치 후 이름 변경) ⓑ 문서·프롬프트·테스트 주석(이력 정리 #3 과 함께) | 부분 완료 | 2026-10-17 |
 | 3 | **GitHub 이력 정리** — 파일을 지워도 이력에 남는다. 공개·이관 시 이력 재작성(`git filter-repo`) 또는 새 저장소로 이관 | 미착수 | 13.9-134 후속 |
 | 4 | 실데이터 엑셀 무시 규칙 유지 확인 — `.gitignore` `backend/seeds/*FV*.xlsx`, `docs/*.xlsx` 등 | 적용됨 | 2026-10-16 |

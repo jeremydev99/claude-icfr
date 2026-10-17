@@ -5,7 +5,7 @@
 
 - 합성 픽스처(`_make_multiheader_excel`) — 구조를 코드로 고정한다. 원천 파일이 교체돼도
   "2단 헤더를 읽는다"는 계약은 이쪽이 지킨다.
-- 실파일(`seeds/2026_설계평가_RCM_리스트.xlsx`) — 합성 픽스처가 실제 구조와 어긋날 수
+- 실파일(`seeds/RCM_표준양식_합성예시.xlsx`) — 합성 픽스처가 실제 구조와 어긋날 수
   있으므로 실증도 함께 둔다. 파일이 없는 환경에서는 skip(test_seed_baseline 선례).
 
 둘 중 하나만으로는 부족하다. 합성만 두면 "재현했다고 믿은 구조"만 검증하고,
@@ -18,7 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
-XLSX = Path(__file__).resolve().parents[1] / "seeds" / "2026_설계평가_RCM_리스트.xlsx"
+XLSX = Path(__file__).resolve().parents[1] / "seeds" / "RCM_표준양식_합성예시.xlsx"
 _XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 

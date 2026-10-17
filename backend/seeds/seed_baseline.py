@@ -60,7 +60,9 @@ from app.models.tenant import Tenant
 from app.services.excel_parser import find_data_start_row, find_rcm_sheet
 
 # 표준 원천 — repo 내 고정 경로. 모든 환경이 같은 파일을 본다.
-EXCEL_PATH = Path(__file__).resolve().parent / "2026_설계평가_RCM_리스트.xlsx"
+# 표준 RCM 양식의 **합성 예시**(2026-10-17, 판매 전 점검표 ①) — 구조·코드·샘플수는 실제 양식 그대로, 사람·회사·서술은 합성.
+# 새 고객에게 기본 RCM 을 주지 않는다(빈 RCM + 고객이 표준 양식 엑셀 업로드). 이 시드는 개발·데모용이다
+EXCEL_PATH = Path(__file__).resolve().parent / "RCM_표준양식_합성예시.xlsx"
 
 # 어서션 7종 마스터. upload-excel 의 코드→이름 매핑과 동일하게 유지한다
 # (엑셀 헤더의 한글 표기 실재성/완전성/권리와의무/평가/재무제표표시와공시/발생사실/측정 과 1:1).
