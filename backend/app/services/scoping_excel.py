@@ -37,6 +37,7 @@ from app.models.scoping import (
     STATEMENT_TYPES,
     Scoping,
     ScopingAccount,
+    ScopingExcelAlias,
 )
 from app.services import scoping as svc
 from app.services import scoping_calc as calc
@@ -173,6 +174,43 @@ def _core(s: str | None) -> str:
     return re.sub(r"\(.*?\)", "", k)
 
 
+# 현금흐름 표기 변형(13.9-146) — 같은 항목을 해마다·작성자마다 다르게 쓴다. 비교용으로만 쓰고 저장하지 않는다
+_CF_SYNONYMS = (("현금및현금성자산", "현금"), ("취득", "증가"), ("처분", "감소"))
+_ALT = re.compile(r"^(.*?)([가-힣A-Za-z]+)\(([가-힣A-Za-z]+)\)(.*)$")
+
+
+def _swap_alt(k: str) -> set[str]:
+    """ "법인세의환급(납부)" → {법인세의환급, 법인세의납부}. 괄호 안 낱말은 **마지막 '의' 뒤**를 바꿔 끼운다."""
+    m = _ALT.match(k)
+    if not m:
+        return {k}
+    head, word, alt, tail = m.group(1), m.group(2), m.group(3), m.group(4)
+    if "의" in word:
+        cut = word.rindex("의") + 1
+        head, word = head + word[:cut], word[cut:]
+    return {head + word + tail, head + alt + tail}
+
+
+def _cf_variants(s: str | None) -> set[str]:
+    """현금흐름 항목 이름의 비교 키들 — 앞 번호를 떼고, "A(B)" 는 A·B 둘로 풀고, 같은 뜻 낱말을 하나로.
+
+    "5. 법인세의 환급(납부)" → {법인세의환급, 법인세의납부}, "토지의 취득" → {토지의증가},
+    "V. 기초의 현금" ↔ "기초의 현금및현금성자산" → {기초의현금}.
+    """
+    k = re.sub(r"^(\(\d+\)|\d+\.|[IVX]+\.)", "", _n(s))
+    out = set()
+    for v in _swap_alt(k):
+        for a, b in _CF_SYNONYMS:
+            v = v.replace(a, b)
+        out.add(v)
+    return out
+
+
+def alias_key(statement_type: str, name: str | None, group: str | None) -> tuple[str, str, str]:
+    """직접 연결 기억의 키 — 표 + 엑셀 이름 + 엑셀 구분(괄호·번호 제외)."""
+    return statement_type, _n(name)[:200], _core(group)[:200]
+
+
 @dataclass
 class Pair:
     excel: ExcelRow
@@ -188,9 +226,15 @@ class Matching:
 
 
 def match(excel: dict[str, list[ExcelRow]], accounts: list[ScopingAccount], template_names: dict[UUID, str],
-          links: dict[str, UUID] | None = None) -> Matching:
-    """엑셀 행 ↔ 스코핑 계정. 규칙마다 **후보가 하나일 때만** 맞춘다(둘 이상이면 다음 규칙·사람에게)."""
+          links: dict[str, UUID] | None = None,
+          aliases: dict[tuple[str, str, str], tuple[str, str | None]] | None = None) -> Matching:
+    """엑셀 행 ↔ 스코핑 계정. 규칙마다 **후보가 하나일 때만** 맞춘다(둘 이상이면 다음 규칙·사람에게).
+
+    순서: 이번에 사람이 고른 연결 → **기억한 연결**(지난 업로드에서 고른 것, 이름 기준) → 이름 규칙들 →
+    현금흐름 표기 변형. `aliases` = {alias_key: (계정 이름, 계정 구분)}.
+    """
     links = links or {}
+    aliases = aliases or {}
     m = Matching()
     used: set[UUID] = set()
     by_id = {a.id: a for a in accounts}
@@ -216,12 +260,22 @@ def match(excel: dict[str, list[ExcelRow]], accounts: list[ScopingAccount], temp
                 m.pairs.append(Pair(row, a, "직접 연결"))
             else:
                 left.append(row)
+        # 기억한 연결 — 지난번에 사람이 고른 계정 이름(구분까지 기억했으면 구분도)으로 찾는다
+        still = []
+        for row in left:
+            hit = aliases.get(alias_key(stype, row.name, row.group))
+            cands = [a for a in pool if hit and _n(a.name) == _n(hit[0])
+                     and (hit[1] is None or _core(a.group_label) == _core(hit[1]))] if hit else []
+            if not take(row, cands, "기억한 연결"):
+                still.append(row)
+        left = still
         rules = (
             ("이름·구분", lambda r, a: _n(a.name) == _n(r.name) and _core(a.group_label) == _core(r.group)),
             ("이름", lambda r, a: _n(a.name) == _n(r.name)),
             ("템플릿 연결", lambda r, a: a.id in template_names and _n(template_names[a.id]) == _n(r.name)),
             ("괄호·번호 제외", lambda r, a: _core(a.name) == _core(r.name)),
-        )
+        ) + ((("현금흐름 표기", lambda r, a: bool(_cf_variants(a.name) & _cf_variants(r.name))),)
+             if stype == STATEMENT_CF else ())
         for how, rule in rules:
             still = []
             for row in left:
@@ -257,7 +311,9 @@ def plan(db: Session, s: Scoping, excel: dict[str, list[ExcelRow]], links: dict[
     accounts = svc._active(db.query(ScopingAccount), ScopingAccount).filter(ScopingAccount.scoping_id == s.id).all()
     template_names = _template_names(db, [a.fs_account_id for a in accounts if a.fs_account_id])
     tnames = {a.id: template_names[a.fs_account_id] for a in accounts if a.fs_account_id in template_names}
-    m = match(excel, accounts, tnames, links)
+    aliases = {(x.statement_type, x.excel_name_key, x.excel_group_key): (x.account_name, x.account_group)
+               for x in svc._active(db.query(ScopingExcelAlias), ScopingExcelAlias).all()}
+    m = match(excel, accounts, tnames, links, aliases)
 
     ev = {r["account"].id: r for r in svc.evaluate(db, s)["accounts"]}
     crit = svc.criteria(db, s)
@@ -316,6 +372,11 @@ def plan(db: Session, s: Scoping, excel: dict[str, list[ExcelRow]], links: dict[
     summary_text = f"계정 {n}건 변경" if n else "변경 없음"
     return {
         "matched": len(m.pairs), "changed_count": n, "summary_text": summary_text,
+        # 반영 때 기억할 직접 연결(이번에 사람이 고른 것만) — 응답에서는 뺀다
+        "_remember": [{"key": alias_key(p.excel.statement_type, p.excel.name, p.excel.group),
+                       "account_name": p.account.name, "account_group": p.account.group_label}
+                      for p in m.pairs if p.how == "직접 연결"],
+        "remembered": sum(1 for p in m.pairs if p.how == "기억한 연결"),
         "changes": changes, "skipped": skipped, "warnings": warnings,
         "excel_only": [{"key": r.key, "statement_type": r.statement_type, "row": r.row, "name": r.name,
                         "group": r.group} for r in m.excel_only],
@@ -329,8 +390,25 @@ def plan(db: Session, s: Scoping, excel: dict[str, list[ExcelRow]], links: dict[
     }
 
 
+def remember(db: Session, items: list[dict]) -> int:
+    """직접 연결을 기억한다(13.9-146) — 같은 키는 덮어쓴다(최근 선택이 이긴다). 커밋은 호출자."""
+    for it in items:
+        st, name_key, group_key = it["key"]
+        row = db.query(ScopingExcelAlias).filter(ScopingExcelAlias.statement_type == st,
+                                                 ScopingExcelAlias.excel_name_key == name_key,
+                                                 ScopingExcelAlias.excel_group_key == group_key).first()
+        if row is None:
+            row = ScopingExcelAlias(statement_type=st, excel_name_key=name_key, excel_group_key=group_key,
+                                    account_name=it["account_name"])
+            db.add(row)
+        row.is_deleted = False
+        row.account_name, row.account_group = it["account_name"][:200], (it["account_group"] or None)
+    return len(items)
+
+
 def apply(db: Session, s: Scoping, result: dict) -> None:
-    """미리보기의 할 일을 저장 — 화면 수정과 같은 규칙(바뀐 칸만 `edited`). 커밋은 호출자."""
+    """미리보기의 할 일을 저장 — 화면 수정과 같은 규칙(바뀐 칸만 `edited`). 사람이 고른 연결은 기억한다. 커밋은 호출자."""
+    remember(db, result.get("_remember", []))
     ids = [UUID(c["account_id"]) for c in result["changes"]]
     rows = {a.id: a for a in db.query(ScopingAccount).filter(ScopingAccount.id.in_(ids)).all()} if ids else {}
     for c in result["changes"]:
@@ -353,7 +431,7 @@ def apply(db: Session, s: Scoping, result: dict) -> None:
 
 def public(result: dict) -> dict:
     """응답용 — 내부 할 일(`_apply`)을 뺀다."""
-    out = dict(result)
+    out = {k: v for k, v in result.items() if k != "_remember"}
     out["changes"] = [{k: v for k, v in c.items() if k != "_apply"} for c in result["changes"]]
     return out
 

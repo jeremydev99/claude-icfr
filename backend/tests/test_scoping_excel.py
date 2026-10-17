@@ -145,3 +145,47 @@ def test_real_sample_parses() -> None:
     counts = {k: len(v) for k, v in rows.items()}
     assert all(counts[k] > 0 for k in ("BS", "PL", "NOTE", "CF")), counts
     assert not any("총계" in r.name for v in rows.values() for r in v)
+
+
+# ── 직접 연결 기억·현금흐름 표기 (13.9-146) ─────────────────
+
+def _edit_basis(text: str):
+    def edit(wb) -> None:
+        _edit(wb)
+        ws = wb[BS]
+        ws.cell(_row(ws, "완전히다른이름"), 17).value = text
+    return edit
+
+
+def test_direct_link_is_remembered_next_year_and_can_be_overridden(client: TestClient, mgr: dict) -> None:  # noqa: F811
+    """반영한 직접 연결은 이름 기준으로 기억 → 다음 해 스코핑에서 사람 선택 없이 '기억한 연결'. 다시 고르면 덮어쓴다."""
+    d = _create(client, mgr, 2071)
+    content = _book(_edit)
+    p = _post(client, mgr, d["id"], content, "preview").json()
+    # 앞 테스트가 같은 행을 이미 기억시켰을 수 있다 — 엑셀 키는 미매칭·변경 어느 쪽에서든 찾는다
+    key = next(x["key"] for x in p["excel_only"] + p["changes"]
+               if x.get("name", x.get("excel_name")) == "완전히다른이름")
+    sel = _acc(client.get(f"/api/scoping/{d['id']}", headers=mgr).json(), "선급금")
+    assert _post(client, mgr, d["id"], content, "commit", {key: sel["id"]}).status_code == 200
+
+    nxt = _create(client, mgr, 2072)                                    # 다음 해 — 계정 행이 새로 만들어진다
+    r = _post(client, mgr, nxt["id"], _book(_edit_basis("내년 근거")), "preview").json()
+    by = {c["account_name"]: c for c in r["changes"]}
+    assert by["선급금"]["how"] == "기억한 연결" and r["remembered"] >= 1
+    assert "완전히다른이름" not in {x["name"] for x in r["excel_only"]}
+
+    # 다른 계정으로 다시 고르면 덮어쓴다 — 그다음부터는 새 계정
+    other = next(a for a in r["account_only"] if a["name"] != "선급금")
+    assert _post(client, mgr, nxt["id"], _book(_edit_basis("내년 근거")), "commit", {key: other["id"]}).status_code == 200
+    again = _post(client, mgr, nxt["id"], _book(_edit_basis("다시 근거")), "preview").json()
+    hit = next(c for c in again["changes"] if c["excel_name"] == "완전히다른이름")
+    assert hit["how"] == "기억한 연결" and hit["account_name"] == other["name"]
+
+
+def test_cash_flow_name_variants() -> None:
+    v = sx._cf_variants
+    assert v("5. 법인세의 환급(납부)") & v("법인세의 납부")
+    assert v("매출채권의 감소(증가)") == v("매출채권의 증가(감소)")
+    assert v("토지의 취득") == v("토지의 증가") and v("자기주식의 처분") == v("자기주식의 감소")
+    assert v("V. 기초의 현금") == v("기초의 현금및현금성자산")
+    assert not (v("대여금의 감소") & v("차입금의 감소"))

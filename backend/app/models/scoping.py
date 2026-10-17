@@ -366,6 +366,26 @@ class ScopingAccount(AuditedBase):
     na_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class ScopingExcelAlias(AuditedBase):
+    """스코핑 엑셀 직접 연결 기억(13.9-146) — 사람이 미리보기에서 고른 "엑셀 행 → 계정"을 **이름 기준**으로 남긴다.
+
+    계정 id 는 해마다 새로 만들어지므로 쓰지 않는다. 키 = 표 + 엑셀 이름(`_n`) + 엑셀 구분(`_core`), 값 = 그때 고른
+    계정의 이름·구분. 다음 업로드에서 "기억한 연결" 규칙이 이 이름으로 계정을 찾는다(후보가 하나일 때만).
+    같은 키를 다시 고르면 덮어쓴다(최근 선택이 이긴다).
+    """
+    __tablename__ = "scoping_excel_aliases"
+    __table_args__ = (
+        UniqueConstraint("id", "tenant_id", name="uq_scoping_excel_aliases_id_tenant"),
+        UniqueConstraint("tenant_id", "statement_type", "excel_name_key", "excel_group_key",
+                         name="uq_scoping_excel_aliases_key"),
+    )
+    statement_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    excel_name_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    excel_group_key: Mapped[str] = mapped_column(String(200), nullable=False, default="", server_default="")
+    account_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    account_group: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+
 class ScopingStatusHistory(AuditedBase):
     """상태 전이 이력 — 검토 요청·확정·재오픈. 재오픈 사유가 여기 남는다."""
     __tablename__ = "scoping_status_history"

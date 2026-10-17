@@ -16,6 +16,8 @@ interface ExcelOnly { key: string; statement_type: string; row: number; name: st
 interface AccountOnly { id: string; statement_type: string; name: string; group_label: string | null; not_applicable: boolean }
 interface Result {
   mode: 'preview' | 'commit'; matched: number; changed_count: number; summary_text: string
+  /** 지난 업로드에서 고른 연결을 기억해 맞춘 행 수(13.9-146) */
+  remembered?: number
   changes: Change[]; excel_only: ExcelOnly[]; account_only: AccountOnly[]
   skipped: { account_name: string; excel_name: string; reason: string }[]; warnings: string[]
   by_statement: Record<string, { excel: number; matched: number; changed: number }>
@@ -107,9 +109,17 @@ export default function ScopingExcelDialog({ scopingId, open, onOpenChange }: {
               ))}
             </div>
 
+            {(result.remembered ?? 0) > 0 && (
+              <p className="rounded-md border border-sky-300 bg-sky-50 p-2 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100">
+                지난번에 직접 고른 연결 <b>{result.remembered}건</b>을 기억해 자동으로 맞췄습니다 — 아래 변경 목록의 「기억한 연결」을 확인하고,
+                틀렸으면 그 자리에서 다른 계정으로 바꾸세요.
+              </p>
+            )}
+
             {result.excel_only.length > 0 && !done && (
               <section className="space-y-1">
                 <h3 className="font-medium">계정을 못 맞춘 엑셀 행 {result.excel_only.length}개 — 같은 표의 계정을 고르면 연결됩니다</h3>
+                <p className="text-xs text-muted-foreground">고른 연결은 반영할 때 기억해 두었다가, 다음 업로드(내년 포함)부터 자동으로 맞춥니다.</p>
                 <ul className="divide-y rounded-md border">
                   {result.excel_only.map((x) => {
                     const opts = result.account_only.filter((a) => a.statement_type === x.statement_type && (!chosen.has(a.id) || links[x.key] === a.id))
@@ -153,7 +163,18 @@ export default function ScopingExcelDialog({ scopingId, open, onOpenChange }: {
                             <td rowSpan={c.fields.length} className="px-2 py-1 font-medium">
                               {c.account_name}
                               {c.excel_name !== c.account_name && <div className="font-normal text-muted-foreground">엑셀: {c.excel_name}</div>}
-                              <div className="font-normal text-muted-foreground">{c.how}</div>
+                              <div className={c.how === '기억한 연결' ? 'font-normal text-sky-700 dark:text-sky-300' : 'font-normal text-muted-foreground'}>{c.how}</div>
+                              {/* 기억한 연결이 틀렸으면 여기서 다른 계정을 고른다 — 이번 선택이 기억보다 먼저이고, 반영하면 새로 기억한다 */}
+                              {c.how === '기억한 연결' && !done && (
+                                <select aria-label={`${c.excel_name} 연결 바꾸기`} value="" disabled={busy}
+                                  onChange={(e) => e.target.value && setLink(c.key, e.target.value)}
+                                  className="mt-1 h-7 max-w-[14rem] rounded-md border bg-background px-1 text-xs font-normal">
+                                  <option value="">다른 계정으로 바꾸기…</option>
+                                  {result.account_only.filter((a) => a.statement_type === c.statement_type).map((a) => (
+                                    <option key={a.id} value={a.id}>{a.name}{a.group_label ? ` (${a.group_label})` : ''}</option>
+                                  ))}
+                                </select>
+                              )}
                             </td>
                           )}
                           <td className="px-2 py-1">{f.label}</td>
